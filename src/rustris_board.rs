@@ -33,39 +33,6 @@ pub struct RustrisBoard {
     rustominos: Vec<Rustomino>,
 }
 
-// impl Display for Rustomino {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         write!(f, " ")?;
-//         write!(f, "{}", "-".repeat((self.bounding_box[0] * 2 - 1) as usize))?;
-//         write!(f, " \n")?;
-//         for line in (0..self.bounding_box[1]).rev() {
-//             write!(f, "|")?;
-//             'row: for row in 0..self.bounding_box[0] {
-//                 for block in self.blocks {
-//                     if block[0] == row && block[1] == line {
-//                         if row != (self.bounding_box[1] - 1) {
-//                             write!(f, "# ")?;
-//                         } else {
-//                             write!(f, "#")?;
-//                         }
-//                         continue 'row;
-//                     }
-//                 }
-//                 if row != (self.bounding_box[1] - 1) {
-//                     write!(f, "  ")?;
-//                 } else {
-//                     write!(f, " ")?;
-//                 }
-//             }
-//             write!(f, "|\n")?;
-//         }
-//         write!(f, " ")?;
-//         write!(f, "{}", "-".repeat((self.bounding_box[0] * 2 - 1) as usize))?;
-//         write!(f, " ")?;
-//         Ok(())
-//     }
-// }
-
 impl Display for RustrisBoard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", "-".repeat(PLAYFIELD_SIZE[0] * 2))?;
@@ -118,55 +85,87 @@ impl RustrisBoard {
         }
     }
 
-    pub fn gravity_tick(&mut self) {
-        // check to see if we can move this block down
-        // if we can translate it
+    fn can_fall(&self) -> bool {
+        // get the current rustomino
+        let Some(rustomino) = self.rustominos.last() else {
+            // no blocks to move/or lock
+            return false;
+        };
 
-        let mut movable = true;
-        {
-            let Some(rustomino) = self.rustominos.last() else {
-                return;
-            };
+        // can't move locked blocks
+        if rustomino.state == RustominoState::Locked {
+            return false;
+        }
 
-            // this shouldn't happen I don't think, but it's here JIC
-            if rustomino.state == RustominoState::Locked {
-                return;
-            }
-
-            if self.check_collision(rustomino.translated(GRAVITY_TRANSLATION)) {
-                movable = false;
+        // Check if block is at bottom of play area
+        for block in rustomino.block_slots() {
+            // block[x, y]
+            if block[1] == 0 {
+                return false;
             }
         }
 
-        // we should have returned if there was no last block
-        let rustomino = self.rustominos.last_mut().unwrap();
+        // check if moving would cause a collision
+        if self.check_collision(rustomino.translated(GRAVITY_TRANSLATION)) {
+            return false;
+        }
+
+        true
+    }
+
+    fn apply_gravity(&mut self) {
+        // get the current rustomino
+        let current_rustomino = self.rustominos.last_mut().unwrap();
+
+        log::debug!(
+            "moving rustomino: {:?} to {:?}",
+            current_rustomino,
+            current_rustomino.translated(GRAVITY_TRANSLATION),
+        );
+        // set the previous slots as empty
+        for slot in current_rustomino.block_slots() {
+            // slots[y][x]
+            self.slots[slot[1] as usize][slot[0] as usize] = SlotState::Empty;
+        }
+        current_rustomino.translate(GRAVITY_TRANSLATION);
+        // set the new slots as occupied
+        for slot in current_rustomino.block_slots() {
+            // slots[y][x]
+            self.slots[slot[1] as usize][slot[0] as usize] = SlotState::Occupied;
+        }
+    }
+
+    fn lock_current_block(&mut self) {
+        // get the current rustomino
+        let current_rustomino = self.rustominos.last_mut().unwrap();
+
+        // if the block can't be moved it's time to lock it
+        log::debug!("locking rustomino: {:?}", current_rustomino);
+        current_rustomino.lock();
+        // set the block slots as locked
+        for slot in current_rustomino.block_slots() {
+            // slots[y][x]
+            self.slots[slot[1] as usize][slot[0] as usize] = SlotState::Locked;
+        }
+    }
+
+    pub fn gravity_tick(&mut self) {
+        // check to see if we can move this block down
+
+        if let Some(rustomino) = self.rustominos.last() {
+            // ignore locked blocks
+            if rustomino.state == RustominoState::Locked {
+                return;
+            }
+        };
+
+        // check to see if the current rustomino can fall
+        let movable = self.can_fall();
 
         if movable {
-            log::debug!(
-                "moving rustomino: {:?} to {:?}",
-                rustomino,
-                rustomino.translated(GRAVITY_TRANSLATION),
-            );
-            // set the previous slots as empty
-            for slot in rustomino.block_slots() {
-                // slots[y][x]
-                self.slots[slot[1] as usize][slot[0] as usize] = SlotState::Empty;
-            }
-            rustomino.translate(GRAVITY_TRANSLATION);
-            // set the new slots as occupied
-            for slot in rustomino.block_slots() {
-                // slots[y][x]
-                self.slots[slot[1] as usize][slot[0] as usize] = SlotState::Occupied;
-            }
+            self.apply_gravity();
         } else {
-            // if the block can't be moved it's time to lock it
-            log::debug!("locking rustomino: {:?}", rustomino);
-            rustomino.lock();
-            // set the block slots as locked
-            for slot in rustomino.block_slots() {
-                // slots[y][x]
-                self.slots[slot[1] as usize][slot[0] as usize] = SlotState::Locked;
-            }
+            self.lock_current_block();
         }
     }
 
@@ -203,7 +202,7 @@ impl RustrisBoard {
         false
     }
 
-    pub fn get_lowest_possible_slots(&self) -> Result<[Vec2d<i32>; 4]> {
+    pub fn lowest_possible_position(&self) -> Result<[Vec2d<i32>; 4]> {
         if let Some(current_rustomino) = self.rustominos.last() {
             if current_rustomino.state == RustominoState::Locked {
                 bail!("cannot move locked block");
