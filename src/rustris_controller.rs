@@ -100,15 +100,15 @@ impl RustrisController {
     }
 
     pub fn update(&mut self, delta_time: f64) {
-        // place rustomino on the board in it's starting location
-
         if self.board.check_need_next() {
             // if we used next_rustomino we need to replace it
             if self.next_rustomino.is_none() {
                 self.next_rustomino = Some(self.get_next_rustomino());
             }
-            // unwrap should be OK here because we are making sure it's not None immediately before this
+            // unwrap should be OK here
+            // we are making sure it's not not None immediately before this
             let current_rustomino = self.next_rustomino.take().unwrap();
+            // add the next rustomino to the board (move)
             self.board.add_new_rustomino(current_rustomino);
         }
 
@@ -117,7 +117,7 @@ impl RustrisController {
         if self.gravity_time_accum >= self.gravity_delay {
             self.gravity_time_accum = 0.0;
             self.board.gravity_tick();
-            println!("{}", self.board);
+            log::debug!("board:\n{}", self.board);
         }
 
         // increase the game level every BLOCKS_PER_LEVEL
