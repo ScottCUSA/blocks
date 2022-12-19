@@ -6,27 +6,21 @@ use piston_window::Key;
 use rand::distributions::{Distribution, Standard};
 use rand::SeedableRng;
 
-const DEBUG_SEED: u64 = 123456789;
-const SIZE_NEXT_RUSTOMINOS: usize = 20;
-const STARTING_GRAVITY_DELAY: f64 = 0.5; // in MS?
-const GRAVITY_INCREASE_EXPONENT: u32 = 2;
-const GRAVITY_INCREASE_FACTOR: f64 = 0.2; // used to increase or slowdown rate of exponential growth
-const BLOCKS_PER_LEVEL: usize = 10;
-
-pub struct RustrisOptions {
-    starting_gravity_delay: f64,
-}
+const DEBUG_RNG_SEED: u64 = 123456789; // for RNG
+const SIZE_NEXT_RUSTOMINOS: usize = 20; // How many rustomino types to generate ahead of time
+const GRAVITY_NUMERATOR: f64 = 2.0; // how
+const GRAVITY_FACTOR: f64 = 4.0; // slow or increase gravity factor
+const BLOCKS_PER_LEVEL: usize = 1;
+const E: f64 = 2.7182818284;
+pub struct RustrisOptions {}
 
 impl RustrisOptions {
-    pub fn new() -> Self {
-        RustrisOptions {
-            starting_gravity_delay: STARTING_GRAVITY_DELAY,
-        }
-    }
-    pub fn gravity_delay(&mut self, level: usize) -> f64 {
-        (self.starting_gravity_delay
-            - ((level.pow(GRAVITY_INCREASE_EXPONENT) as f64) * GRAVITY_INCREASE_FACTOR))
-            .max(0.001)
+    // an attempt at a customizable logaritmically decreasing delay
+    //                 GRAVITY_NUMERATOR
+    // delay =  --------------------------------
+    //          (ln(level + 1) * GRAVITY_FACTOR)
+    pub fn gravity_delay(level: usize) -> f64 {
+        (GRAVITY_NUMERATOR / (((level + 1) as f64).log(E) * GRAVITY_FACTOR)).max(0.001)
     }
 }
 
@@ -35,7 +29,6 @@ pub struct RustrisController {
     next_rustominos: VecDeque<RustominoType>,
     next_rustomino: Option<Rustomino>,
     rng: rand_xoshiro::Xoshiro256PlusPlus,
-    options: RustrisOptions,
     game_level: usize,
     gravity_time_accum: f64,
     gravity_delay: f64,
@@ -46,10 +39,9 @@ impl RustrisController {
         RustrisController {
             board,
             next_rustominos: VecDeque::new(),
-            rng: rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(DEBUG_SEED),
+            rng: rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(DEBUG_RNG_SEED),
             // rng: rand_xoshiro::Xoshiro256PlusPlus::from_entropy(), // USE THIS WHEN NOT TESTING
             next_rustomino: None,
-            options: RustrisOptions::new(),
             game_level: 1,
             gravity_time_accum: 0.0,
             gravity_delay: 0.0, // set with self.options.gravity_delay(game_level)
@@ -60,7 +52,7 @@ impl RustrisController {
         log::info!("Initializing RustrisController");
         self.fill_next_rustominos(SIZE_NEXT_RUSTOMINOS);
         self.next_rustomino = Some(self.get_next_rustomino());
-        self.gravity_delay = self.options.gravity_delay(self.game_level);
+        self.gravity_delay = RustrisOptions::gravity_delay(self.game_level);
         return self;
     }
 
@@ -71,7 +63,7 @@ impl RustrisController {
             self.game_level + 1,
         );
         self.game_level += 1;
-        self.gravity_delay = self.options.gravity_delay(self.game_level);
+        self.gravity_delay = RustrisOptions::gravity_delay(self.game_level);
         log::info!("new gravity_delay {}", self.gravity_delay);
     }
 
@@ -97,6 +89,63 @@ impl RustrisController {
     pub fn key_pressed(&mut self, key: Key) {
         // allow the user to rotate the rustomino with the left and right arrows
         // allow the user to fast drop the rustomino with the down arrow key
+        log::info!("key pressed: {:?}", key);
+        match key {
+            Key::Left => {
+                log::info!("move left");
+                // self.board.translate(TranslationDirection::Left);
+            }
+            Key::Right => {
+                log::info!("move right")
+                // self.board.translate_right(TranslationDirection::Left);
+            }
+            Key::Up | Key::X => {
+                log::info!("rotate CW");
+                // self.board.rotate_rustomino(RotationDirection::CW);
+            }
+            Key::LCtrl | Key::Z => {
+                log::info!("rotate CCW");
+                // self.board.rotate_rustomino(RotationDirection::CCW);
+            }
+            Key::Down => {
+                log::info!("drop soft")
+            }
+            Key::Space => {
+                log::info!("drop hard")
+            }
+            _ => {}
+        }
+    }
+
+    pub fn key_released(&mut self, key: Key) {
+        // allow the user to rotate the rustomino with the left and right arrows
+        // allow the user to fast drop the rustomino with the down arrow key
+        log::info!("key pressed: {:?}", key);
+        match key {
+            Key::Left => {
+                log::info!("move left");
+                // self.board.translate(TranslationDirection::Left);
+            }
+            Key::Right => {
+                log::info!("move right")
+                // self.board.translate_right(TranslationDirection::Left);
+            }
+            Key::Up | Key::X => {
+                log::info!("rotate CW");
+                // self.board.rotate_rustomino(RotationDirection::CW);
+            }
+            Key::LCtrl | Key::Z => {
+                log::info!("rotate CCW");
+                // self.board.rotate_rustomino(RotationDirection::CCW);
+            }
+            Key::Down => {
+                log::info!("drop soft")
+            }
+            Key::Space => {
+                log::info!("drop hard")
+            }
+            _ => {}
+        }
     }
 
     pub fn update(&mut self, delta_time: f64) {
