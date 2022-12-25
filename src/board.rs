@@ -1,11 +1,13 @@
-use crate::rustominos::{Rustomino, RustominoState};
+use crate::rustomino::{Rustomino, RustominoState};
+use crate::view::{Draw, ViewSettings};
 use anyhow::{bail, Result};
+use piston_window::controller;
 use piston_window::{types::Color, types::Vec2d, Context, G2d};
 use std::{fmt::Display, thread::current};
 
 // playfield is 10 rows wide, 20 columns high
 // new rustomino's are spawned above playfield in lines 21,22
-const PLAYFIELD_SIZE: [usize; 2] = [10, 22];
+pub const PLAYFIELD_SIZE: [usize; 2] = [10, 22];
 const GRAVITY_TRANSLATION: Vec2d<i32> = [0, -1];
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -29,8 +31,8 @@ impl Display for SlotState {
 // RustrisBoard
 #[derive(Debug)]
 pub struct RustrisBoard {
-    slots: [[SlotState; PLAYFIELD_SIZE[0]]; PLAYFIELD_SIZE[1]],
-    rustominos: Vec<Rustomino>,
+    slots: [[SlotState; PLAYFIELD_SIZE[0] as usize]; PLAYFIELD_SIZE[1] as usize],
+    pub(crate) rustominos: Vec<Rustomino>,
 }
 
 impl Display for RustrisBoard {

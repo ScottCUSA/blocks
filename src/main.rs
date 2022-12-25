@@ -1,19 +1,19 @@
 use crate::{
-    rustominos::RotationDirection,
-    rustris_board::RustrisBoard,
-    rustris_controller::{RustrisController, RustrisOptions},
-    rustris_view::RustrisView,
+    rustomino::RotationDirection,
+    board::RustrisBoard,
+    controller::{RustrisController, RustrisOptions},
+    view::RustrisView,
 };
 use piston_window::{types::Color, *};
-use rustominos::{Rustomino, RustominoType};
+use rustomino::{Rustomino, RustominoType};
 use strum::IntoEnumIterator;
 
-mod rustominos;
-mod rustris_board;
-mod rustris_controller;
-mod rustris_view;
+mod rustomino;
+mod board;
+mod controller;
+mod view;
 
-const BACKGROUND_COLOR: Color = [0.0, 0.0, 0.0, 1.0];
+const BACKGROUND_COLOR: Color = [0.0, 0.29, 0.38, 1.0];
 const WINDOW_DIMENSIONS: [u32; 2] = [1024, 768];
 
 fn main() {
@@ -21,7 +21,6 @@ fn main() {
     log::info!("Startup: Initializing Piston Window");
     let mut window: piston_window::PistonWindow =
         piston_window::WindowSettings::new("Rustris", WINDOW_DIMENSIONS)
-            .resizable(false)
             .exit_on_esc(true)
             .vsync(true)
             .build()
@@ -29,7 +28,7 @@ fn main() {
 
     let rustris_board = RustrisBoard::new();
     let mut rustris_controller = RustrisController::new(rustris_board).init();
-    let rustris_view = RustrisView::new();
+    let mut rustris_view = RustrisView::new(WINDOW_DIMENSIONS);
 
     while let Some(event) = window.next() {
         if let Some(Button::Keyboard(key)) = event.press_args() {
@@ -37,6 +36,9 @@ fn main() {
         }
         if let Some(Button::Keyboard(key)) = event.release_args() {
             rustris_controller.key_released(key);
+        }
+        if let Some(args) = event.resize_args() {
+            rustris_view.resize(args);
         }
         window.draw_2d(&event, |c, g, _| {
             clear(BACKGROUND_COLOR, g);
