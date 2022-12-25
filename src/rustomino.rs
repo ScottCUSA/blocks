@@ -1,3 +1,4 @@
+use crate::view::{Draw, ViewSettings};
 use piston_window::{types::Color, types::Vec2d, Context, G2d};
 use rand::distributions::{Distribution, Standard};
 use std::fmt::Display;
@@ -235,7 +236,7 @@ const Z_ROTATIONS: [[Vec2d<i32>; 4]; 4] = [
     ],
 ];
 
-#[derive(Debug, Clone, EnumIter)]
+#[derive(Debug, Clone, Copy, EnumIter)]
 pub enum RustominoType {
     I,
     O,
@@ -354,11 +355,6 @@ impl Rustomino {
             vecmath::vec2_add(vecmath::vec2_add(self.blocks[2], self.translation), delta),
             vecmath::vec2_add(vecmath::vec2_add(self.blocks[3], self.translation), delta),
         ];
-        log::debug!(
-            "translated called: delta {:?} translated: {:?}",
-            delta,
-            translated
-        );
         translated
     }
 
@@ -378,10 +374,6 @@ impl Rustomino {
         ];
 
         self.rotation.rotate(direction);
-    }
-
-    pub fn draw(&self, color: Color, con: &Context, g: &mut G2d) {
-        use piston_window::Rectangle;
     }
 
     pub fn lock(&mut self) {

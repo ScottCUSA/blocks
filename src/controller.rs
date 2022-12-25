@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
-use crate::rustominos::*;
-use crate::rustris_board::RustrisBoard;
+use crate::rustomino::*;
+use crate::board::RustrisBoard;
 use piston_window::Key;
 use rand::distributions::{Distribution, Standard};
 use rand::SeedableRng;
@@ -10,7 +10,7 @@ const DEBUG_RNG_SEED: u64 = 123456789; // for RNG
 const SIZE_NEXT_RUSTOMINOS: usize = 20; // How many rustomino types to generate ahead of time
 const GRAVITY_NUMERATOR: f64 = 2.0; // how
 const GRAVITY_FACTOR: f64 = 4.0; // slow or increase gravity factor
-const BLOCKS_PER_LEVEL: usize = 1;
+const BLOCKS_PER_LEVEL: usize = 4;
 const E: f64 = 2.7182818284;
 pub struct RustrisOptions {}
 
@@ -25,7 +25,7 @@ impl RustrisOptions {
 }
 
 pub struct RustrisController {
-    board: RustrisBoard,
+    pub board: RustrisBoard,
     next_rustominos: VecDeque<RustominoType>,
     next_rustomino: Option<Rustomino>,
     rng: rand_xoshiro::Xoshiro256PlusPlus,
@@ -92,26 +92,26 @@ impl RustrisController {
         log::info!("key pressed: {:?}", key);
         match key {
             Key::Left => {
-                log::info!("move left");
+                // pressed move left
                 // self.board.translate(TranslationDirection::Left);
             }
             Key::Right => {
-                log::info!("move right")
+                // pressed move right
                 // self.board.translate_right(TranslationDirection::Left);
             }
             Key::Up | Key::X => {
-                log::info!("rotate CW");
+                // pressed rotate CW
                 // self.board.rotate_rustomino(RotationDirection::CW);
             }
             Key::LCtrl | Key::Z => {
-                log::info!("rotate CCW");
+                // pressed rotate CCW
                 // self.board.rotate_rustomino(RotationDirection::CCW);
             }
             Key::Down => {
-                log::info!("drop soft")
+                // pressed soft drop
             }
             Key::Space => {
-                log::info!("drop hard")
+                // pressed drop hard
             }
             _ => {}
         }
@@ -120,29 +120,19 @@ impl RustrisController {
     pub fn key_released(&mut self, key: Key) {
         // allow the user to rotate the rustomino with the left and right arrows
         // allow the user to fast drop the rustomino with the down arrow key
-        log::info!("key pressed: {:?}", key);
+        log::info!("key released: {:?}", key);
         match key {
             Key::Left => {
-                log::info!("move left");
+                // released move left
                 // self.board.translate(TranslationDirection::Left);
             }
             Key::Right => {
-                log::info!("move right")
+                // released move right
                 // self.board.translate_right(TranslationDirection::Left);
             }
-            Key::Up | Key::X => {
-                log::info!("rotate CW");
-                // self.board.rotate_rustomino(RotationDirection::CW);
-            }
-            Key::LCtrl | Key::Z => {
-                log::info!("rotate CCW");
-                // self.board.rotate_rustomino(RotationDirection::CCW);
-            }
             Key::Down => {
-                log::info!("drop soft")
-            }
-            Key::Space => {
-                log::info!("drop hard")
+                // released soft drop
+
             }
             _ => {}
         }
@@ -166,7 +156,7 @@ impl RustrisController {
         if self.gravity_time_accum >= self.gravity_delay {
             self.gravity_time_accum = 0.0;
             self.board.gravity_tick();
-            log::debug!("board:\n{}", self.board);
+            log::debug!("delta_time:\n{}", delta_time);
         }
 
         // increase the game level every BLOCKS_PER_LEVEL
