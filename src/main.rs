@@ -1,7 +1,7 @@
 use crate::{
     rustomino::RotationDirection,
     board::RustrisBoard,
-    controller::{RustrisController, RustrisOptions},
+    controller::{RustrisController},
     view::RustrisView,
 };
 use piston_window::{types::Color, *};

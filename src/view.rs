@@ -110,6 +110,14 @@ impl RustrisView {
         self.settings = ViewSettings::new(args.draw_size);
     }
     pub fn draw(&self, controller: &RustrisController, ctx: &Context, g: &mut G2d) {
+
+        match controller.game_state {
+            crate::controller::GameState::Menu => {},
+            crate::controller::GameState::Playing => {
+                controller.board.draw(&self.settings, ctx, g);
+            },
+            crate::controller::GameState::GameOver => {},
+        }
         // probably want to implement game states
         // and draw them appropriately
         // menu, playing, gameover, etc
@@ -118,7 +126,6 @@ impl RustrisView {
         // display the rustris board
         // display the score
         // display the level
-        controller.board.draw(&self.settings, ctx, g);
     }
 }
 

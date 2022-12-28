@@ -1,4 +1,4 @@
-use crate::rustomino::{Rustomino, RustominoState};
+use crate::rustomino::{Rustomino, RustominoState, TranslationDirection};
 use crate::view::{Draw, ViewSettings};
 use anyhow::{bail, Result};
 use piston_window::controller;
@@ -58,22 +58,26 @@ impl RustrisBoard {
         }
     }
 
-    fn set_slot_state(&mut self, rustomino: &Rustomino, state: SlotState) {
+    fn set_slot_state(&mut self, rustomino: &Rustomino, new_state: SlotState) {
         log::debug!(
             "set_slot_state called rustomino: {:?} block_slots: {:?} to state: {:?}",
             rustomino,
             rustomino.block_slots(),
-            state
+            new_state
         );
         for slot in rustomino.block_slots() {
-            self.slots[slot[1] as usize][slot[0] as usize] = state;
+            self.slots[slot[1] as usize][slot[0] as usize] = new_state;
         }
     }
 
-    pub fn add_new_rustomino(&mut self, rustomino: Rustomino) {
+    // Add the rustomino to the board
+    // returns false if there was a collision while adding the block (game over)
+    pub fn add_new_rustomino(&mut self, rustomino: Rustomino) -> bool {
+        let ok = !self.check_collision(rustomino.block_slots());
         // slots[y][x]
         self.set_slot_state(&rustomino, SlotState::Occupied);
         self.rustominos.push(rustomino);
+        ok
     }
 
     pub fn check_need_next(&self) -> bool {
@@ -97,14 +101,6 @@ impl RustrisBoard {
         // can't move locked blocks
         if rustomino.state == RustominoState::Locked {
             return false;
-        }
-
-        // Check if block is at bottom of play area
-        for block in rustomino.block_slots() {
-            // block[x, y]
-            if block[1] == 0 {
-                return false;
-            }
         }
 
         // check if moving would cause a collision
@@ -194,8 +190,17 @@ impl RustrisBoard {
     }
 
     /// check to see if the provided block locations collide with other locked blocks
+    /// or with walls
     pub fn check_collision(&self, block_locations: [Vec2d<i32>; 4]) -> bool {
         for location in block_locations {
+            // check for left and right wall collisions
+            if location[0] < 0 || location[0] >= PLAYFIELD_SIZE[0] as i32 {
+                return true;
+            }
+            // check for bottom wall collision
+            if location[1] < 0 {
+                return true;
+            }
             // slots[y][x]
             if self.slots[location[1] as usize][location[0] as usize] == SlotState::Locked {
                 return true;
@@ -204,7 +209,7 @@ impl RustrisBoard {
         false
     }
 
-    pub fn lowest_possible_position(&self) -> Result<[Vec2d<i32>; 4]> {
+    fn drop_translation(&self) -> Result<Vec2d<i32>> {
         if let Some(current_rustomino) = self.rustominos.last() {
             if current_rustomino.state == RustominoState::Locked {
                 bail!("cannot move locked block");
@@ -212,8 +217,9 @@ impl RustrisBoard {
 
             let mut translation = GRAVITY_TRANSLATION;
 
+            // if we can't move it down without colliding the delta is 0
             if self.check_collision(current_rustomino.translated(translation)) {
-                return Ok(current_rustomino.block_slots());
+                return Ok([0,0]);
             }
 
             // keep attempting to move the rustomino down until it collides and return
@@ -222,18 +228,55 @@ impl RustrisBoard {
                 let good_translation = translation;
                 translation = vecmath::vec2_add(translation, [0, -1]);
                 if self.check_collision(current_rustomino.translated(translation)) {
-                    return Ok(current_rustomino.translated(good_translation));
+                    return Ok(good_translation);
                 }
             }
-        } else {
-            bail!("no block to move");
+        } 
+        bail!("no block to move");
+    }
+
+    pub fn drop(&mut self) {
+        match self.drop_translation() {
+            Ok(delta) => {
+                self.rustominos.last_mut().unwrap().translate(delta);
+                self.lock_current_block();
+            },
+            Err(_) => todo!(),
         }
     }
 
-    /// Attempt to rotate the provided rustomino.
+    /// Attempt to rotate the current rustomino.
     /// Returns the rustomino rotated if it's possible
     /// Returns the unmodified rustomino if not
     pub fn rotate_rustomino<'a>(&self, rustomino: &'a mut Rustomino) -> &'a Rustomino {
         todo!()
+    }
+
+    /// Attempt to translate the current rustomino.
+    /// Return true if possible
+    pub fn translate(&mut self, direction: TranslationDirection) {
+
+        {
+            let Some(current_rustomino) = self.rustominos.last() else {
+                return;
+            };
+    
+            let translated_blocks = current_rustomino.translated(direction.get_translation());
+            
+            // check to see if the translation would cause a collision with a locked block
+            if self.check_collision(translated_blocks) {
+                return;
+            }
+
+        }
+
+        // get mutable reference
+        let Some(current_rustomino) = self.rustominos.last_mut() else {
+            return;
+        };
+
+        // perform the tranlsation
+        current_rustomino.translate(direction.get_translation());
+
     }
 }
