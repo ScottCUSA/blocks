@@ -8,8 +8,8 @@ const I_BOUNDING_BOX: Vec2d<i32> = [4, 4];
 const O_BOUNDING_BOX: Vec2d<i32> = [4, 3];
 const T_L_J_S_Z_BOUNDING_BOX: Vec2d<i32> = [3, 3];
 
-const I_TRANSLATION: Vec2d<i32> = [3, 18];
-const O_T_L_J_S_Z_TRANSLATION: Vec2d<i32> = [3, 19];
+const I_START_TRANSLATION: Vec2d<i32> = [3, 18];
+const O_T_L_J_S_Z_START_TRANSLATION: Vec2d<i32> = [3, 19];
 
 const I_BLOCKS: [Vec2d<i32>; 4] = [[0, 2], [1, 2], [2, 2], [3, 2]];
 const O_BLOCKS: [Vec2d<i32>; 4] = [[1, 2], [2, 2], [2, 1], [1, 1]];
@@ -18,6 +18,9 @@ const L_BLOCKS: [Vec2d<i32>; 4] = [[1, 1], [0, 1], [2, 2], [2, 1]];
 const J_BLOCKS: [Vec2d<i32>; 4] = [[1, 1], [0, 1], [0, 2], [2, 1]];
 const S_BLOCKS: [Vec2d<i32>; 4] = [[1, 1], [0, 1], [1, 2], [2, 2]];
 const Z_BLOCKS: [Vec2d<i32>; 4] = [[1, 1], [0, 2], [1, 2], [2, 1]];
+
+const LEFT_TRANSLATION: Vec2d<i32> = [-1, 0];
+const RIGHT_TRANSLATION: Vec2d<i32> = [1, 0];
 
 const I_ROTATIONS: [[Vec2d<i32>; 4]; 4] = [
     [
@@ -288,7 +291,7 @@ impl Rustomino {
                 rotation: RustominoRotation::new(I_ROTATIONS),
                 blocks: I_BLOCKS,
                 bounding_box: I_BOUNDING_BOX,
-                translation: I_TRANSLATION,
+                translation: I_START_TRANSLATION,
                 state: RustominoState::Unlocked,
             },
             RustominoType::O => Rustomino {
@@ -296,7 +299,7 @@ impl Rustomino {
                 rotation: RustominoRotation::new(O_ROTATIONS),
                 blocks: O_BLOCKS,
                 bounding_box: O_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_TRANSLATION,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
                 state: RustominoState::Unlocked,
             },
             RustominoType::T => Rustomino {
@@ -304,7 +307,7 @@ impl Rustomino {
                 rotation: RustominoRotation::new(T_ROTATIONS),
                 blocks: T_BLOCKS,
                 bounding_box: T_L_J_S_Z_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_TRANSLATION,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
                 state: RustominoState::Unlocked,
             },
             RustominoType::L => Rustomino {
@@ -312,7 +315,7 @@ impl Rustomino {
                 rotation: RustominoRotation::new(L_ROTATIONS),
                 blocks: L_BLOCKS,
                 bounding_box: T_L_J_S_Z_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_TRANSLATION,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
                 state: RustominoState::Unlocked,
             },
             RustominoType::J => Rustomino {
@@ -320,7 +323,7 @@ impl Rustomino {
                 rotation: RustominoRotation::new(J_ROTATIONS),
                 blocks: J_BLOCKS,
                 bounding_box: T_L_J_S_Z_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_TRANSLATION,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
                 state: RustominoState::Unlocked,
             },
             RustominoType::S => Rustomino {
@@ -328,7 +331,7 @@ impl Rustomino {
                 rotation: RustominoRotation::new(S_ROTATIONS),
                 blocks: S_BLOCKS,
                 bounding_box: T_L_J_S_Z_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_TRANSLATION,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
                 state: RustominoState::Unlocked,
             },
             RustominoType::Z => Rustomino {
@@ -336,13 +339,12 @@ impl Rustomino {
                 rotation: RustominoRotation::new(Z_ROTATIONS),
                 blocks: Z_BLOCKS,
                 bounding_box: T_L_J_S_Z_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_TRANSLATION,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
                 state: RustominoState::Unlocked,
             },
         }
     }
 
-    /// .
     pub fn translate(&mut self, delta: Vec2d<i32>) {
         log::debug!("translate called: delta {:?}", delta);
         self.translation = vecmath::vec2_add(self.translation, delta);
@@ -447,6 +449,20 @@ impl RustominoDirection {
                 RotationDirection::CW => RustominoDirection::N,
                 RotationDirection::CCW => RustominoDirection::S,
             },
+        }
+    }
+}
+
+pub enum TranslationDirection {
+    Left,
+    Right
+}
+
+impl TranslationDirection {
+    pub fn get_translation(&self) -> Vec2d<i32> {
+        match self {
+            TranslationDirection::Left => LEFT_TRANSLATION,
+            TranslationDirection::Right => RIGHT_TRANSLATION,
         }
     }
 }
