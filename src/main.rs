@@ -1,16 +1,9 @@
-use crate::{
-    rustomino::RotationDirection,
-    board::RustrisBoard,
-    controller::{RustrisController},
-    view::RustrisView,
-};
+use crate::{board::RustrisBoard, controller::RustrisController, view::RustrisView};
 use piston_window::{types::Color, *};
-use rustomino::{Rustomino, RustominoType};
-use strum::IntoEnumIterator;
 
-mod rustomino;
 mod board;
 mod controller;
+mod rustomino;
 mod view;
 
 const BACKGROUND_COLOR: Color = [0.0, 0.29, 0.38, 1.0];

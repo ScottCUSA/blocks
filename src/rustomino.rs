@@ -1,5 +1,4 @@
-use crate::view::{Draw, ViewSettings};
-use piston_window::{types::Color, types::Vec2d, Context, G2d};
+use piston_window::types::Vec2d;
 use rand::distributions::{Distribution, Standard};
 use std::fmt::Display;
 use strum::EnumIter;
@@ -18,9 +17,6 @@ const L_BLOCKS: [Vec2d<i32>; 4] = [[1, 1], [0, 1], [2, 2], [2, 1]];
 const J_BLOCKS: [Vec2d<i32>; 4] = [[1, 1], [0, 1], [0, 2], [2, 1]];
 const S_BLOCKS: [Vec2d<i32>; 4] = [[1, 1], [0, 1], [1, 2], [2, 2]];
 const Z_BLOCKS: [Vec2d<i32>; 4] = [[1, 1], [0, 2], [1, 2], [2, 1]];
-
-const LEFT_TRANSLATION: Vec2d<i32> = [-1, 0];
-const RIGHT_TRANSLATION: Vec2d<i32> = [1, 0];
 
 const I_ROTATIONS: [[Vec2d<i32>; 4]; 4] = [
     [
@@ -239,7 +235,7 @@ const Z_ROTATIONS: [[Vec2d<i32>; 4]; 4] = [
     ],
 ];
 
-#[derive(Debug, Clone, Copy, EnumIter)]
+#[derive(Debug, Clone, Copy, EnumIter, PartialEq, Eq)]
 pub enum RustominoType {
     I,
     O,
@@ -378,6 +374,29 @@ impl Rustomino {
         self.rotation.rotate(direction);
     }
 
+    pub fn rotated(&self, direction: &RotationDirection) -> [Vec2d<i32>; 4] {
+        let rotation = self.rotation.get_translation(direction);
+
+        [
+            vecmath::vec2_add(
+                vecmath::vec2_add(self.blocks[0], self.translation),
+                rotation.0[0],
+            ),
+            vecmath::vec2_add(
+                vecmath::vec2_add(self.blocks[1], self.translation),
+                rotation.0[1],
+            ),
+            vecmath::vec2_add(
+                vecmath::vec2_add(self.blocks[2], self.translation),
+                rotation.0[2],
+            ),
+            vecmath::vec2_add(
+                vecmath::vec2_add(self.blocks[3], self.translation),
+                rotation.0[3],
+            ),
+        ]
+    }
+
     pub fn lock(&mut self) {
         self.state = RustominoState::Locked;
     }
@@ -433,36 +452,22 @@ pub enum RustominoDirection {
 impl RustominoDirection {
     fn rotate(&self, direction: &RotationDirection) -> RustominoDirection {
         match self {
-            RustominoDirection::N => match *direction {
+            RustominoDirection::N => match direction {
                 RotationDirection::CW => RustominoDirection::E,
                 RotationDirection::CCW => RustominoDirection::W,
             },
-            RustominoDirection::E => match *direction {
+            RustominoDirection::E => match direction {
                 RotationDirection::CW => RustominoDirection::S,
                 RotationDirection::CCW => RustominoDirection::N,
             },
-            RustominoDirection::S => match *direction {
+            RustominoDirection::S => match direction {
                 RotationDirection::CW => RustominoDirection::W,
                 RotationDirection::CCW => RustominoDirection::E,
             },
-            RustominoDirection::W => match *direction {
+            RustominoDirection::W => match direction {
                 RotationDirection::CW => RustominoDirection::N,
                 RotationDirection::CCW => RustominoDirection::S,
             },
-        }
-    }
-}
-
-pub enum TranslationDirection {
-    Left,
-    Right
-}
-
-impl TranslationDirection {
-    pub fn get_translation(&self) -> Vec2d<i32> {
-        match self {
-            TranslationDirection::Left => LEFT_TRANSLATION,
-            TranslationDirection::Right => RIGHT_TRANSLATION,
         }
     }
 }
@@ -493,29 +498,27 @@ impl RustominoRotation {
         }
     }
 
-    /// .
     fn get_translation(&self, direction: &RotationDirection) -> RotationTranslation {
         match self.direction {
-            RustominoDirection::N => match *direction {
+            RustominoDirection::N => match direction {
                 RotationDirection::CW => self.n2e,
                 RotationDirection::CCW => -self.w2n,
             },
-            RustominoDirection::E => match *direction {
+            RustominoDirection::E => match direction {
                 RotationDirection::CW => self.e2s,
                 RotationDirection::CCW => -self.n2e,
             },
-            RustominoDirection::S => match *direction {
+            RustominoDirection::S => match direction {
                 RotationDirection::CW => self.s2w,
                 RotationDirection::CCW => -self.e2s,
             },
-            RustominoDirection::W => match *direction {
+            RustominoDirection::W => match direction {
                 RotationDirection::CW => self.w2n,
                 RotationDirection::CCW => -self.s2w,
             },
         }
     }
 
-    /// .
     fn rotate(&mut self, direction: &RotationDirection) {
         self.direction = self.direction.rotate(direction)
     }

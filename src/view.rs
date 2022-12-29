@@ -2,10 +2,7 @@ use crate::{
     board::{RustrisBoard, PLAYFIELD_SIZE},
     rustomino::{Rustomino, RustominoType},
 };
-use piston_window::{
-    types::{Color, Vec2d},
-    Context, G2d, ResizeArgs,
-};
+use piston_window::{types::Color, Context, G2d, ResizeArgs};
 
 use crate::controller::RustrisController;
 
@@ -93,7 +90,7 @@ impl ViewSettings {
 }
 
 pub trait Draw {
-    fn draw(&self, settings: &ViewSettings, ctx: &Context, g: &mut G2d) {}
+    fn draw(&self, settings: &ViewSettings, ctx: &Context, g: &mut G2d);
 }
 
 pub struct RustrisView {
@@ -110,13 +107,12 @@ impl RustrisView {
         self.settings = ViewSettings::new(args.draw_size);
     }
     pub fn draw(&self, controller: &RustrisController, ctx: &Context, g: &mut G2d) {
-
         match controller.game_state {
-            crate::controller::GameState::Menu => {},
+            crate::controller::GameState::Menu => {}
             crate::controller::GameState::Playing => {
                 controller.board.draw(&self.settings, ctx, g);
-            },
-            crate::controller::GameState::GameOver => {},
+            }
+            crate::controller::GameState::GameOver => {}
         }
         // probably want to implement game states
         // and draw them appropriately
@@ -157,19 +153,36 @@ impl Draw for RustrisBoard {
             g,
         );
 
-        for rustomino in self.rustominos.iter() {
+        for rustomino in self.current_rustomino.iter() {
             rustomino.draw(settings, ctx, g);
+        }
+
+        for (y, slots_x) in self.slots.iter().enumerate() {
+            for (x, slot) in slots_x.iter().enumerate() {
+                match slot {
+                    crate::board::SlotState::Locked(rtype) => {
+                        // draw the block
+                        Rectangle::new(rustomino_color(*rtype)).draw(
+                            block_rect([x as i32, y as i32], settings),
+                            &ctx.draw_state,
+                            ctx.transform,
+                            g,
+                        );
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 }
 
-const I_COLOR: Color = [0.0, 0.15, 1.0, 1.0]; // blue
-const O_COLOR: Color = [0.0, 1.0, 1.0, 1.0]; // cyan
-const T_COLOR: Color = [1.0, 0.0, 0.0, 1.0]; // red
-const L_COLOR: Color = [0.7, 0.0, 1.0, 1.0]; // purple
-const J_COLOR: Color = [1.0, 0.93, 0.0, 1.0]; // yellow
-const S_COLOR: Color = [1.0, 0.42, 0.0, 1.0]; // orange
-const Z_COLOR: Color = [1.0, 0.93, 0.0, 1.0]; // green
+const I_COLOR: Color = [0.0, 0.9, 1.0, 1.0]; // light blue
+const O_COLOR: Color = [1.0, 0.87, 0.0, 1.0]; // yellow
+const T_COLOR: Color = [0.72, 0.01, 0.99, 1.0]; // purple
+const L_COLOR: Color = [1.0, 0.45, 0.03, 1.0]; // orange
+const J_COLOR: Color = [0.09, 0.0, 1.0, 1.0]; // blue
+const S_COLOR: Color = [0.4, 0.99, 0.0, 1.0]; // green
+const Z_COLOR: Color = [1.0, 0.06, 0.24, 1.0]; // red
 
 fn rustomino_color(rtype: RustominoType) -> Color {
     match rtype {
@@ -183,7 +196,7 @@ fn rustomino_color(rtype: RustominoType) -> Color {
     }
 }
 
-fn rustomino_rect(block: [i32; 2], settings: &ViewSettings) -> Rect<f64> {
+fn block_rect(block: [i32; 2], settings: &ViewSettings) -> Rect<f64> {
     // block[x,y] absolute units
     let x = settings.staging_rect.x + (block[0] * (BLOCK_SIZE + BLOCK_PADDING)) as f64 + 1.0;
     // get bottom left of board_rect
@@ -200,7 +213,7 @@ impl Draw for Rustomino {
         for block in self.block_slots() {
             // display the preview
             Rectangle::new(rustomino_color(self.rustomino_type)).draw(
-                rustomino_rect(block, settings),
+                block_rect(block, settings),
                 &ctx.draw_state,
                 ctx.transform,
                 g,
