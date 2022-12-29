@@ -1,18 +1,23 @@
-use std::collections::VecDeque;
-
-use crate::board::RustrisBoard;
+use crate::board::{RustrisBoard, TranslationDirection};
 use crate::rustomino::*;
-use log::info;
 use piston_window::Key;
 use rand::distributions::{Distribution, Standard};
 use rand::SeedableRng;
+use std::collections::VecDeque;
 
 const DEBUG_RNG_SEED: u64 = 123456789; // for RNG
 const SIZE_NEXT_RUSTOMINOS: usize = 20; // How many rustomino types to generate ahead of time
 const GRAVITY_NUMERATOR: f64 = 1.0; // how
 const GRAVITY_FACTOR: f64 = 4.0; // slow or increase gravity factor
-const BLOCKS_PER_LEVEL: usize = 1;
+const BLOCKS_PER_LEVEL: usize = 20; // how many blocks between levels (should this be score based?)
 const E: f64 = 2.7182818284;
+const DELAY_TO_LOCK: f64 = 0.5; // how long to wait before locking a block which cannot move down
+const MAX_DELAY_RESETS: i32 = 10; // how many times can the delay
+
+const SINGLE_LINE_SCORE: usize = 100;
+const DOUBLE_LINE_SCORE: usize = 300;
+const TRIPLE_LINE_SCORE: usize = 500;
+const RUSTRIS_SCORE: usize = 800;
 
 // an attempt at a customizable logaritmically decreasing delay
 //                 GRAVITY_NUMERATOR
@@ -31,6 +36,11 @@ pub enum GameState {
     GameOver,
 }
 
+enum PlayingState {
+    Normal,
+    DelayToLock { current_delay: f64, num_resets: i32 },
+}
+
 pub struct RustrisController {
     pub board: RustrisBoard,
     next_rustominos: VecDeque<RustominoType>,
@@ -43,6 +53,7 @@ pub struct RustrisController {
     left_pressed: bool,
     right_pressed: bool,
     down_pressed: bool,
+    score: usize,
 }
 
 impl RustrisController {
@@ -60,6 +71,7 @@ impl RustrisController {
             left_pressed: false,
             right_pressed: false,
             down_pressed: false,
+            score: 0,
         }
     }
 
@@ -107,34 +119,82 @@ impl RustrisController {
                     Key::Left => {
                         // pressed move left
                         self.left_pressed = true;
-                        self.board.translate(TranslationDirection::Left);
+                        self.translate(TranslationDirection::Left);
                     }
                     Key::Right => {
                         // pressed move right
                         self.right_pressed = true;
-                        self.board.translate(TranslationDirection::Right);
+                        self.translate(TranslationDirection::Right);
                     }
                     Key::Up | Key::X => {
                         // pressed rotate CW
-                        // self.board.rotate_rustomino(RotationDirection::CW);
+                        self.rotate(RotationDirection::CW);
                     }
                     Key::LCtrl | Key::Z => {
                         // pressed rotate CCW
-                        // self.board.rotate_rustomino(RotationDirection::CCW);
+                        self.rotate(RotationDirection::CCW);
                     }
                     Key::Down => {
-                        self.down_pressed = true;
                         // pressed soft drop
+                        self.down_pressed = true;
+                        self.soft_drop();
                     }
                     Key::Space => {
-                        self.board.drop();
                         // pressed drop hard
+                        self.hard_drop();
                     }
                     _ => {}
                 }
             }
             GameState::GameOver => todo!(),
         }
+    }
+
+    fn translate(&mut self, direction: TranslationDirection) {
+        self.board.translate_current(direction);
+    }
+
+    fn rotate(&mut self, direction: RotationDirection) {
+        self.board.rotate_current(direction)
+    }
+
+    fn soft_drop(&mut self) {
+        if !self.board.translate_current(TranslationDirection::Down) {
+            self.board.lock_current_rustomino();
+        }
+        self.gravity_time_accum = 0.0;
+        self.board.clear_completed_lines();
+    }
+
+    fn hard_drop(&mut self) {
+        self.board.drop();
+        self.handle_completed_lines();
+    }
+
+    fn handle_completed_lines(&mut self) {
+        let completed_lines = self.board.clear_completed_lines();
+        if completed_lines.len() == 0 {
+            return;
+        }
+        self.score_completed_lines(completed_lines);
+    }
+
+    fn score_completed_lines(&mut self, completed_lines: Vec<usize>) {
+        // Single line 100xlevel
+        // Double line 300xlevel
+        // Triple line 500xlevel
+        // Rustris (4 lines) 800xlevel
+        let score = match completed_lines.len() {
+            1 => SINGLE_LINE_SCORE,
+            2 => DOUBLE_LINE_SCORE,
+            3 => TRIPLE_LINE_SCORE,
+            4 => RUSTRIS_SCORE,
+            _ => {
+                panic!("shouldn't be able to score more than 4 lines")
+            }
+        } * self.game_level;
+        self.score += score;
+        log::info!("scored! {} total score: {}", score, self.score)
     }
 
     pub fn key_released(&mut self, key: Key) {
@@ -168,25 +228,28 @@ impl RustrisController {
         match self.game_state {
             GameState::Menu => todo!(),
             GameState::Playing => {
-                if self.board.check_need_next() {
-                    // if we used next_rustomino we need to replace it
-                    if self.next_rustomino.is_none() {
-                        self.next_rustomino = Some(self.get_next_rustomino());
-                    }
-                    // unwrap should be OK here
-                    // we are making sure it's not not None immediately before this
+                // check board ready for the next rustomino
+                if self.board.ready_for_next() {
+                    // TODO: move this whole block to a fn
+                    // take the next rustomino
+                    // unwrap should be safe here
                     let current_rustomino = self.next_rustomino.take().unwrap();
-                    // add the next rustomino to the board (move)
+                    // we used next_rustomino so we need to replace it
+                    self.next_rustomino = Some(self.get_next_rustomino());
+                    // add the next rustomino to the board
+                    // game over if it can't be placed without a collision
                     if !self.board.add_new_rustomino(current_rustomino) {
                         self.game_over();
                     }
                 }
-                // Apply "gravity" to move the rustomino down the board, or if it can't move lock it
+                // Apply "gravity" to move the current rustomino down the board
+                // or if it can't move lock it
                 self.gravity_time_accum = self.gravity_time_accum + delta_time;
                 if self.gravity_time_accum >= self.gravity_delay {
                     self.gravity_time_accum = 0.0;
                     self.board.gravity_tick();
-                    log::debug!("delta_time:\n{}", delta_time);
+                    log::debug!("delta_time:{}", delta_time);
+                    log::debug!("board:\n{}", self.board);
                 }
 
                 // increase the game level every BLOCKS_PER_LEVEL
@@ -199,7 +262,7 @@ impl RustrisController {
     }
 
     fn game_over(&mut self) {
-        info!("Game Over!");
+        log::info!("Game Over!");
         self.game_state = GameState::GameOver;
     }
 }
