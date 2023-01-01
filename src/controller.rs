@@ -122,7 +122,7 @@ impl Default for InputController {
             //     (Inputs::HardDrop, HARD_DROP_KEYS),
             //     (Inputs::Hold, HOLD_KEYS),
             // ]),
-            input_key_map: HashMap::from({
+            input_key_map: {
                 LEFT_KEYS
                     .iter()
                     .flatten()
@@ -154,12 +154,12 @@ impl Default for InputController {
                     )
                     .chain(HOLD_KEYS.iter().flatten().map(|e| (*e, Inputs::Hold)))
                     .collect::<HashMap<Key, Inputs>>()
-            }),
-            input_states: HashMap::from({
+            },
+            input_states: {
                 Inputs::iter()
                     .map(|e| (e, KeyState::default()))
                     .collect::<HashMap<Inputs, KeyState>>()
-            }),
+            },
         }
     }
 }
@@ -215,7 +215,7 @@ impl RustrisController {
         self.fill_rustomino_bag();
         self.next_rustomino = Some(self.get_next_rustomino());
         self.gravity_delay = gravity_delay(self.game_level);
-        return self;
+        self
     }
 
     pub fn key_pressed(&mut self, key: Key) {
@@ -274,14 +274,14 @@ impl RustrisController {
                 .and_modify(|e| match e {
                     KeyState::Down(down_time) => {
                         if let Some(action_delay) = input.action_delay_for_input() {
-                            *down_time = *down_time + delta_time;
+                            *down_time += delta_time;
                             if *down_time >= action_delay {
                                 *e = KeyState::Held(0.0);
                             }
                         }
                     }
                     KeyState::Held(held_time) => {
-                        *held_time = *held_time + delta_time;
+                        *held_time += delta_time;
                     }
                     _ => (),
                 });
@@ -329,7 +329,7 @@ impl RustrisController {
                 self.handle_inputs(delta_time);
                 // Apply "gravity" to move the current rustomino down the board
                 // or if it can't move lock it
-                self.gravity_time_accum = self.gravity_time_accum + delta_time;
+                self.gravity_time_accum += delta_time;
                 if self.gravity_time_accum >= self.gravity_delay {
                     self.gravity_time_accum = 0.0;
                     self.gravity_tick();
@@ -352,7 +352,7 @@ impl RustrisController {
     }
 
     fn get_next_rustomino(&mut self) -> Rustomino {
-        if self.rustomino_bag.len() == 0 {
+        if self.rustomino_bag.is_empty() {
             self.fill_rustomino_bag();
         }
         // unwrap is OK because we are making sure next_rustomino's is never empty
@@ -420,11 +420,10 @@ impl RustrisController {
 
     fn handle_completed_lines(&mut self) {
         let completed_lines = self.board.clear_completed_lines();
-        let num_completed_lines = completed_lines.len();
-        if num_completed_lines == 0 {
+        if completed_lines.is_empty() {
             return;
         }
-        self.completed_lines += num_completed_lines;
+        self.completed_lines += completed_lines.len();
         self.score_completed_lines(completed_lines);
     }
 
