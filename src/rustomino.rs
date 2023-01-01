@@ -393,7 +393,7 @@ impl Display for Rustomino {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, " ")?;
         write!(f, "{}", "-".repeat((self.bounding_box[0] * 2 - 1) as usize))?;
-        write!(f, " \n")?;
+        writeln!(f, " ")?;
         for line in (0..self.bounding_box[1]).rev() {
             write!(f, "|")?;
             'row: for row in 0..self.bounding_box[0] {
@@ -413,7 +413,7 @@ impl Display for Rustomino {
                     write!(f, " ")?;
                 }
             }
-            write!(f, "|\n")?;
+            writeln!(f, "|")?;
         }
         write!(f, " ")?;
         write!(f, "{}", "-".repeat((self.bounding_box[0] * 2 - 1) as usize))?;
