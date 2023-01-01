@@ -1,23 +1,168 @@
 use crate::board::{RustrisBoard, TranslationDirection};
 use crate::rustomino::*;
 use piston_window::Key;
-use rand::distributions::{Distribution, Standard};
+use rand::seq::SliceRandom;
 use rand::SeedableRng;
-use std::collections::VecDeque;
+use std::collections::HashMap;
+use std::f64::consts::E;
+use strum::{EnumIter, IntoEnumIterator};
 
-const DEBUG_RNG_SEED: u64 = 123456789; // for RNG
-const SIZE_NEXT_RUSTOMINOS: usize = 20; // How many rustomino types to generate ahead of time
 const GRAVITY_NUMERATOR: f64 = 1.0; // how
-const GRAVITY_FACTOR: f64 = 4.0; // slow or increase gravity factor
-const BLOCKS_PER_LEVEL: usize = 20; // how many blocks between levels (should this be score based?)
-const E: f64 = 2.7182818284;
-const DELAY_TO_LOCK: f64 = 0.5; // how long to wait before locking a block which cannot move down
-const MAX_DELAY_RESETS: i32 = 10; // how many times can the delay
+const GRAVITY_FACTOR: f64 = 2.0; // slow or increase gravity factor
+const LINES_PER_LEVEL: usize = 10; // how many blocks between levels (should this be score based?)
+
+// const DEBUG_RNG_SEED: u64 = 123456789; // for debugging RNG
+// const DELAY_TO_LOCK: f64 = 0.5; // how long to wait before locking a block which cannot move down
+// const MAX_DELAY_RESETS: i32 = 10; // how many times to reset the delay
 
 const SINGLE_LINE_SCORE: usize = 100;
 const DOUBLE_LINE_SCORE: usize = 300;
 const TRIPLE_LINE_SCORE: usize = 500;
 const RUSTRIS_SCORE: usize = 800;
+
+const TRANSLATE_ACTION_DELAY: f64 = 0.14;
+const TRANSLATE_ACTION_REPEAT_DELAY: f64 = 0.030;
+
+const ROTATE_ACTION_DELAY: f64 = 0.14;
+const ROTATE_ACTION_REPEAT_DELAY: f64 = 0.1;
+
+// default input settings
+const LEFT_KEYS: [Option<Key>; 2] = [Some(Key::Left), None];
+const RIGHT_KEYS: [Option<Key>; 2] = [Some(Key::Right), None];
+const ROTATE_CW_KEYS: [Option<Key>; 2] = [Some(Key::Up), Some(Key::X)];
+const ROTATE_CCW_KEYS: [Option<Key>; 2] = [Some(Key::LCtrl), Some(Key::Z)];
+const SOFT_DROP_KEYS: [Option<Key>; 2] = [Some(Key::Down), None];
+const HARD_DROP_KEYS: [Option<Key>; 2] = [Some(Key::Space), None];
+const HOLD_KEYS: [Option<Key>; 2] = [Some(Key::LShift), Some(Key::C)];
+
+pub enum GameState {
+    Menu,
+    Playing,
+    GameOver,
+}
+
+// enum PlayingState {
+//     Normal,
+//     DelayToLock { current_delay: f64, num_resets: i32 },
+// }
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum KeyState {
+    Up,
+    Down(f64),
+    Held(f64),
+}
+
+impl Default for KeyState {
+    fn default() -> Self {
+        KeyState::Up
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
+enum Inputs {
+    Left,
+    Right,
+    RotateCW,
+    RotateCCW,
+    SoftDrop,
+    HardDrop,
+    Hold,
+}
+
+impl Inputs {
+    // fn key_for_input(&self) -> [Option<Key>; 2] {
+    //     match self {
+    //         Inputs::Left => LEFT_KEYS,
+    //         Inputs::Right => RIGHT_KEYS,
+    //         Inputs::RotateCW => ROTATE_CW_KEYS,
+    //         Inputs::RotateCCW => ROTATE_CCW_KEYS,
+    //         Inputs::SoftDrop => SOFT_DROP_KEYS,
+    //         Inputs::HardDrop => HARD_DROP_KEYS,
+    //         Inputs::Hold => HOLD_KEYS,
+    //     }
+    // }
+    fn action_delay_for_input(&self) -> Option<f64> {
+        match self {
+            Inputs::Left => Some(TRANSLATE_ACTION_DELAY),
+            Inputs::Right => Some(TRANSLATE_ACTION_DELAY),
+            Inputs::SoftDrop => Some(TRANSLATE_ACTION_DELAY),
+            Inputs::RotateCW => Some(ROTATE_ACTION_DELAY),
+            Inputs::RotateCCW => Some(ROTATE_ACTION_DELAY),
+            _ => None,
+        }
+    }
+    fn action_repeat_delay_for_input(&self) -> Option<f64> {
+        match self {
+            Inputs::Left => Some(TRANSLATE_ACTION_REPEAT_DELAY),
+            Inputs::Right => Some(TRANSLATE_ACTION_REPEAT_DELAY),
+            Inputs::SoftDrop => Some(TRANSLATE_ACTION_REPEAT_DELAY),
+            Inputs::RotateCW => Some(ROTATE_ACTION_REPEAT_DELAY),
+            Inputs::RotateCCW => Some(ROTATE_ACTION_REPEAT_DELAY),
+            _ => None,
+        }
+    }
+}
+
+pub struct InputController {
+    // input_keys: HashMap<Inputs, [Option<Key>; 2]>,
+    input_key_map: HashMap<Key, Inputs>,
+    input_states: HashMap<Inputs, KeyState>,
+}
+
+impl Default for InputController {
+    fn default() -> Self {
+        Self {
+            // input_keys: HashMap::from([
+            //     (Inputs::Left, LEFT_KEYS),
+            //     (Inputs::Right, RIGHT_KEYS),
+            //     (Inputs::RotateCW, ROTATE_CW_KEYS),
+            //     (Inputs::RotateCCW, ROTATE_CCW_KEYS),
+            //     (Inputs::SoftDrop, SOFT_DROP_KEYS),
+            //     (Inputs::HardDrop, HARD_DROP_KEYS),
+            //     (Inputs::Hold, HOLD_KEYS),
+            // ]),
+            input_key_map: HashMap::from({
+                LEFT_KEYS
+                    .iter()
+                    .flatten()
+                    .map(|e| (*e, Inputs::Left))
+                    .chain(RIGHT_KEYS.iter().flatten().map(|e| (*e, Inputs::Right)))
+                    .chain(
+                        ROTATE_CW_KEYS
+                            .iter()
+                            .flatten()
+                            .map(|e| (*e, Inputs::RotateCW)),
+                    )
+                    .chain(
+                        ROTATE_CCW_KEYS
+                            .iter()
+                            .flatten()
+                            .map(|e| (*e, Inputs::RotateCCW)),
+                    )
+                    .chain(
+                        SOFT_DROP_KEYS
+                            .iter()
+                            .flatten()
+                            .map(|e| (*e, Inputs::SoftDrop)),
+                    )
+                    .chain(
+                        HARD_DROP_KEYS
+                            .iter()
+                            .flatten()
+                            .map(|e| (*e, Inputs::HardDrop)),
+                    )
+                    .chain(HOLD_KEYS.iter().flatten().map(|e| (*e, Inputs::Hold)))
+                    .collect::<HashMap<Key, Inputs>>()
+            }),
+            input_states: HashMap::from({
+                Inputs::iter()
+                    .map(|e| (e, KeyState::default()))
+                    .collect::<HashMap<Inputs, KeyState>>()
+            }),
+        }
+    }
+}
 
 // an attempt at a customizable logaritmically decreasing delay
 //                 GRAVITY_NUMERATOR
@@ -30,171 +175,75 @@ fn gravity_delay(level: usize) -> f64 {
     gravity_delay
 }
 
-pub enum GameState {
-    Menu,
-    Playing,
-    GameOver,
-}
-
-enum PlayingState {
-    Normal,
-    DelayToLock { current_delay: f64, num_resets: i32 },
-}
-
 pub struct RustrisController {
     pub board: RustrisBoard,
-    next_rustominos: VecDeque<RustominoType>,
-    next_rustomino: Option<Rustomino>,
+    pub next_rustomino: Option<Rustomino>,
+    pub hold_rustomino: Option<Rustomino>,
+    pub game_state: GameState,
+    pub score: usize,
+    pub game_level: usize,
+    input_controller: InputController,
+    rustomino_bag: Vec<RustominoType>,
     rng: rand_xoshiro::Xoshiro256PlusPlus,
-    game_level: usize,
     gravity_time_accum: f64,
     gravity_delay: f64,
-    pub game_state: GameState,
-    left_pressed: bool,
-    right_pressed: bool,
-    down_pressed: bool,
-    score: usize,
+    completed_lines: usize,
 }
 
 impl RustrisController {
     pub fn new(board: RustrisBoard) -> Self {
         RustrisController {
             board,
-            next_rustominos: VecDeque::new(),
-            rng: rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(DEBUG_RNG_SEED),
-            // rng: rand_xoshiro::Xoshiro256PlusPlus::from_entropy(), // USE THIS WHEN NOT TESTING
             next_rustomino: None,
+            hold_rustomino: None,
+            game_state: GameState::Playing, // GameState::Menu,
+            score: 0,
+            rustomino_bag: Vec::new(),
+            // rng: rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(DEBUG_RNG_SEED), // FOR DEBUGING
+            input_controller: InputController::default(),
+            // input_controller: InputController::from (),
+            rng: rand_xoshiro::Xoshiro256PlusPlus::from_entropy(),
             game_level: 1,
             gravity_time_accum: 0.0,
             gravity_delay: 0.0, // self.options.gravity_delay(game_level)
-            game_state: GameState::Playing, // GameState::Menu,
-            left_pressed: false,
-            right_pressed: false,
-            down_pressed: false,
-            score: 0,
+            completed_lines: 0,
         }
     }
 
     pub fn init(mut self) -> Self {
         log::info!("Initializing RustrisController");
-        self.fill_next_rustominos(SIZE_NEXT_RUSTOMINOS);
+        self.fill_rustomino_bag();
         self.next_rustomino = Some(self.get_next_rustomino());
         self.gravity_delay = gravity_delay(self.game_level);
         return self;
-    }
-
-    fn increase_game_level(&mut self) {
-        self.game_level += 1;
-        log::info!("increasing game level to {}", self.game_level);
-        self.gravity_delay = gravity_delay(self.game_level);
-    }
-
-    fn get_next_rustomino(&mut self) -> Rustomino {
-        if self.next_rustominos.len() == 0 {
-            self.fill_next_rustominos(SIZE_NEXT_RUSTOMINOS);
-        }
-        // unwrap is OK because we are making sure next_rustomino's is never empty
-        let next_rustomino = Rustomino::new(self.next_rustominos.pop_front().unwrap());
-        log::debug!("Next Rustomino:\n{next_rustomino}");
-        next_rustomino
-    }
-
-    fn fill_next_rustominos(&mut self, num_rustominos: usize) {
-        self.next_rustominos.append(
-            &mut Standard
-                .sample_iter(&mut self.rng)
-                .take(num_rustominos)
-                .collect(),
-        );
     }
 
     pub fn key_pressed(&mut self, key: Key) {
         // allow the user to rotate the rustomino with the left and right arrows
         // allow the user to fast drop the rustomino with the down arrow key
         log::info!("key pressed: {:?}", key);
+
         match self.game_state {
             GameState::Menu => todo!(),
             GameState::Playing => {
-                match key {
-                    Key::Left => {
-                        // pressed move left
-                        self.left_pressed = true;
-                        self.translate(TranslationDirection::Left);
+                if let Some(input) = self.input_controller.input_key_map.get(&key) {
+                    self.input_controller
+                        .input_states
+                        .entry(*input)
+                        .and_modify(|e| *e = KeyState::Down(0.0));
+                    match input {
+                        Inputs::Left => self.translate(TranslationDirection::Left),
+                        Inputs::Right => self.translate(TranslationDirection::Right),
+                        Inputs::RotateCW => self.rotate(RotationDirection::Cw),
+                        Inputs::RotateCCW => self.rotate(RotationDirection::Ccw),
+                        Inputs::SoftDrop => self.soft_drop(),
+                        Inputs::HardDrop => self.hard_drop(),
+                        Inputs::Hold => self.hold(),
                     }
-                    Key::Right => {
-                        // pressed move right
-                        self.right_pressed = true;
-                        self.translate(TranslationDirection::Right);
-                    }
-                    Key::Up | Key::X => {
-                        // pressed rotate CW
-                        self.rotate(RotationDirection::CW);
-                    }
-                    Key::LCtrl | Key::Z => {
-                        // pressed rotate CCW
-                        self.rotate(RotationDirection::CCW);
-                    }
-                    Key::Down => {
-                        // pressed soft drop
-                        self.down_pressed = true;
-                        self.soft_drop();
-                    }
-                    Key::Space => {
-                        // pressed drop hard
-                        self.hard_drop();
-                    }
-                    _ => {}
                 }
             }
             GameState::GameOver => todo!(),
         }
-    }
-
-    fn translate(&mut self, direction: TranslationDirection) {
-        self.board.translate_current(direction);
-    }
-
-    fn rotate(&mut self, direction: RotationDirection) {
-        self.board.rotate_current(direction)
-    }
-
-    fn soft_drop(&mut self) {
-        if !self.board.translate_current(TranslationDirection::Down) {
-            self.board.lock_current_rustomino();
-        }
-        self.gravity_time_accum = 0.0;
-        self.board.clear_completed_lines();
-    }
-
-    fn hard_drop(&mut self) {
-        self.board.drop();
-        self.handle_completed_lines();
-    }
-
-    fn handle_completed_lines(&mut self) {
-        let completed_lines = self.board.clear_completed_lines();
-        if completed_lines.len() == 0 {
-            return;
-        }
-        self.score_completed_lines(completed_lines);
-    }
-
-    fn score_completed_lines(&mut self, completed_lines: Vec<usize>) {
-        // Single line 100xlevel
-        // Double line 300xlevel
-        // Triple line 500xlevel
-        // Rustris (4 lines) 800xlevel
-        let score = match completed_lines.len() {
-            1 => SINGLE_LINE_SCORE,
-            2 => DOUBLE_LINE_SCORE,
-            3 => TRIPLE_LINE_SCORE,
-            4 => RUSTRIS_SCORE,
-            _ => {
-                panic!("shouldn't be able to score more than 4 lines")
-            }
-        } * self.game_level;
-        self.score += score;
-        log::info!("scored! {} total score: {}", score, self.score)
     }
 
     pub fn key_released(&mut self, key: Key) {
@@ -202,25 +251,60 @@ impl RustrisController {
         // allow the user to fast drop the rustomino with the down arrow key
         log::info!("key released: {:?}", key);
         match self.game_state {
-            GameState::Menu => todo!(),
             GameState::Playing => {
-                match key {
-                    Key::Left => {
-                        // released move left
-                        self.left_pressed = false;
-                    }
-                    Key::Right => {
-                        // released move right
-                        self.right_pressed = false;
-                    }
-                    Key::Down => {
-                        // released soft drop
-                        self.down_pressed = false;
-                    }
-                    _ => {}
+                if let Some(input) = self.input_controller.input_key_map.get(&key) {
+                    self.input_controller
+                        .input_states
+                        .entry(*input)
+                        .and_modify(|e| *e = KeyState::Up)
+                        .or_insert(KeyState::default());
                 }
             }
+            GameState::Menu => todo!(),
             GameState::GameOver => todo!(),
+        }
+    }
+
+    fn handle_inputs(&mut self, delta_time: f64) {
+        // check each input
+        for input in Inputs::iter() {
+            self.input_controller
+                .input_states
+                .entry(input)
+                .and_modify(|e| match e {
+                    KeyState::Down(down_time) => {
+                        if let Some(action_delay) = input.action_delay_for_input() {
+                            *down_time = *down_time + delta_time;
+                            if *down_time >= action_delay {
+                                *e = KeyState::Held(0.0);
+                            }
+                        }
+                    }
+                    KeyState::Held(held_time) => {
+                        *held_time = *held_time + delta_time;
+                    }
+                    _ => (),
+                });
+            if let Some(state) = self.input_controller.input_states.get_mut(&input) {
+                match state {
+                    KeyState::Held(held_time) => {
+                        if let Some(action_repeat_delay) = input.action_repeat_delay_for_input() {
+                            if *held_time >= action_repeat_delay {
+                                *state = KeyState::Held(0.0);
+                                match input {
+                                    Inputs::Left => self.translate(TranslationDirection::Left),
+                                    Inputs::Right => self.translate(TranslationDirection::Right),
+                                    Inputs::RotateCW => self.rotate(RotationDirection::Cw),
+                                    Inputs::RotateCCW => self.rotate(RotationDirection::Ccw),
+                                    Inputs::SoftDrop => self.soft_drop(),
+                                    _ => (),
+                                }
+                            }
+                        }
+                    }
+                    _ => (),
+                }
+            }
         }
     }
 
@@ -242,18 +326,18 @@ impl RustrisController {
                         self.game_over();
                     }
                 }
+                self.handle_inputs(delta_time);
                 // Apply "gravity" to move the current rustomino down the board
                 // or if it can't move lock it
                 self.gravity_time_accum = self.gravity_time_accum + delta_time;
                 if self.gravity_time_accum >= self.gravity_delay {
                     self.gravity_time_accum = 0.0;
-                    self.board.gravity_tick();
-                    log::debug!("delta_time:{}", delta_time);
+                    self.gravity_tick();
                     log::debug!("board:\n{}", self.board);
                 }
 
-                // increase the game level every BLOCKS_PER_LEVEL
-                if self.board.num_locked_rustominos() / self.game_level == BLOCKS_PER_LEVEL {
+                // increase the game level every LINES_PER_LEVEL
+                if self.completed_lines > self.game_level * LINES_PER_LEVEL {
                     self.increase_game_level();
                 }
             }
@@ -261,8 +345,122 @@ impl RustrisController {
         }
     }
 
+    fn increase_game_level(&mut self) {
+        self.game_level += 1;
+        log::info!("increasing game level to {}", self.game_level);
+        self.gravity_delay = gravity_delay(self.game_level);
+    }
+
+    fn get_next_rustomino(&mut self) -> Rustomino {
+        if self.rustomino_bag.len() == 0 {
+            self.fill_rustomino_bag();
+        }
+        // unwrap is OK because we are making sure next_rustomino's is never empty
+        let next_rustomino = Rustomino::new(self.rustomino_bag.pop().unwrap());
+        log::debug!("Next Rustomino:\n{next_rustomino}");
+        next_rustomino
+    }
+
+    // add one of each rustomino type to bag
+    // then shuffle the bag
+    fn fill_rustomino_bag(&mut self) {
+        self.rustomino_bag
+            .append(&mut RustominoType::iter().collect());
+        self.rustomino_bag.shuffle(&mut self.rng);
+    }
+
+    fn gravity_tick(&mut self) {
+        // check to see if the board's current rustomino can fall
+        let movable = self.board.can_fall();
+
+        log::debug!("gravity tick, rustomino movable: {movable}");
+
+        if movable {
+            self.board.apply_gravity();
+        } else {
+            self.board.lock_rustomino();
+        }
+
+        self.handle_completed_lines();
+    }
+
+    fn translate(&mut self, direction: TranslationDirection) {
+        self.board.translate_current(direction);
+    }
+
+    fn rotate(&mut self, direction: RotationDirection) {
+        self.board.rotate_current(direction)
+    }
+
+    fn soft_drop(&mut self) {
+        if !self.board.translate_current(TranslationDirection::Down) {
+            self.board.lock_rustomino();
+        }
+        self.gravity_time_accum = 0.0;
+    }
+
+    fn hard_drop(&mut self) {
+        self.board.hard_drop();
+    }
+
+    // if there is no current hold piece
+    // we need to hold the current piece
+    // then move the next piece onto the board
+    //
+    // if there is a held piece
+    // we need to swap the current and held piece
+    // then place the new current piece onto the board
+    // player can only do this once until the next block is locked
+    fn hold(&mut self) {}
+
     fn game_over(&mut self) {
         log::info!("Game Over!");
         self.game_state = GameState::GameOver;
+    }
+
+    fn handle_completed_lines(&mut self) {
+        let completed_lines = self.board.clear_completed_lines();
+        let num_completed_lines = completed_lines.len();
+        if num_completed_lines == 0 {
+            return;
+        }
+        self.completed_lines += num_completed_lines;
+        self.score_completed_lines(completed_lines);
+    }
+
+    fn score_completed_lines(&mut self, completed_lines: Vec<usize>) {
+        // Single line 100xlevel
+        // Double line 300xlevel
+        // Triple line 500xlevel
+        // Rustris (4 lines) 800xlevel
+        let score = match completed_lines.len() {
+            1 => {
+                log::info!("scored! single line");
+                SINGLE_LINE_SCORE
+            }
+            2 => {
+                log::info!("scored! double line");
+                DOUBLE_LINE_SCORE
+            }
+            3 => {
+                log::info!("scored! triple line");
+                TRIPLE_LINE_SCORE
+            }
+            4 => {
+                log::info!("scored! rustris");
+                RUSTRIS_SCORE
+            }
+            _ => {
+                panic!("shouldn't be able to score more than 4 l ines")
+            }
+        };
+        let score = score * self.game_level;
+        self.score += score;
+        log::info!(
+            "scored! game_level: {} score: {} total score: {}",
+            self.game_level,
+            score,
+            self.score
+        )
     }
 }
