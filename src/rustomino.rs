@@ -1,4 +1,4 @@
-use piston_window::{types::Color, types::Vec2d, Context, G2d};
+use piston_window::types::Vec2d;
 use rand::distributions::{Distribution, Standard};
 use std::fmt::Display;
 use strum::EnumIter;
@@ -7,8 +7,8 @@ const I_BOUNDING_BOX: Vec2d<i32> = [4, 4];
 const O_BOUNDING_BOX: Vec2d<i32> = [4, 3];
 const T_L_J_S_Z_BOUNDING_BOX: Vec2d<i32> = [3, 3];
 
-const I_TRANSLATION: Vec2d<i32> = [3, 18];
-const O_T_L_J_S_Z_TRANSLATION: Vec2d<i32> = [3, 19];
+const I_START_TRANSLATION: Vec2d<i32> = [3, 18];
+const O_T_L_J_S_Z_START_TRANSLATION: Vec2d<i32> = [3, 19];
 
 const I_BLOCKS: [Vec2d<i32>; 4] = [[0, 2], [1, 2], [2, 2], [3, 2]];
 const O_BLOCKS: [Vec2d<i32>; 4] = [[1, 2], [2, 2], [2, 1], [1, 1]];
@@ -235,7 +235,7 @@ const Z_ROTATIONS: [[Vec2d<i32>; 4]; 4] = [
     ],
 ];
 
-#[derive(Debug, Clone, EnumIter)]
+#[derive(Debug, Clone, Copy, EnumIter, PartialEq, Eq)]
 pub enum RustominoType {
     I,
     O,
@@ -273,10 +273,9 @@ impl Distribution<RustominoType> for Standard {
 pub struct Rustomino {
     pub rustomino_type: RustominoType,
     pub rotation: RustominoRotation,
-    pub state: RustominoState,
-    blocks: [Vec2d<i32>; 4],
+    pub blocks: [Vec2d<i32>; 4],
+    pub translation: Vec2d<i32>,
     bounding_box: Vec2d<i32>,
-    translation: Vec2d<i32>,
 }
 
 impl Rustomino {
@@ -286,83 +285,69 @@ impl Rustomino {
                 rustomino_type: block_type,
                 rotation: RustominoRotation::new(I_ROTATIONS),
                 blocks: I_BLOCKS,
+                translation: I_START_TRANSLATION,
                 bounding_box: I_BOUNDING_BOX,
-                translation: I_TRANSLATION,
-                state: RustominoState::Unlocked,
             },
             RustominoType::O => Rustomino {
                 rustomino_type: block_type,
                 rotation: RustominoRotation::new(O_ROTATIONS),
                 blocks: O_BLOCKS,
                 bounding_box: O_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_TRANSLATION,
-                state: RustominoState::Unlocked,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
             },
             RustominoType::T => Rustomino {
                 rustomino_type: block_type,
                 rotation: RustominoRotation::new(T_ROTATIONS),
                 blocks: T_BLOCKS,
                 bounding_box: T_L_J_S_Z_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_TRANSLATION,
-                state: RustominoState::Unlocked,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
             },
             RustominoType::L => Rustomino {
                 rustomino_type: block_type,
                 rotation: RustominoRotation::new(L_ROTATIONS),
                 blocks: L_BLOCKS,
                 bounding_box: T_L_J_S_Z_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_TRANSLATION,
-                state: RustominoState::Unlocked,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
             },
             RustominoType::J => Rustomino {
                 rustomino_type: block_type,
                 rotation: RustominoRotation::new(J_ROTATIONS),
                 blocks: J_BLOCKS,
                 bounding_box: T_L_J_S_Z_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_TRANSLATION,
-                state: RustominoState::Unlocked,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
             },
             RustominoType::S => Rustomino {
                 rustomino_type: block_type,
                 rotation: RustominoRotation::new(S_ROTATIONS),
                 blocks: S_BLOCKS,
                 bounding_box: T_L_J_S_Z_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_TRANSLATION,
-                state: RustominoState::Unlocked,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
             },
             RustominoType::Z => Rustomino {
                 rustomino_type: block_type,
                 rotation: RustominoRotation::new(Z_ROTATIONS),
                 blocks: Z_BLOCKS,
                 bounding_box: T_L_J_S_Z_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_TRANSLATION,
-                state: RustominoState::Unlocked,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
             },
         }
     }
 
-    /// .
     pub fn translate(&mut self, delta: Vec2d<i32>) {
         log::debug!("translate called: delta {:?}", delta);
         self.translation = vecmath::vec2_add(self.translation, delta);
     }
 
     pub fn translated(&self, delta: Vec2d<i32>) -> [Vec2d<i32>; 4] {
-        let translated = [
+        [
             vecmath::vec2_add(vecmath::vec2_add(self.blocks[0], self.translation), delta),
             vecmath::vec2_add(vecmath::vec2_add(self.blocks[1], self.translation), delta),
             vecmath::vec2_add(vecmath::vec2_add(self.blocks[2], self.translation), delta),
             vecmath::vec2_add(vecmath::vec2_add(self.blocks[3], self.translation), delta),
-        ];
-        log::debug!(
-            "translated called: delta {:?} translated: {:?}",
-            delta,
-            translated
-        );
-        translated
+        ]
     }
 
-    pub fn block_slots(&self) -> [Vec2d<i32>; 4] {
+    pub fn board_slots(&self) -> [Vec2d<i32>; 4] {
         self.translated([0, 0])
     }
 
@@ -380,12 +365,27 @@ impl Rustomino {
         self.rotation.rotate(direction);
     }
 
-    pub fn draw(&self, color: Color, con: &Context, g: &mut G2d) {
-        use piston_window::Rectangle;
-    }
+    pub fn rotated(&self, direction: &RotationDirection) -> [Vec2d<i32>; 4] {
+        let rotation = self.rotation.get_translation(direction);
 
-    pub fn lock(&mut self) {
-        self.state = RustominoState::Locked;
+        [
+            vecmath::vec2_add(
+                vecmath::vec2_add(self.blocks[0], self.translation),
+                rotation.0[0],
+            ),
+            vecmath::vec2_add(
+                vecmath::vec2_add(self.blocks[1], self.translation),
+                rotation.0[1],
+            ),
+            vecmath::vec2_add(
+                vecmath::vec2_add(self.blocks[2], self.translation),
+                rotation.0[2],
+            ),
+            vecmath::vec2_add(
+                vecmath::vec2_add(self.blocks[3], self.translation),
+                rotation.0[3],
+            ),
+        ]
     }
 }
 
@@ -393,7 +393,7 @@ impl Display for Rustomino {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, " ")?;
         write!(f, "{}", "-".repeat((self.bounding_box[0] * 2 - 1) as usize))?;
-        write!(f, " \n")?;
+        writeln!(f, " ")?;
         for line in (0..self.bounding_box[1]).rev() {
             write!(f, "|")?;
             'row: for row in 0..self.bounding_box[0] {
@@ -413,7 +413,7 @@ impl Display for Rustomino {
                     write!(f, " ")?;
                 }
             }
-            write!(f, "|\n")?;
+            writeln!(f, "|")?;
         }
         write!(f, " ")?;
         write!(f, "{}", "-".repeat((self.bounding_box[0] * 2 - 1) as usize))?;
@@ -422,13 +422,7 @@ impl Display for Rustomino {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum RustominoState {
-    Unlocked,
-    Locked,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum RustominoDirection {
     N,
     E,
@@ -439,21 +433,21 @@ pub enum RustominoDirection {
 impl RustominoDirection {
     fn rotate(&self, direction: &RotationDirection) -> RustominoDirection {
         match self {
-            RustominoDirection::N => match *direction {
-                RotationDirection::CW => RustominoDirection::E,
-                RotationDirection::CCW => RustominoDirection::W,
+            RustominoDirection::N => match direction {
+                RotationDirection::Cw => RustominoDirection::E,
+                RotationDirection::Ccw => RustominoDirection::W,
             },
-            RustominoDirection::E => match *direction {
-                RotationDirection::CW => RustominoDirection::S,
-                RotationDirection::CCW => RustominoDirection::N,
+            RustominoDirection::E => match direction {
+                RotationDirection::Cw => RustominoDirection::S,
+                RotationDirection::Ccw => RustominoDirection::N,
             },
-            RustominoDirection::S => match *direction {
-                RotationDirection::CW => RustominoDirection::W,
-                RotationDirection::CCW => RustominoDirection::E,
+            RustominoDirection::S => match direction {
+                RotationDirection::Cw => RustominoDirection::W,
+                RotationDirection::Ccw => RustominoDirection::E,
             },
-            RustominoDirection::W => match *direction {
-                RotationDirection::CW => RustominoDirection::N,
-                RotationDirection::CCW => RustominoDirection::S,
+            RustominoDirection::W => match direction {
+                RotationDirection::Cw => RustominoDirection::N,
+                RotationDirection::Ccw => RustominoDirection::S,
             },
         }
     }
@@ -461,11 +455,11 @@ impl RustominoDirection {
 
 #[derive(Debug, Clone)]
 pub enum RotationDirection {
-    CW,
-    CCW,
+    Cw,
+    Ccw,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct RustominoRotation {
     direction: RustominoDirection,
     n2e: RotationTranslation,
@@ -485,29 +479,27 @@ impl RustominoRotation {
         }
     }
 
-    /// .
     fn get_translation(&self, direction: &RotationDirection) -> RotationTranslation {
         match self.direction {
-            RustominoDirection::N => match *direction {
-                RotationDirection::CW => self.n2e,
-                RotationDirection::CCW => -self.w2n,
+            RustominoDirection::N => match direction {
+                RotationDirection::Cw => self.n2e,
+                RotationDirection::Ccw => -self.w2n,
             },
-            RustominoDirection::E => match *direction {
-                RotationDirection::CW => self.e2s,
-                RotationDirection::CCW => -self.n2e,
+            RustominoDirection::E => match direction {
+                RotationDirection::Cw => self.e2s,
+                RotationDirection::Ccw => -self.n2e,
             },
-            RustominoDirection::S => match *direction {
-                RotationDirection::CW => self.s2w,
-                RotationDirection::CCW => -self.e2s,
+            RustominoDirection::S => match direction {
+                RotationDirection::Cw => self.s2w,
+                RotationDirection::Ccw => -self.e2s,
             },
-            RustominoDirection::W => match *direction {
-                RotationDirection::CW => self.w2n,
-                RotationDirection::CCW => -self.s2w,
+            RustominoDirection::W => match direction {
+                RotationDirection::Cw => self.w2n,
+                RotationDirection::Ccw => -self.s2w,
             },
         }
     }
 
-    /// .
     fn rotate(&mut self, direction: &RotationDirection) {
         self.direction = self.direction.rotate(direction)
     }
