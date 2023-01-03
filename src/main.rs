@@ -6,7 +6,6 @@ mod controller;
 mod rustomino;
 mod view;
 
-const BACKGROUND_COLOR: Color = [0.0, 0.29, 0.38, 1.0];
 const WINDOW_DIMENSIONS: [u32; 2] = [1024, 768];
 
 fn main() {
@@ -34,7 +33,6 @@ fn main() {
             rustris_view.resize(args);
         }
         window.draw_2d(&event, |c, g, _| {
-            clear(BACKGROUND_COLOR, g);
             rustris_view.draw(&rustris_controller, &c, g)
         });
         event.update(|arg| {

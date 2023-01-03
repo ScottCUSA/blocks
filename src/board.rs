@@ -312,15 +312,15 @@ impl RustrisBoard {
     }
 
     pub fn soft_drop(&mut self) {
-        if let Some(current_rustomino) = &self.current_rustomino {
-            log::info!(
-                "locking rustomnio for soft drop; type: {:?} blocks: {:?}",
-                current_rustomino.rustomino_type,
-                current_rustomino.board_slots()
-            );
-            if !self.translate_current(TranslationDirection::Down) {
-                self.lock_rustomino();
+        if !self.translate_current(TranslationDirection::Down) {
+            if let Some(current_rustomino) = &self.current_rustomino {
+                log::info!(
+                    "locking rustomnio for soft drop; type: {:?} blocks: {:?}",
+                    current_rustomino.rustomino_type,
+                    current_rustomino.board_slots()
+                );
             }
+            self.lock_rustomino();
         }
     }
 
