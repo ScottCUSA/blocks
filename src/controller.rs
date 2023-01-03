@@ -182,6 +182,7 @@ pub struct RustrisController {
     pub game_state: GameState,
     pub score: usize,
     pub game_level: usize,
+    hold_set: bool,
     input_controller: InputController,
     rustomino_bag: Vec<RustominoType>,
     rng: rand_xoshiro::Xoshiro256PlusPlus,
@@ -198,12 +199,13 @@ impl RustrisController {
             hold_rustomino: None,
             game_state: GameState::Playing, // GameState::Menu,
             score: 0,
-            rustomino_bag: Vec::new(),
+            game_level: 1,
+            hold_set: false,
             // rng: rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(DEBUG_RNG_SEED), // FOR DEBUGING
             input_controller: InputController::default(),
             // input_controller: InputController::from (),
+            rustomino_bag: Vec::new(),
             rng: rand_xoshiro::Xoshiro256PlusPlus::from_entropy(),
-            game_level: 1,
             gravity_time_accum: 0.0,
             gravity_delay: 0.0, // self.options.gravity_delay(game_level)
             completed_lines: 0,
@@ -213,7 +215,7 @@ impl RustrisController {
     pub fn init(mut self) -> Self {
         log::info!("Initializing RustrisController");
         self.fill_rustomino_bag();
-        self.next_rustomino = Some(self.get_next_rustomino());
+        self.set_next_rustomino();
         self.gravity_delay = gravity_delay(self.game_level);
         self
     }
@@ -319,7 +321,7 @@ impl RustrisController {
                     // unwrap should be safe here
                     let current_rustomino = self.next_rustomino.take().unwrap();
                     // we used next_rustomino so we need to replace it
-                    self.next_rustomino = Some(self.get_next_rustomino());
+                    self.set_next_rustomino();
                     // add the next rustomino to the board
                     // game over if it can't be placed without a collision
                     if !self.board.add_new_rustomino(current_rustomino) {
@@ -350,14 +352,19 @@ impl RustrisController {
         self.gravity_delay = gravity_delay(self.game_level);
     }
 
-    fn get_next_rustomino(&mut self) -> Rustomino {
+    fn set_next_rustomino(&mut self) {
+        // we don't need to set the next rustomino
+        if self.next_rustomino.is_some() {
+            return;
+        }
         if self.rustomino_bag.is_empty() {
             self.fill_rustomino_bag();
         }
         // unwrap is OK because we are making sure next_rustomino's is never empty
         let next_rustomino = Rustomino::new(self.rustomino_bag.pop().unwrap());
         log::debug!("Next Rustomino:\n{next_rustomino}");
-        next_rustomino
+
+        self.next_rustomino = Some(next_rustomino);
     }
 
     // add one of each rustomino type to bag
@@ -378,11 +385,22 @@ impl RustrisController {
         if movable {
             self.board.apply_gravity();
         } else {
-            log::info!("locking rustomnio for gravity");
-            self.board.lock_rustomino();
+            self.lock("gravity tick");
         }
 
         self.handle_completed_lines();
+    }
+
+    fn lock(&mut self, reason: &str) {
+        if let Some(rustomino) = &self.board.current_rustomino {
+            log::info!(
+                "locking rustomnio for {reason}; type: {:?} blocks: {:?}",
+                rustomino.rustomino_type,
+                rustomino.board_slots()
+            );
+        }
+        self.hold_set = false;
+        self.board.lock_rustomino();
     }
 
     fn translate(&mut self, direction: TranslationDirection) {
@@ -390,16 +408,20 @@ impl RustrisController {
     }
 
     fn rotate(&mut self, direction: RotationDirection) {
-        self.board.rotate_current(direction)
+        self.board.rotate_current(direction);
     }
 
     fn soft_drop(&mut self) {
-        self.board.soft_drop();
+        if !self.board.translate_current(TranslationDirection::Down) {
+            self.lock("soft drop");
+        }
         self.gravity_time_accum = 0.0;
     }
 
     fn hard_drop(&mut self) {
         self.board.hard_drop();
+        self.lock("hard drop");
+        self.gravity_time_accum = 0.0;
     }
 
     // if there is no current hold piece
@@ -410,7 +432,27 @@ impl RustrisController {
     // we need to swap the current and held piece
     // then place the new current piece onto the board
     // player can only do this once until the next block is locked
-    fn hold(&mut self) {}
+    fn hold(&mut self) {
+        // can only hold once
+        if self.hold_set || self.board.current_rustomino.is_none() {
+            return;
+        }
+        let temp_rustomino = if self.hold_rustomino.is_some() {
+            // take the hold_rustomino
+            self.hold_rustomino.take().unwrap()
+        } else {
+            // take the hold_rustomino
+            self.next_rustomino.take().unwrap()
+        };
+
+        // if we used next_rustomino so we need to replace it
+        self.set_next_rustomino();
+        // reset current_rustomino and make it the hold_rustomino
+        self.hold_rustomino = Some(self.board.current_rustomino.take().unwrap().reset());
+        self.board.add_new_rustomino(temp_rustomino);
+
+        self.hold_set = true;
+    }
 
     fn game_over(&mut self) {
         log::info!("Game Over!");

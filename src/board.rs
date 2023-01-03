@@ -241,31 +241,23 @@ impl RustrisBoard {
         let delta = self.drop_translation();
         self.set_current_rustomino_slot_state(SlotState::Empty);
         if let Some(current_rustomino) = self.current_rustomino.as_mut() {
-            log::info!(
-                "locking rustomnio for hard drop; type: {:?} blocks: {:?}",
-                current_rustomino.rustomino_type,
-                current_rustomino.board_slots()
-            );
             current_rustomino.translate(delta);
         }
-        self.lock_rustomino();
     }
 
-    /// Attempt to rotate the current rustomino.
-    /// Returns the rustomino rotated if it's possible
-    /// Returns the unmodified rustomino if not
-    pub fn rotate_current(&mut self, direction: RotationDirection) {
-        // see if we can get a reference to the current rustomino
+    /// Attempt to rotate the current rustomino
+    pub fn rotate_current(&mut self, direction: RotationDirection) -> bool {
         if let Some(current_rustomino) = &self.current_rustomino {
+            // get the rustomino blocks if they were rotated
             let rotated_blocks = current_rustomino.rotated(&direction);
 
             // check to see if the translation would cause a collision with a locked block
             if self.check_collision(rotated_blocks) {
                 log::debug!("rotation collision detected: {:?}", rotated_blocks);
-                return;
+                return false;
             }
         } else {
-            return; // return if we can't
+            return false;
         }
 
         self.set_current_rustomino_slot_state(SlotState::Empty);
@@ -279,6 +271,8 @@ impl RustrisBoard {
         self.set_current_rustomino_slot_state(SlotState::Occupied);
 
         self.update_ghost_rustomino();
+
+        true
     }
 
     /// Attempt to translate the current rustomino.
@@ -309,19 +303,6 @@ impl RustrisBoard {
 
         self.update_ghost_rustomino();
         true
-    }
-
-    pub fn soft_drop(&mut self) {
-        if !self.translate_current(TranslationDirection::Down) {
-            if let Some(current_rustomino) = &self.current_rustomino {
-                log::info!(
-                    "locking rustomnio for soft drop; type: {:?} blocks: {:?}",
-                    current_rustomino.rustomino_type,
-                    current_rustomino.board_slots()
-                );
-            }
-            self.lock_rustomino();
-        }
     }
 
     fn update_ghost_rustomino(&mut self) {
