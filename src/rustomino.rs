@@ -333,6 +333,10 @@ impl Rustomino {
         }
     }
 
+    pub fn reset(self) -> Rustomino {
+        Rustomino::new(self.rustomino_type)
+    }
+
     pub fn translate(&mut self, delta: Vec2d<i32>) {
         log::debug!("translate called: delta {:?}", delta);
         self.translation = vecmath::vec2_add(self.translation, delta);
