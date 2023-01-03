@@ -24,7 +24,7 @@ const TRANSLATE_ACTION_DELAY: f64 = 0.14;
 const TRANSLATE_ACTION_REPEAT_DELAY: f64 = 0.030;
 
 const ROTATE_ACTION_DELAY: f64 = 0.14;
-const ROTATE_ACTION_REPEAT_DELAY: f64 = 0.1;
+const ROTATE_ACTION_REPEAT_DELAY: f64 = 0.2;
 
 // default input settings
 const LEFT_KEYS: [Option<Key>; 2] = [Some(Key::Left), None];
@@ -221,7 +221,7 @@ impl RustrisController {
     pub fn key_pressed(&mut self, key: Key) {
         // allow the user to rotate the rustomino with the left and right arrows
         // allow the user to fast drop the rustomino with the down arrow key
-        log::info!("key pressed: {:?}", key);
+        log::debug!("key pressed: {:?}", key);
 
         match self.game_state {
             GameState::Menu => todo!(),
@@ -249,7 +249,7 @@ impl RustrisController {
     pub fn key_released(&mut self, key: Key) {
         // allow the user to rotate the rustomino with the left and right arrows
         // allow the user to fast drop the rustomino with the down arrow key
-        log::info!("key released: {:?}", key);
+        log::debug!("key released: {:?}", key);
         match self.game_state {
             GameState::Playing => {
                 if let Some(input) = self.input_controller.input_key_map.get(&key) {
@@ -333,7 +333,6 @@ impl RustrisController {
                 if self.gravity_time_accum >= self.gravity_delay {
                     self.gravity_time_accum = 0.0;
                     self.gravity_tick();
-                    log::debug!("board:\n{}", self.board);
                 }
 
                 // increase the game level every LINES_PER_LEVEL
@@ -373,11 +372,13 @@ impl RustrisController {
         // check to see if the board's current rustomino can fall
         let movable = self.board.can_fall();
 
+        log::debug!("board:\n{}", self.board);
         log::debug!("gravity tick, rustomino movable: {movable}");
 
         if movable {
             self.board.apply_gravity();
         } else {
+            log::info!("locking rustomnio for gravity");
             self.board.lock_rustomino();
         }
 
@@ -393,9 +394,7 @@ impl RustrisController {
     }
 
     fn soft_drop(&mut self) {
-        if !self.board.translate_current(TranslationDirection::Down) {
-            self.board.lock_rustomino();
-        }
+        self.board.soft_drop();
         self.gravity_time_accum = 0.0;
     }
 

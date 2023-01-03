@@ -177,6 +177,8 @@ impl RustrisBoard {
             return completed_lines;
         }
 
+        log::info!("clearing completed lines: {:?}", completed_lines);
+
         // iterate through the slots
         // set slots in the completed lines to empty
         let first_clear_line = completed_lines[0];
@@ -238,7 +240,14 @@ impl RustrisBoard {
     pub fn hard_drop(&mut self) {
         let delta = self.drop_translation();
         self.set_current_rustomino_slot_state(SlotState::Empty);
-        self.current_rustomino.as_mut().unwrap().translate(delta);
+        if let Some(current_rustomino) = self.current_rustomino.as_mut() {
+            log::info!(
+                "locking rustomnio for hard drop; type: {:?} blocks: {:?}",
+                current_rustomino.rustomino_type,
+                current_rustomino.board_slots()
+            );
+            current_rustomino.translate(delta);
+        }
         self.lock_rustomino();
     }
 
@@ -300,6 +309,19 @@ impl RustrisBoard {
 
         self.update_ghost_rustomino();
         true
+    }
+
+    pub fn soft_drop(&mut self) {
+        if let Some(current_rustomino) = &self.current_rustomino {
+            log::info!(
+                "locking rustomnio for soft drop; type: {:?} blocks: {:?}",
+                current_rustomino.rustomino_type,
+                current_rustomino.board_slots()
+            );
+            if !self.translate_current(TranslationDirection::Down) {
+                self.lock_rustomino();
+            }
+        }
     }
 
     fn update_ghost_rustomino(&mut self) {
