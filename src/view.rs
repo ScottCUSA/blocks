@@ -9,6 +9,7 @@ use crate::controller::RustrisController;
 const BLOCK_SIZE: i32 = 30;
 const BLOCK_PADDING: i32 = 1;
 const STAGING_PADDING: i32 = 2;
+const BACKGROUND_COLOR: Color = [0.0, 0.29, 0.38, 1.0];
 const STAGING_BACKGROUND_COLOR: Color = [0.0, 0.0, 0.0, 0.5];
 const BOARD_BACKGROUND_COLOR: Color = [0.0, 0.0, 0.0, 0.5];
 const PREVIEW_BACKGROUND_COLOR: Color = [0.0, 0.0, 0.0, 0.5];
@@ -117,6 +118,9 @@ impl RustrisView {
         self.settings = ViewSettings::new(args.draw_size);
     }
     pub fn draw(&self, controller: &RustrisController, ctx: &Context, g: &mut G2d) {
+        use piston_window::clear;
+        clear(BACKGROUND_COLOR, g);
+
         match controller.game_state {
             crate::controller::GameState::Menu => {}
             crate::controller::GameState::Playing => {
