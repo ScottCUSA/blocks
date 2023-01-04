@@ -1,6 +1,10 @@
 use crate::board::{RustrisBoard, TranslationDirection};
 use crate::rustomino::*;
-use piston_window::Key;
+use crate::view::RustrisView;
+use opengl_graphics::GlGraphics;
+use piston_window::{
+    Button, Key, PistonWindow, PressEvent, ReleaseEvent, RenderEvent, ResizeEvent, UpdateEvent,
+};
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use std::collections::HashMap;
@@ -220,6 +224,31 @@ impl RustrisController {
         self
     }
 
+    pub fn run(
+        &mut self,
+        window: &mut PistonWindow,
+        opengl: &mut GlGraphics,
+        view: &mut RustrisView,
+    ) {
+        while let Some(event) = window.next() {
+            if let Some(Button::Keyboard(key)) = event.press_args() {
+                self.key_pressed(key);
+            }
+            if let Some(Button::Keyboard(key)) = event.release_args() {
+                self.key_released(key);
+            }
+            if let Some(args) = event.resize_args() {
+                view.resize(args);
+            }
+            if let Some(args) = event.render_args() {
+                opengl.draw(args.viewport(), |c, g| view.draw(self, &c, g));
+            }
+            event.update(|arg| {
+                self.update(arg.dt);
+            });
+        }
+    }
+
     pub fn key_pressed(&mut self, key: Key) {
         // allow the user to rotate the rustomino with the left and right arrows
         // allow the user to fast drop the rustomino with the down arrow key
@@ -387,8 +416,6 @@ impl RustrisController {
         } else {
             self.lock("gravity tick");
         }
-
-        self.handle_completed_lines();
     }
 
     fn lock(&mut self, reason: &str) {
@@ -401,6 +428,8 @@ impl RustrisController {
         }
         self.hold_set = false;
         self.board.lock_rustomino();
+
+        self.handle_completed_lines();
     }
 
     fn translate(&mut self, direction: TranslationDirection) {

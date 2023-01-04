@@ -1,12 +1,17 @@
+// #![windows_subsystem = "windows"]
 use crate::{board::RustrisBoard, controller::RustrisController, view::RustrisView};
-use piston_window::{types::Color, *};
+use opengl_graphics::{GlGraphics, OpenGL};
+use piston_window::Size;
 
 mod board;
 mod controller;
 mod rustomino;
 mod view;
 
-const WINDOW_DIMENSIONS: [u32; 2] = [1024, 768];
+const WINDOW_DIMENSIONS: Size = Size {
+    width: 1024.0,
+    height: 768.0,
+};
 
 fn main() {
     env_logger::init_from_env("RUSTRIS_LOG_LEVEL");
@@ -18,25 +23,16 @@ fn main() {
             .build()
             .expect("fatal error, could not create window");
 
-    let rustris_board = RustrisBoard::new();
-    let mut rustris_controller = RustrisController::new(rustris_board).init();
-    let mut rustris_view = RustrisView::new(WINDOW_DIMENSIONS);
+    let opengl = OpenGL::V4_5;
+    let mut gl = GlGraphics::new(opengl);
 
-    while let Some(event) = window.next() {
-        if let Some(Button::Keyboard(key)) = event.press_args() {
-            rustris_controller.key_pressed(key);
-        }
-        if let Some(Button::Keyboard(key)) = event.release_args() {
-            rustris_controller.key_released(key);
-        }
-        if let Some(args) = event.resize_args() {
-            rustris_view.resize(args);
-        }
-        window.draw_2d(&event, |c, g, _| {
-            rustris_view.draw(&rustris_controller, &c, g)
-        });
-        event.update(|arg| {
-            rustris_controller.update(arg.dt);
-        });
-    }
+    let assets_path = find_folder::Search::ParentsThenKids(2, 2)
+        .for_folder("assets")
+        .expect("unable to open assets path");
+
+    let rustris_board = RustrisBoard::new();
+    let mut rustris_view = RustrisView::new(WINDOW_DIMENSIONS, &assets_path);
+    let mut rustris_controller = RustrisController::new(rustris_board).init();
+
+    rustris_controller.run(&mut window, &mut gl, &mut rustris_view);
 }
