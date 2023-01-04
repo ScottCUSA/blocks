@@ -64,28 +64,23 @@ pub struct ViewSettings {
 
 impl ViewSettings {
     fn new(view_size: Size) -> Self {
-        let board_w: f64 = (SLOTS_AREA[0] as f64 * (BLOCK_SIZE as f64 + BLOCK_PADDING as f64))
-            + BLOCK_PADDING as f64;
-        let board_h: f64 = ((SLOTS_AREA[1] as f64 - 2.0)
-            * (BLOCK_SIZE as f64 + BLOCK_PADDING as f64))
-            + BLOCK_PADDING as f64;
-        let staging_w: f64 = board_w;
-        let staging_h: f64 =
-            (2.0 * (BLOCK_SIZE as f64 + BLOCK_PADDING as f64)) + BLOCK_PADDING as f64;
-        let preview_w: f64 =
-            (4.0 * (BLOCK_SIZE as f64 + BLOCK_PADDING as f64)) + BLOCK_PADDING as f64;
-        let preview_h: f64 = staging_h;
-        let hold_w: f64 = preview_w;
-        let hold_h: f64 = staging_h;
+        let board_w = (SLOTS_AREA[0] as f64 * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
+        let board_h = ((SLOTS_AREA[1] as f64 - 2.0) * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
+        let staging_w = board_w;
+        let staging_h = (2.0 * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
+        let preview_w = (4.0 * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
+        let preview_h = staging_h;
+        let hold_w = preview_w;
+        let hold_h = staging_h;
 
-        let board_x: f64 = view_size.width / 2.0 - board_w / 2.0;
-        let board_y: f64 = view_size.height / 2.0 - board_h / 2.0 + staging_h / 2.0 + 1.0;
-        let staging_x: f64 = board_x;
-        let staging_y: f64 = board_y - staging_h - STAGING_PADDING as f64;
-        let preview_x: f64 = board_x + board_w + 10.0;
-        let preview_y: f64 = board_y;
-        let hold_x: f64 = board_x - preview_w - 10.0;
-        let hold_y: f64 = board_y;
+        let board_x = view_size.width / 2.0 - board_w / 2.0;
+        let board_y = view_size.height / 2.0 - board_h / 2.0 + staging_h / 2.0 + 1.0;
+        let staging_x = board_x;
+        let staging_y = board_y - staging_h - STAGING_PADDING;
+        let preview_x = board_x + board_w + 10.0;
+        let preview_y = board_y;
+        let hold_x = board_x - preview_w - 10.0;
+        let hold_y = board_y;
 
         Self {
             board_rect: [board_x, board_y, board_w, board_h].into(),
@@ -347,7 +342,7 @@ fn rustomino_color(rtype: RustominoType) -> Color {
 
 fn next_block_rect(block: [i32; 2], settings: &ViewSettings) -> Rect<f64> {
     // block[x,y] absolute units
-    let x = settings.preview_rect.x + (block[0] as f64 * (BLOCK_SIZE + BLOCK_PADDING)) as f64 + 1.0;
+    let x = settings.preview_rect.x + (block[0] as f64 * (BLOCK_SIZE + BLOCK_PADDING)) + 1.0;
     // get bottom left of board_rect
     let y = settings.preview_rect.y + settings.preview_rect.h
         - (block[1] as f64 * (BLOCK_SIZE + BLOCK_PADDING));
@@ -357,23 +352,23 @@ fn next_block_rect(block: [i32; 2], settings: &ViewSettings) -> Rect<f64> {
 
 fn hold_block_rect(block: [i32; 2], settings: &ViewSettings) -> Rect<f64> {
     // block[x,y] absolute units
-    let x = settings.hold_rect.x + (block[0] as f64 * (BLOCK_SIZE + BLOCK_PADDING)) as f64 + 1.0;
+    let x = settings.hold_rect.x + (block[0] as f64 * (BLOCK_SIZE + BLOCK_PADDING)) + 1.0;
     // get bottom left of board_rect
     let y = settings.hold_rect.y + settings.hold_rect.h
         - (block[1] as f64 * (BLOCK_SIZE + BLOCK_PADDING));
 
-    [x, y, BLOCK_SIZE as f64, BLOCK_SIZE as f64].into()
+    [x, y, BLOCK_SIZE, BLOCK_SIZE].into()
 }
 
 fn board_block_rect(block: [i32; 2], settings: &ViewSettings) -> Rect<f64> {
     // block[x,y] absolute units
-    let x = settings.staging_rect.x + (block[0] as f64 * (BLOCK_SIZE + BLOCK_PADDING)) as f64 + 1.0;
+    let x = settings.staging_rect.x + (block[0] as f64 * (BLOCK_SIZE + BLOCK_PADDING)) + 1.0;
     // get bottom left of board_rect
     let y = settings.board_rect.y + settings.board_rect.h
         - ((block[1] + 1) as f64 * (BLOCK_SIZE + BLOCK_PADDING))
         - 1.0;
 
-    [x, y, BLOCK_SIZE as f64, BLOCK_SIZE as f64].into()
+    [x, y, BLOCK_SIZE, BLOCK_SIZE].into()
 }
 
 impl Draw for Rustomino {

@@ -230,7 +230,7 @@ impl RustrisController {
         opengl: &mut GlGraphics,
         view: &mut RustrisView,
     ) {
-        while let Some(event) = window.next() {
+        for event in window.by_ref() {
             if let Some(Button::Keyboard(key)) = event.press_args() {
                 self.key_pressed(key);
             }
