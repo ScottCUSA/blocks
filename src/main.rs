@@ -14,6 +14,8 @@ const WINDOW_DIMENSIONS: Size = Size {
 };
 
 fn main() {
+    #[cfg(target_os = "linux")]
+    std::env::set_var("WINIT_X11_SCALE_FACTOR", "1");
     env_logger::init_from_env("RUSTRIS_LOG_LEVEL");
     log::info!("Startup: Initializing Piston Window");
     let mut window: piston_window::PistonWindow =
