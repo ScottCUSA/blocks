@@ -1,14 +1,18 @@
+use std::path::PathBuf;
+
+use crate::controller::RustrisController;
 use crate::{
     board::{RustrisBoard, SLOTS_AREA},
     rustomino::{Rustomino, RustominoType},
 };
-use piston_window::{types::Color, Context, G2d, ResizeArgs};
+use opengl_graphics::{GlGraphics, GlyphCache};
+use piston_window::types::Vec2d;
+use piston_window::{clear, text, types::Color, Context, ResizeArgs, TextureSettings};
+use piston_window::{Size, Transformed};
 
-use crate::controller::RustrisController;
-
-const BLOCK_SIZE: i32 = 30;
-const BLOCK_PADDING: i32 = 1;
-const STAGING_PADDING: i32 = 2;
+const BLOCK_SIZE: f64 = 30.0;
+const BLOCK_PADDING: f64 = 1.0;
+const STAGING_PADDING: f64 = 2.0;
 const BACKGROUND_COLOR: Color = [0.0, 0.29, 0.38, 1.0];
 const STAGING_BACKGROUND_COLOR: Color = [0.0, 0.0, 0.0, 0.5];
 const BOARD_BACKGROUND_COLOR: Color = [0.0, 0.0, 0.0, 0.5];
@@ -51,74 +55,77 @@ pub struct ViewSettings {
     pub staging_rect: Rect<f64>,
     pub preview_rect: Rect<f64>,
     pub hold_rect: Rect<f64>,
+    pub score_label_pos: Vec2d,
+    pub level_label_pos: Vec2d,
+    pub title_label_pos: Vec2d,
+    pub level_pos: Vec2d,
+    pub score_pos: Vec2d,
 }
 
 impl ViewSettings {
-    fn new(view_size: [u32; 2]) -> Self {
-        let board_w = (SLOTS_AREA[0] as i32 * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
-        let board_h = ((SLOTS_AREA[1] as i32 - 2) * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
-        let staging_w = board_w;
-        let staging_h = (2 * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
-        let preview_w = (4 * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
-        let preview_h = staging_h;
-        let hold_w = preview_w;
-        let hold_h = staging_h;
+    fn new(view_size: Size) -> Self {
+        let board_w: f64 = (SLOTS_AREA[0] as f64 * (BLOCK_SIZE as f64 + BLOCK_PADDING as f64))
+            + BLOCK_PADDING as f64;
+        let board_h: f64 = ((SLOTS_AREA[1] as f64 - 2.0)
+            * (BLOCK_SIZE as f64 + BLOCK_PADDING as f64))
+            + BLOCK_PADDING as f64;
+        let staging_w: f64 = board_w;
+        let staging_h: f64 =
+            (2.0 * (BLOCK_SIZE as f64 + BLOCK_PADDING as f64)) + BLOCK_PADDING as f64;
+        let preview_w: f64 =
+            (4.0 * (BLOCK_SIZE as f64 + BLOCK_PADDING as f64)) + BLOCK_PADDING as f64;
+        let preview_h: f64 = staging_h;
+        let hold_w: f64 = preview_w;
+        let hold_h: f64 = staging_h;
 
-        let board_x = view_size[0] as i32 / 2 - board_w / 2;
-        let board_y = view_size[1] as i32 / 2 - board_h / 2 + staging_h / 2 + 1;
-        let staging_x = board_x;
-        let staging_y = board_y - staging_h - STAGING_PADDING;
-        let preview_x = board_x + board_w + 10;
-        let preview_y = board_y;
-        let hold_x = board_x - preview_w - 10;
-        let hold_y = board_y;
+        let board_x: f64 = view_size.width / 2.0 - board_w / 2.0;
+        let board_y: f64 = view_size.height / 2.0 - board_h / 2.0 + staging_h / 2.0 + 1.0;
+        let staging_x: f64 = board_x;
+        let staging_y: f64 = board_y - staging_h - STAGING_PADDING as f64;
+        let preview_x: f64 = board_x + board_w + 10.0;
+        let preview_y: f64 = board_y;
+        let hold_x: f64 = board_x - preview_w - 10.0;
+        let hold_y: f64 = board_y;
 
         Self {
-            board_rect: [
-                board_x as f64,
-                board_y as f64,
-                board_w as f64,
-                board_h as f64,
-            ]
-            .into(),
-            staging_rect: [
-                staging_x as f64,
-                staging_y as f64,
-                staging_w as f64,
-                staging_h as f64,
-            ]
-            .into(),
-            preview_rect: [
-                preview_x as f64,
-                preview_y as f64,
-                preview_w as f64,
-                preview_h as f64,
-            ]
-            .into(),
-            hold_rect: [hold_x as f64, hold_y as f64, hold_w as f64, hold_h as f64].into(),
+            board_rect: [board_x, board_y, board_w, board_h].into(),
+            staging_rect: [staging_x, staging_y, staging_w, staging_h].into(),
+            preview_rect: [preview_x, preview_y, preview_w, preview_h].into(),
+            hold_rect: [hold_x, hold_y, hold_w, hold_h].into(),
+            score_label_pos: [board_x + board_w + 30.0, board_y + board_h - 30.0],
+            level_label_pos: [board_x - 180.0, board_y + board_h - 30.0],
+            title_label_pos: [board_x - 280.0, board_y - 50.0],
+            level_pos: [board_x - 60.0, board_y + board_h - 30.0],
+            score_pos: [board_x + board_w + 150.0, board_y + board_h - 30.0],
         }
     }
 }
 
 pub trait Draw {
-    fn draw(&self, settings: &ViewSettings, ctx: &Context, g: &mut G2d);
+    fn draw(&self, settings: &ViewSettings, ctx: &Context, g: &mut GlGraphics);
 }
 
-pub struct RustrisView {
+pub struct RustrisView<'a> {
     settings: ViewSettings,
+    glyph_cache: GlyphCache<'a>,
 }
 
-impl RustrisView {
-    pub fn new(view_size: [u32; 2]) -> Self {
+impl<'a> RustrisView<'a> {
+    pub fn new(view_size: Size, assets_path: &PathBuf) -> Self {
+        let font = assets_path.join("04b30.ttf");
+        let glyph_cache = GlyphCache::new(font, (), TextureSettings::new()).unwrap();
+
         RustrisView {
             settings: ViewSettings::new(view_size),
+            glyph_cache,
         }
     }
+
     pub fn resize(&mut self, args: ResizeArgs) {
-        self.settings = ViewSettings::new(args.draw_size);
+        self.settings = ViewSettings::new(args.draw_size.into());
     }
-    pub fn draw(&self, controller: &RustrisController, ctx: &Context, g: &mut G2d) {
-        use piston_window::clear;
+
+    pub fn draw(&mut self, controller: &RustrisController, ctx: &Context, g: &mut GlGraphics) {
         clear(BACKGROUND_COLOR, g);
 
         match controller.game_state {
@@ -126,6 +133,7 @@ impl RustrisView {
             crate::controller::GameState::Playing => {
                 self.draw_playing_background(ctx, g);
                 self.draw_playing_foreground(controller, ctx, g);
+                self.draw_overlay(controller, ctx, g);
             }
             crate::controller::GameState::GameOver => {}
         }
@@ -135,7 +143,75 @@ impl RustrisView {
         // display the level
     }
 
-    fn draw_playing_foreground(&self, controller: &RustrisController, ctx: &Context, g: &mut G2d) {
+    fn draw_overlay(&mut self, controller: &RustrisController, ctx: &Context, g: &mut GlGraphics) {
+        text(
+            [1.0, 1.0, 1.0, 1.0],
+            18,
+            "Rustris",
+            &mut self.glyph_cache,
+            ctx.transform.trans(
+                self.settings.title_label_pos[0],
+                self.settings.title_label_pos[1],
+            ),
+            g,
+        )
+        .expect("unable to render text");
+
+        text(
+            [1.0, 1.0, 1.0, 1.0],
+            18,
+            "Level:",
+            &mut self.glyph_cache,
+            ctx.transform.trans(
+                self.settings.level_label_pos[0],
+                self.settings.level_label_pos[1],
+            ),
+            g,
+        )
+        .expect("unable to render text");
+
+        text(
+            [1.0, 1.0, 1.0, 1.0],
+            18,
+            &controller.game_level.to_string(),
+            &mut self.glyph_cache,
+            ctx.transform
+                .trans(self.settings.level_pos[0], self.settings.level_pos[1]),
+            g,
+        )
+        .expect("unable to render text");
+
+        text(
+            [1.0, 1.0, 1.0, 1.0],
+            18,
+            "Score:",
+            &mut self.glyph_cache,
+            ctx.transform.trans(
+                self.settings.score_label_pos[0],
+                self.settings.score_label_pos[1],
+            ),
+            g,
+        )
+        .expect("unable to render text");
+
+        text(
+            [1.0, 1.0, 1.0, 1.0],
+            18,
+            &controller.score.to_string(),
+            &mut self.glyph_cache,
+            ctx.transform
+                .trans(self.settings.score_pos[0], self.settings.score_pos[1]),
+            g,
+        )
+        .expect("unable to render text");
+    }
+
+    fn draw_playing_foreground(
+        &self,
+        controller: &RustrisController,
+        ctx: &Context,
+        g: &mut GlGraphics,
+    ) {
         use piston_window::Rectangle;
 
         // draw the board state
@@ -168,7 +244,7 @@ impl RustrisView {
         }
     }
 
-    fn draw_playing_background(&self, ctx: &Context, g: &mut G2d) {
+    fn draw_playing_background(&self, ctx: &Context, g: &mut GlGraphics) {
         use piston_window::Rectangle;
 
         // staging area background
@@ -206,7 +282,7 @@ impl RustrisView {
 }
 
 impl Draw for RustrisBoard {
-    fn draw(&self, settings: &ViewSettings, ctx: &Context, g: &mut G2d) {
+    fn draw(&self, settings: &ViewSettings, ctx: &Context, g: &mut GlGraphics) {
         use piston_window::{rectangle::Border, Rectangle};
 
         for (y, slots_x) in self.slots.iter().enumerate() {
@@ -271,37 +347,37 @@ fn rustomino_color(rtype: RustominoType) -> Color {
 
 fn next_block_rect(block: [i32; 2], settings: &ViewSettings) -> Rect<f64> {
     // block[x,y] absolute units
-    let x = settings.preview_rect.x + (block[0] * (BLOCK_SIZE + BLOCK_PADDING)) as f64 + 1.0;
+    let x = settings.preview_rect.x + (block[0] as f64 * (BLOCK_SIZE + BLOCK_PADDING)) as f64 + 1.0;
     // get bottom left of board_rect
     let y = settings.preview_rect.y + settings.preview_rect.h
-        - ((block[1]) * (BLOCK_SIZE + BLOCK_PADDING)) as f64;
+        - (block[1] as f64 * (BLOCK_SIZE + BLOCK_PADDING));
 
-    [x, y, BLOCK_SIZE as f64, BLOCK_SIZE as f64].into()
+    [x, y, BLOCK_SIZE, BLOCK_SIZE].into()
 }
 
 fn hold_block_rect(block: [i32; 2], settings: &ViewSettings) -> Rect<f64> {
     // block[x,y] absolute units
-    let x = settings.hold_rect.x + (block[0] * (BLOCK_SIZE + BLOCK_PADDING)) as f64 + 1.0;
+    let x = settings.hold_rect.x + (block[0] as f64 * (BLOCK_SIZE + BLOCK_PADDING)) as f64 + 1.0;
     // get bottom left of board_rect
     let y = settings.hold_rect.y + settings.hold_rect.h
-        - ((block[1]) * (BLOCK_SIZE + BLOCK_PADDING)) as f64;
+        - (block[1] as f64 * (BLOCK_SIZE + BLOCK_PADDING));
 
     [x, y, BLOCK_SIZE as f64, BLOCK_SIZE as f64].into()
 }
 
 fn board_block_rect(block: [i32; 2], settings: &ViewSettings) -> Rect<f64> {
     // block[x,y] absolute units
-    let x = settings.staging_rect.x + (block[0] * (BLOCK_SIZE + BLOCK_PADDING)) as f64 + 1.0;
+    let x = settings.staging_rect.x + (block[0] as f64 * (BLOCK_SIZE + BLOCK_PADDING)) as f64 + 1.0;
     // get bottom left of board_rect
     let y = settings.board_rect.y + settings.board_rect.h
-        - ((block[1] + 1) * (BLOCK_SIZE + BLOCK_PADDING)) as f64
+        - ((block[1] + 1) as f64 * (BLOCK_SIZE + BLOCK_PADDING))
         - 1.0;
 
     [x, y, BLOCK_SIZE as f64, BLOCK_SIZE as f64].into()
 }
 
 impl Draw for Rustomino {
-    fn draw(&self, settings: &ViewSettings, ctx: &Context, g: &mut G2d) {
+    fn draw(&self, settings: &ViewSettings, ctx: &Context, g: &mut GlGraphics) {
         use piston_window::Rectangle;
         for block in self.board_slots() {
             // display the preview
