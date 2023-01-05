@@ -1,237 +1,238 @@
-use piston_window::types::Vec2d;
-use rand::distributions::{Distribution, Standard};
+use ::rand::distributions::{Distribution, Standard};
+use macroquad::prelude::*;
+
 use std::fmt::Display;
 use strum::EnumIter;
 
-const I_BOUNDING_BOX: Vec2d<i32> = [4, 4];
-const O_BOUNDING_BOX: Vec2d<i32> = [4, 3];
-const T_L_J_S_Z_BOUNDING_BOX: Vec2d<i32> = [3, 3];
+const I_BOUNDING_BOX: IVec2 = ivec2(4, 4);
+const O_BOUNDING_BOX: IVec2 = ivec2(4, 3);
+const T_L_J_S_Z_BOUNDING_BOX: IVec2 = ivec2(3, 3);
 
-const I_START_TRANSLATION: Vec2d<i32> = [3, 18];
-const O_T_L_J_S_Z_START_TRANSLATION: Vec2d<i32> = [3, 19];
+const I_START_TRANSLATION: IVec2 = ivec2(3, 18);
+const O_T_L_J_S_Z_START_TRANSLATION: IVec2 = ivec2(3, 19);
 
-const I_BLOCKS: [Vec2d<i32>; 4] = [[0, 2], [1, 2], [2, 2], [3, 2]];
-const O_BLOCKS: [Vec2d<i32>; 4] = [[1, 2], [2, 2], [2, 1], [1, 1]];
-const T_BLOCKS: [Vec2d<i32>; 4] = [[1, 1], [0, 1], [1, 2], [2, 1]];
-const L_BLOCKS: [Vec2d<i32>; 4] = [[1, 1], [0, 1], [2, 2], [2, 1]];
-const J_BLOCKS: [Vec2d<i32>; 4] = [[1, 1], [0, 1], [0, 2], [2, 1]];
-const S_BLOCKS: [Vec2d<i32>; 4] = [[1, 1], [0, 1], [1, 2], [2, 2]];
-const Z_BLOCKS: [Vec2d<i32>; 4] = [[1, 1], [0, 2], [1, 2], [2, 1]];
+const I_BLOCKS: [IVec2; 4] = [ivec2(0, 2), ivec2(1, 2), ivec2(2, 2), ivec2(3, 2)];
+const O_BLOCKS: [IVec2; 4] = [ivec2(1, 2), ivec2(2, 2), ivec2(2, 1), ivec2(1, 1)];
+const T_BLOCKS: [IVec2; 4] = [ivec2(1, 1), ivec2(0, 1), ivec2(1, 2), ivec2(2, 1)];
+const L_BLOCKS: [IVec2; 4] = [ivec2(1, 1), ivec2(0, 1), ivec2(2, 2), ivec2(2, 1)];
+const J_BLOCKS: [IVec2; 4] = [ivec2(1, 1), ivec2(0, 1), ivec2(0, 2), ivec2(2, 1)];
+const S_BLOCKS: [IVec2; 4] = [ivec2(1, 1), ivec2(0, 1), ivec2(1, 2), ivec2(2, 2)];
+const Z_BLOCKS: [IVec2; 4] = [ivec2(1, 1), ivec2(0, 2), ivec2(1, 2), ivec2(2, 1)];
 
-const I_ROTATIONS: [[Vec2d<i32>; 4]; 4] = [
+const I_ROTATIONS: [[IVec2; 4]; 4] = [
     [
         // N>>E || -(E>>N)
-        [2, 1],
-        [1, 0],
-        [0, -1],
-        [-1, -2],
+        ivec2(2, 1),
+        ivec2(1, 0),
+        ivec2(0, -1),
+        ivec2(-1, -2),
     ],
     [
         // E>>S || -(S>>E)
-        [1, -2],
-        [0, -1],
-        [-1, 0],
-        [-2, 1],
+        ivec2(1, -2),
+        ivec2(0, -1),
+        ivec2(-1, 0),
+        ivec2(-2, 1),
     ],
     [
         // S>>W || -(W>>S)
-        [-2, -1],
-        [-1, 0],
-        [0, 1],
-        [1, 2],
+        ivec2(-2, -1),
+        ivec2(-1, 0),
+        ivec2(0, 1),
+        ivec2(1, 2),
     ],
     [
         // W>>N || -(N>>W)
-        [-1, 2],
-        [0, 1],
-        [1, 0],
-        [2, -1],
+        ivec2(-1, 2),
+        ivec2(0, 1),
+        ivec2(1, 0),
+        ivec2(2, -1),
     ],
 ];
 
-const O_ROTATIONS: [[Vec2d<i32>; 4]; 4] = [
+const O_ROTATIONS: [[IVec2; 4]; 4] = [
     [
         // N>>E || -(E>>N)
-        [1, 0],
-        [0, -1],
-        [-1, 0],
-        [0, 1],
+        ivec2(1, 0),
+        ivec2(0, -1),
+        ivec2(-1, 0),
+        ivec2(0, 1),
     ],
     [
         // E>>S || -(S>>E)
-        [0, -1],
-        [-1, 0],
-        [0, 1],
-        [1, 0],
+        ivec2(0, -1),
+        ivec2(-1, 0),
+        ivec2(0, 1),
+        ivec2(1, 0),
     ],
     [
         // S>>W || -(W>>S)
-        [-1, 0],
-        [0, 1],
-        [1, 0],
-        [0, -1],
+        ivec2(-1, 0),
+        ivec2(0, 1),
+        ivec2(1, 0),
+        ivec2(0, -1),
     ],
     [
         // W>>N || -(N>>W)
-        [0, 1],
-        [1, 0],
-        [0, -1],
-        [-1, 0],
+        ivec2(0, 1),
+        ivec2(1, 0),
+        ivec2(0, -1),
+        ivec2(-1, 0),
     ],
 ];
 
-const T_ROTATIONS: [[Vec2d<i32>; 4]; 4] = [
+const T_ROTATIONS: [[IVec2; 4]; 4] = [
     [
         // N>>E || -(E>>N)
-        [0, 0],
-        [1, 1],
-        [1, -1],
-        [-1, -1],
+        ivec2(0, 0),
+        ivec2(1, 1),
+        ivec2(1, -1),
+        ivec2(-1, -1),
     ],
     [
         // E>>S || -(S>>E)
-        [0, 0],
-        [1, -1],
-        [-1, -1],
-        [-1, 1],
+        ivec2(0, 0),
+        ivec2(1, -1),
+        ivec2(-1, -1),
+        ivec2(-1, 1),
     ],
     [
         // S>>W || -(W>>S)
-        [0, 0],
-        [-1, -1],
-        [-1, 1],
-        [1, 1],
+        ivec2(0, 0),
+        ivec2(-1, -1),
+        ivec2(-1, 1),
+        ivec2(1, 1),
     ],
     [
         // W>>N || -(N>>W)
-        [0, 0],
-        [-1, 1],
-        [1, 1],
-        [1, -1],
+        ivec2(0, 0),
+        ivec2(-1, 1),
+        ivec2(1, 1),
+        ivec2(1, -1),
     ],
 ];
 
-const L_ROTATIONS: [[Vec2d<i32>; 4]; 4] = [
+const L_ROTATIONS: [[IVec2; 4]; 4] = [
     [
         // N>>E || -(E>>N)
-        [0, 0],
-        [1, 1],
-        [0, -2],
-        [-1, -1],
+        ivec2(0, 0),
+        ivec2(1, 1),
+        ivec2(0, -2),
+        ivec2(-1, -1),
     ],
     [
         // E>>S || -(S>>E)
-        [0, 0],
-        [1, -1],
-        [-2, 0],
-        [-1, 1],
+        ivec2(0, 0),
+        ivec2(1, -1),
+        ivec2(-2, 0),
+        ivec2(-1, 1),
     ],
     [
         // S>>W || -(W>>S)
-        [0, 0],
-        [-1, -1],
-        [0, 2],
-        [1, 1],
+        ivec2(0, 0),
+        ivec2(-1, -1),
+        ivec2(0, 2),
+        ivec2(1, 1),
     ],
     [
         // W>>N || -(N>>W)
-        [0, 0],
-        [-1, 1],
-        [2, 0],
-        [1, -1],
+        ivec2(0, 0),
+        ivec2(-1, 1),
+        ivec2(2, 0),
+        ivec2(1, -1),
     ],
 ];
 
-const J_ROTATIONS: [[Vec2d<i32>; 4]; 4] = [
+const J_ROTATIONS: [[IVec2; 4]; 4] = [
     [
         // N>>E || -(E>>N)
-        [0, 0],
-        [1, 1],
-        [2, 0],
-        [-1, -1],
+        ivec2(0, 0),
+        ivec2(1, 1),
+        ivec2(2, 0),
+        ivec2(-1, -1),
     ],
     [
         // E>>S || -(S>>E)
-        [0, 0],
-        [1, -1],
-        [0, -2],
-        [-1, 1],
+        ivec2(0, 0),
+        ivec2(1, -1),
+        ivec2(0, -2),
+        ivec2(-1, 1),
     ],
     [
         // S>>W || -(W>>S)
-        [0, 0],
-        [-1, -1],
-        [-2, 0],
-        [1, 1],
+        ivec2(0, 0),
+        ivec2(-1, -1),
+        ivec2(-2, 0),
+        ivec2(1, 1),
     ],
     [
         // W>>N || -(N>>W)
-        [0, 0],
-        [-1, 1],
-        [0, 2],
-        [1, -1],
+        ivec2(0, 0),
+        ivec2(-1, 1),
+        ivec2(0, 2),
+        ivec2(1, -1),
     ],
 ];
 
-const S_ROTATIONS: [[Vec2d<i32>; 4]; 4] = [
+const S_ROTATIONS: [[IVec2; 4]; 4] = [
     [
         // N>>E || -(E>>N)
-        [0, 0],
-        [1, 1],
-        [1, -1],
-        [0, -2],
+        ivec2(0, 0),
+        ivec2(1, 1),
+        ivec2(1, -1),
+        ivec2(0, -2),
     ],
     [
         // E>>S || -(S>>E)
-        [0, 0],
-        [1, -1],
-        [-1, -1],
-        [-2, 0],
+        ivec2(0, 0),
+        ivec2(1, -1),
+        ivec2(-1, -1),
+        ivec2(-2, 0),
     ],
     [
         // S>>W || -(W>>S)
-        [0, 0],
-        [-1, -1],
-        [-1, 1],
-        [0, 2],
+        ivec2(0, 0),
+        ivec2(-1, -1),
+        ivec2(-1, 1),
+        ivec2(0, 2),
     ],
     [
         // W>>N || -(N>>W)
-        [0, 0],
-        [-1, 1],
-        [1, 1],
-        [2, 0],
+        ivec2(0, 0),
+        ivec2(-1, 1),
+        ivec2(1, 1),
+        ivec2(2, 0),
     ],
 ];
 
-const Z_ROTATIONS: [[Vec2d<i32>; 4]; 4] = [
+const Z_ROTATIONS: [[IVec2; 4]; 4] = [
     [
         // N>>E || -(E>>N)
-        [0, 0],
-        [2, 0],
-        [1, -1],
-        [-1, -1],
+        ivec2(0, 0),
+        ivec2(2, 0),
+        ivec2(1, -1),
+        ivec2(-1, -1),
     ],
     [
         // E>>S || -(S>>E)
-        [0, 0],
-        [0, -2],
-        [-1, -1],
-        [-1, 1],
+        ivec2(0, 0),
+        ivec2(0, -2),
+        ivec2(-1, -1),
+        ivec2(-1, 1),
     ],
     [
         // S>>W || -(W>>S)
-        [0, 0],
-        [-2, 0],
-        [-1, 1],
-        [1, 1],
+        ivec2(0, 0),
+        ivec2(-2, 0),
+        ivec2(-1, 1),
+        ivec2(1, 1),
     ],
     [
         // W>>N || -(N>>W)
-        [0, 0],
-        [0, 2],
-        [1, 1],
-        [1, -1],
+        ivec2(0, 0),
+        ivec2(0, 2),
+        ivec2(1, 1),
+        ivec2(1, -1),
     ],
 ];
 
@@ -246,6 +247,28 @@ pub enum RustominoType {
     Z,
 }
 
+impl RustominoType {
+    const I_COLOR: Color = Color::new(0.0, 0.9, 1.0, 1.0); // light blue
+    const O_COLOR: Color = Color::new(1.0, 0.87, 0.0, 1.0); // yellow
+    const T_COLOR: Color = Color::new(0.72, 0.01, 0.99, 1.0); // purple
+    const L_COLOR: Color = Color::new(1.0, 0.45, 0.03, 1.0); // orange
+    const J_COLOR: Color = Color::new(0.09, 0.0, 1.0, 1.0); // blue
+    const S_COLOR: Color = Color::new(0.4, 0.99, 0.0, 1.0); // green
+    const Z_COLOR: Color = Color::new(1.0, 0.06, 0.24, 1.0); // red
+
+    pub fn color(&self) -> Color {
+        match self {
+            RustominoType::I => RustominoType::I_COLOR,
+            RustominoType::O => RustominoType::O_COLOR,
+            RustominoType::T => RustominoType::T_COLOR,
+            RustominoType::L => RustominoType::L_COLOR,
+            RustominoType::J => RustominoType::J_COLOR,
+            RustominoType::S => RustominoType::S_COLOR,
+            RustominoType::Z => RustominoType::Z_COLOR,
+        }
+    }
+}
+
 // use rand::distributions::{Distribution, Standard};
 // use rand::SeedableRng;
 // let mut rng = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(123);
@@ -255,7 +278,7 @@ pub enum RustominoType {
 
 /// Allow random generation for RustominoTypes
 impl Distribution<RustominoType> for Standard {
-    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> RustominoType {
+    fn sample<R: ::rand::Rng + ?Sized>(&self, rng: &mut R) -> RustominoType {
         match rng.gen_range(0..7) {
             0 => RustominoType::I,
             1 => RustominoType::O,
@@ -273,9 +296,9 @@ impl Distribution<RustominoType> for Standard {
 pub struct Rustomino {
     pub rustomino_type: RustominoType,
     pub rotation: RustominoRotation,
-    pub blocks: [Vec2d<i32>; 4],
-    pub translation: Vec2d<i32>,
-    bounding_box: Vec2d<i32>,
+    pub blocks: [IVec2; 4],
+    pub translation: IVec2,
+    bounding_box: IVec2,
 }
 
 impl Rustomino {
@@ -337,22 +360,22 @@ impl Rustomino {
         Rustomino::new(self.rustomino_type)
     }
 
-    pub fn translate(&mut self, delta: Vec2d<i32>) {
+    pub fn translate(&mut self, delta: IVec2) {
         log::debug!("translate called: delta {:?}", delta);
-        self.translation = vecmath::vec2_add(self.translation, delta);
+        self.translation = self.translation + delta;
     }
 
-    pub fn translated(&self, delta: Vec2d<i32>) -> [Vec2d<i32>; 4] {
+    pub fn translated(&self, delta: IVec2) -> [IVec2; 4] {
         [
-            vecmath::vec2_add(vecmath::vec2_add(self.blocks[0], self.translation), delta),
-            vecmath::vec2_add(vecmath::vec2_add(self.blocks[1], self.translation), delta),
-            vecmath::vec2_add(vecmath::vec2_add(self.blocks[2], self.translation), delta),
-            vecmath::vec2_add(vecmath::vec2_add(self.blocks[3], self.translation), delta),
+            (self.blocks[0] + self.translation) + delta,
+            (self.blocks[1] + self.translation) + delta,
+            (self.blocks[2] + self.translation) + delta,
+            (self.blocks[3] + self.translation) + delta,
         ]
     }
 
-    pub fn board_slots(&self) -> [Vec2d<i32>; 4] {
-        self.translated([0, 0])
+    pub fn board_slots(&self) -> [IVec2; 4] {
+        self.translated(IVec2::ZERO)
     }
 
     /// .
@@ -360,35 +383,23 @@ impl Rustomino {
         let translation = self.rotation.get_translation(direction);
 
         self.blocks = [
-            vecmath::vec2_add(self.blocks[0], translation.0[0]),
-            vecmath::vec2_add(self.blocks[1], translation.0[1]),
-            vecmath::vec2_add(self.blocks[2], translation.0[2]),
-            vecmath::vec2_add(self.blocks[3], translation.0[3]),
+            self.blocks[0] + translation.0[0],
+            self.blocks[1] + translation.0[1],
+            self.blocks[2] + translation.0[2],
+            self.blocks[3] + translation.0[3],
         ];
 
         self.rotation.rotate(direction);
     }
 
-    pub fn rotated(&self, direction: &RotationDirection) -> [Vec2d<i32>; 4] {
+    pub fn rotated(&self, direction: &RotationDirection) -> [IVec2; 4] {
         let rotation = self.rotation.get_translation(direction);
 
         [
-            vecmath::vec2_add(
-                vecmath::vec2_add(self.blocks[0], self.translation),
-                rotation.0[0],
-            ),
-            vecmath::vec2_add(
-                vecmath::vec2_add(self.blocks[1], self.translation),
-                rotation.0[1],
-            ),
-            vecmath::vec2_add(
-                vecmath::vec2_add(self.blocks[2], self.translation),
-                rotation.0[2],
-            ),
-            vecmath::vec2_add(
-                vecmath::vec2_add(self.blocks[3], self.translation),
-                rotation.0[3],
-            ),
+            (self.blocks[0] + self.translation) + rotation.0[0],
+            (self.blocks[1] + self.translation) + rotation.0[1],
+            (self.blocks[2] + self.translation) + rotation.0[2],
+            (self.blocks[3] + self.translation) + rotation.0[3],
         ]
     }
 }
@@ -473,7 +484,7 @@ pub struct RustominoRotation {
 }
 
 impl RustominoRotation {
-    fn new(values: [[Vec2d<i32>; 4]; 4]) -> Self {
+    fn new(values: [[IVec2; 4]; 4]) -> Self {
         Self {
             direction: RustominoDirection::N,
             n2e: RotationTranslation::new(values[0]),
@@ -510,10 +521,10 @@ impl RustominoRotation {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct RotationTranslation([Vec2d<i32>; 4]);
+pub struct RotationTranslation([IVec2; 4]);
 
 impl RotationTranslation {
-    fn new(values: [Vec2d<i32>; 4]) -> Self {
+    fn new(values: [IVec2; 4]) -> Self {
         RotationTranslation(values)
     }
 }
@@ -522,11 +533,6 @@ impl std::ops::Neg for RotationTranslation {
     type Output = Self;
 
     fn neg(self) -> Self {
-        Self([
-            vecmath::vec2_neg(self.0[0]),
-            vecmath::vec2_neg(self.0[1]),
-            vecmath::vec2_neg(self.0[2]),
-            vecmath::vec2_neg(self.0[3]),
-        ])
+        Self([-self.0[0], -self.0[1], -self.0[2], -self.0[3]])
     }
 }

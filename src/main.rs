@@ -1,40 +1,27 @@
 // #![windows_subsystem = "windows"]
-use crate::{board::RustrisBoard, controller::RustrisController, view::RustrisView};
-use opengl_graphics::{GlGraphics, OpenGL};
-use piston_window::Size;
+use crate::{board::RustrisBoard, game::RustrisGame};
 
 mod board;
-mod controller;
+mod game;
 mod rustomino;
 mod view;
 
-const WINDOW_DIMENSIONS: Size = Size {
-    width: 1024.0,
-    height: 768.0,
-};
-
-fn main() {
-    #[cfg(target_os = "linux")]
-    std::env::set_var("WINIT_X11_SCALE_FACTOR", "1");
+#[macroquad::main("Rustris")]
+async fn main() {
     env_logger::init_from_env("RUSTRIS_LOG_LEVEL");
-    log::info!("Startup: Initializing Piston Window");
-    let mut window: piston_window::PistonWindow =
-        piston_window::WindowSettings::new("Rustris", WINDOW_DIMENSIONS)
-            .exit_on_esc(true)
-            .vsync(true)
-            .build()
-            .expect("fatal error, could not create window");
-
-    let opengl = OpenGL::V4_5;
-    let mut gl = GlGraphics::new(opengl);
+    log::info!("Startup: Initializing Rustris");
 
     let assets_path = find_folder::Search::ParentsThenKids(2, 2)
         .for_folder("assets")
         .expect("unable to open assets path");
 
-    let rustris_board = RustrisBoard::new();
-    let mut rustris_view = RustrisView::new(WINDOW_DIMENSIONS, &assets_path);
-    let mut rustris_controller = RustrisController::new(rustris_board).init();
+    // let font_path = assets_path.join("04b30.ttf");
+    // let font = load_ttf_font(font_path.to_str().unwrap()).await.unwrap();
+    let game = RustrisGame::new(RustrisBoard::new());
 
-    rustris_controller.run(&mut window, &mut gl, &mut rustris_view);
+    // scene::add_node(controller);
+    // let mut view = RustrisView::new(WINDOW_DIMENSIONS, &assets_path);
+    // let mut controller = RustrisController::new(rustris_board).init();
+
+    game.run().await;
 }
