@@ -144,15 +144,15 @@ impl RustrisGame {
     }
 
     fn translate(&mut self, direction: TranslationDirection) {
-        self.board.translate_rustomino(direction);
+        self.board.translate_current(direction);
     }
 
     fn rotate(&mut self, direction: RotationDirection) {
-        self.board.rotate_rustomino(direction);
+        self.board.rotate_current(direction);
     }
 
     fn soft_drop(&mut self) {
-        if !self.board.translate_rustomino(TranslationDirection::Down) {
+        if !self.board.translate_current(TranslationDirection::Down) {
             self.lock("soft drop");
         }
         self.gravity_time_accum = 0.0;
@@ -189,7 +189,7 @@ impl RustrisGame {
         self.get_next_rustomino();
 
         // take current_rustomino and make it the hold_rustomino
-        self.held_rustomino = Some(self.board.current_rustomino.take().unwrap().reset());
+        self.held_rustomino = self.board.take_current();
         self.board.set_current_rustomino(rustomino);
 
         // prevent the player from taking the hold action again
@@ -311,7 +311,7 @@ impl RustrisGame {
         for (y, slots_x) in self.board.slots.iter().enumerate() {
             for (x, slot) in slots_x.iter().enumerate() {
                 match slot {
-                    SlotState::Locked(rtype) => {
+                    SlotState::Locked(rtype) | SlotState::Occupied(rtype) => {
                         // draw the block
                         let rect = board_block_rect([x as i32, y as i32], &self.view_settings);
                         draw_rectangle(rect.x, rect.y, rect.w, rect.h, rtype.color());
@@ -338,22 +338,6 @@ impl RustrisGame {
                 draw_rectangle(rect.x, rect.y, rect.w, rect.h, held.rustomino_type.color());
             }
         }
-
-        if let Some(rustomino) = &self.board.current_rustomino {
-            for slot in rustomino.board_slots() {
-                // display the preview
-                // draw the block
-                let rect = board_block_rect([slot[0], slot[1]], &self.view_settings);
-                draw_rectangle(
-                    rect.x,
-                    rect.y,
-                    rect.w,
-                    rect.h,
-                    rustomino.rustomino_type.color(),
-                );
-            }
-        }
-
         if let Some(ghost) = &self.board.ghost_rustomino {
             for block in ghost.board_slots() {
                 // draw the block
@@ -520,14 +504,17 @@ impl RustrisGame {
     }
 
     fn pause(&mut self) {
+        log::info!("game paused");
         self.game_state = GameState::Paused;
     }
 
     fn resume(&mut self) {
+        log::info!("game resumed");
         self.game_state = GameState::Playing;
     }
 
     fn play_again(&mut self) {
+        log::info!("starting new game");
         self.game_state = GameState::Playing;
         self.board = RustrisBoard::new();
         self.next_rustomino = None;
