@@ -1,11 +1,12 @@
 use crate::{
     board::{RustrisBoard, SlotState, TranslationDirection},
+    controls::{ControlStates, Controls, InputState},
     rustomino::*,
     view::{self, ViewSettings},
+    VIEW_DIMENSIONS,
 };
-use std::collections::HashMap;
 use std::f64::consts::E;
-use strum::{EnumIter, IntoEnumIterator};
+use strum::IntoEnumIterator;
 
 use macroquad::{prelude::*, rand::ChooseRandom};
 
@@ -22,137 +23,10 @@ const DOUBLE_LINE_SCORE: usize = 300;
 const TRIPLE_LINE_SCORE: usize = 500;
 const RUSTRIS_SCORE: usize = 800;
 
-const TRANSLATE_ACTION_DELAY: f64 = 0.14;
-const TRANSLATE_ACTION_REPEAT_DELAY: f64 = 0.030;
-
-const ROTATE_ACTION_DELAY: f64 = 0.14;
-const ROTATE_ACTION_REPEAT_DELAY: f64 = 0.2;
-
-// default input settings
-const LEFT_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Left), None];
-const RIGHT_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Right), None];
-const ROTATE_CW_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Up), Some(KeyCode::X)];
-const ROTATE_CCW_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::LeftControl), Some(KeyCode::Z)];
-const SOFT_DROP_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Down), None];
-const HARD_DROP_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Space), None];
-const HOLD_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::LeftShift), Some(KeyCode::C)];
-
-#[derive(Debug, Clone, PartialEq)]
-enum KeyState {
-    Up,
-    Down(f64),
-    Held(f64),
-}
-
-impl Default for KeyState {
-    fn default() -> Self {
-        KeyState::Up
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, EnumIter)]
-enum Inputs {
-    Left,
-    Right,
-    RotateCW,
-    RotateCCW,
-    SoftDrop,
-    HardDrop,
-    Hold,
-}
-
-impl Inputs {
-    fn action_delay_for_input(&self) -> Option<f64> {
-        match self {
-            Inputs::Left => Some(TRANSLATE_ACTION_DELAY),
-            Inputs::Right => Some(TRANSLATE_ACTION_DELAY),
-            Inputs::SoftDrop => Some(TRANSLATE_ACTION_DELAY),
-            Inputs::RotateCW => Some(ROTATE_ACTION_DELAY),
-            Inputs::RotateCCW => Some(ROTATE_ACTION_DELAY),
-            _ => None,
-        }
-    }
-    fn action_repeat_delay_for_input(&self) -> Option<f64> {
-        match self {
-            Inputs::Left => Some(TRANSLATE_ACTION_REPEAT_DELAY),
-            Inputs::Right => Some(TRANSLATE_ACTION_REPEAT_DELAY),
-            Inputs::SoftDrop => Some(TRANSLATE_ACTION_REPEAT_DELAY),
-            Inputs::RotateCW => Some(ROTATE_ACTION_REPEAT_DELAY),
-            Inputs::RotateCCW => Some(ROTATE_ACTION_REPEAT_DELAY),
-            _ => None,
-        }
-    }
-    fn default_keys(&self) -> [Option<KeyCode>; 2] {
-        match self {
-            Inputs::Left => LEFT_KEYS,
-            Inputs::Right => RIGHT_KEYS,
-            Inputs::RotateCW => ROTATE_CW_KEYS,
-            Inputs::RotateCCW => ROTATE_CCW_KEYS,
-            Inputs::SoftDrop => SOFT_DROP_KEYS,
-            Inputs::HardDrop => HARD_DROP_KEYS,
-            Inputs::Hold => HOLD_KEYS,
-        }
-    }
-}
-
-pub struct GameInputs {
-    input_map: HashMap<Inputs, [Option<KeyCode>; 2]>,
-    key_map: HashMap<KeyCode, Inputs>,
-    input_states: HashMap<Inputs, KeyState>,
-}
-
-impl Default for GameInputs {
-    fn default() -> Self {
-        Self {
-            input_map: {
-                Inputs::iter()
-                    .map(|i| (i.clone(), i.default_keys()))
-                    .collect()
-            },
-            key_map: {
-                LEFT_KEYS
-                    .iter()
-                    .flatten()
-                    .map(|e| (*e, Inputs::Left))
-                    .chain(RIGHT_KEYS.iter().flatten().map(|e| (*e, Inputs::Right)))
-                    .chain(
-                        ROTATE_CW_KEYS
-                            .iter()
-                            .flatten()
-                            .map(|e| (*e, Inputs::RotateCW)),
-                    )
-                    .chain(
-                        ROTATE_CCW_KEYS
-                            .iter()
-                            .flatten()
-                            .map(|e| (*e, Inputs::RotateCCW)),
-                    )
-                    .chain(
-                        SOFT_DROP_KEYS
-                            .iter()
-                            .flatten()
-                            .map(|e| (*e, Inputs::SoftDrop)),
-                    )
-                    .chain(
-                        HARD_DROP_KEYS
-                            .iter()
-                            .flatten()
-                            .map(|e| (*e, Inputs::HardDrop)),
-                    )
-                    .chain(HOLD_KEYS.iter().flatten().map(|e| (*e, Inputs::Hold)))
-                    .collect::<HashMap<KeyCode, Inputs>>()
-            },
-            input_states: {
-                Inputs::iter()
-                    .map(|e| (e, KeyState::default()))
-                    .collect::<HashMap<Inputs, KeyState>>()
-            },
-        }
-    }
-}
 pub enum GameState {
     Menu,
     Playing,
+    Paused,
     GameOver,
 }
 
@@ -167,7 +41,7 @@ fn gravity_delay(level: usize) -> f64 {
 pub struct RustrisGame {
     pub board: RustrisBoard,
     pub next_rustomino: Option<Rustomino>,
-    pub hold_rustomino: Option<Rustomino>,
+    pub held_rustomino: Option<Rustomino>,
     pub game_state: GameState,
     pub score: usize,
     pub game_level: usize,
@@ -177,7 +51,7 @@ pub struct RustrisGame {
     completed_lines: usize,
     last_update: f64,
     view_settings: ViewSettings,
-    hold_set: bool,
+    hold_used: bool,
 }
 
 impl RustrisGame {
@@ -185,11 +59,11 @@ impl RustrisGame {
         RustrisGame {
             board,
             next_rustomino: None,
-            hold_rustomino: None,
-            game_state: GameState::Playing, // GameState::Menu,
+            held_rustomino: None,
+            game_state: GameState::Menu, // GameState::Menu,
             score: 0,
             game_level: 1,
-            hold_set: false,
+            hold_used: false,
             rustomino_bag: Vec::new(),
             gravity_time_accum: 0.0,
             gravity_delay: gravity_delay(1),
@@ -201,9 +75,8 @@ impl RustrisGame {
     }
 
     fn init(mut self) -> Self {
-        log::info!("Initializing RustrisController");
-        self.fill_rustomino_bag();
-        self.set_next_rustomino();
+        log::info!("Initializing RustrisGame");
+        self.get_next_rustomino();
         self
     }
 
@@ -213,27 +86,33 @@ impl RustrisGame {
         self.gravity_delay = gravity_delay(self.game_level);
     }
 
-    fn set_next_rustomino(&mut self) {
-        // we don't need to set the next rustomino
+    fn get_next_rustomino(&mut self) {
+        // this can be called even if next_rustomino is some
+        // in this case do nothing
         if self.next_rustomino.is_some() {
             return;
         }
-        if self.rustomino_bag.is_empty() {
-            self.fill_rustomino_bag();
-        }
-        // unwrap is OK because we are making sure next_rustomino's is never empty
-        let next_rustomino = Rustomino::new(self.rustomino_bag.pop().unwrap());
-        log::debug!("Next Rustomino:\n{next_rustomino}");
 
-        self.next_rustomino = Some(next_rustomino);
+        // if we've used all of the rustomino's fill the bag
+        self.fill_rustomino_bag();
+
+        if let Some(next_type) = self.rustomino_bag.pop() {
+            log::debug!("next rustomino: {:?}", next_type);
+            self.next_rustomino = Some(Rustomino::new(next_type));
+        }
     }
 
     // add one of each rustomino type to bag
     // then shuffle the bag
     fn fill_rustomino_bag(&mut self) {
+        if !self.rustomino_bag.is_empty() {
+            log::debug!("rustomino bag: {:?}", self.rustomino_bag);
+            return;
+        }
         self.rustomino_bag
             .append(&mut RustominoType::iter().collect());
         self.rustomino_bag.shuffle();
+        log::debug!("filled rustomino bag: {:?}", self.rustomino_bag);
     }
 
     fn gravity_tick(&mut self) {
@@ -258,7 +137,7 @@ impl RustrisGame {
                 rustomino.board_slots()
             );
         }
-        self.hold_set = false;
+        self.hold_used = false;
         self.board.lock_rustomino();
 
         self.handle_completed_lines();
@@ -285,38 +164,41 @@ impl RustrisGame {
         self.gravity_time_accum = 0.0;
     }
 
-    // if there is no current hold piece
-    // we need to hold the current piece
-    // then move the next piece onto the board
-    //
-    // if there is a held piece
-    // we need to swap the current and held piece
-    // then place the new current piece onto the board
-    // player can only do this once until the next block is locked
+    // Hold action. Hold a rustomino for later use.
+    // If a rustomino has not yet been held, the current rustomino is held,
+    // and the next rustomino is added to the board
+    // If a rustomino is already held, this rustomino is added to the board,
+    // and the current rustomino is held
+    // The player can't use the hold action again until the current rustomino is locked
     fn hold(&mut self) {
-        // can only hold once
-        if self.hold_set || self.board.current_rustomino.is_none() {
+        // check to see if the player has used the hold action
+        // and they haven't yet locked the rustomino they took
+        if self.hold_used {
             return;
         }
-        let temp_rustomino = if self.hold_rustomino.is_some() {
-            // take the hold_rustomino
-            self.hold_rustomino.take().unwrap()
+        // check to see if there is a held rustomino
+        let rustomino = if self.held_rustomino.is_some() {
+            // take the held_rustomino
+            self.held_rustomino.take().unwrap()
         } else {
-            // take the hold_rustomino
+            // if not we take the next rustomino
             self.next_rustomino.take().unwrap()
         };
 
-        // if we used next_rustomino so we need to replace it
-        self.set_next_rustomino();
-        // reset current_rustomino and make it the hold_rustomino
-        self.hold_rustomino = Some(self.board.current_rustomino.take().unwrap().reset());
-        self.board.add_new_rustomino(temp_rustomino);
+        // if we used next_rustomino we need to replace it
+        self.get_next_rustomino();
 
-        self.hold_set = true;
+        // take current_rustomino and make it the hold_rustomino
+        self.held_rustomino = Some(self.board.current_rustomino.take().unwrap().reset());
+        self.board.set_current_rustomino(rustomino);
+
+        // prevent the player from taking the hold action again
+        // until the next rustomino is locked
+        self.hold_used = true;
     }
 
     fn game_over(&mut self) {
-        log::info!("Game Over!");
+        log::info!("Game Over! Score: {}", self.score);
         self.game_state = GameState::GameOver;
     }
 
@@ -365,102 +247,123 @@ impl RustrisGame {
         )
     }
 
-    pub fn draw(&self) {
+    pub fn draw(&self, text_params: &TextParams) {
         match self.game_state {
-            GameState::Menu => todo!(),
-            GameState::Playing => {
-                draw_rectangle(
-                    self.view_settings.staging_rect.x,
-                    self.view_settings.staging_rect.y,
-                    self.view_settings.staging_rect.w,
-                    self.view_settings.staging_rect.h,
-                    view::STAGING_BACKGROUND_COLOR,
-                );
-
-                draw_rectangle(
-                    self.view_settings.board_rect.x,
-                    self.view_settings.board_rect.y,
-                    self.view_settings.board_rect.w,
-                    self.view_settings.board_rect.h,
-                    view::BOARD_BACKGROUND_COLOR,
-                );
-
-                draw_rectangle(
-                    self.view_settings.preview_rect.x,
-                    self.view_settings.preview_rect.y,
-                    self.view_settings.preview_rect.w,
-                    self.view_settings.preview_rect.h,
-                    view::PREVIEW_BACKGROUND_COLOR,
-                );
-
-                draw_rectangle(
-                    self.view_settings.hold_rect.x,
-                    self.view_settings.hold_rect.y,
-                    self.view_settings.hold_rect.w,
-                    self.view_settings.hold_rect.h,
-                    view::HOLD_BACKGROUND_COLOR,
-                );
-
-                for (y, slots_x) in self.board.slots.iter().enumerate() {
-                    for (x, slot) in slots_x.iter().enumerate() {
-                        match slot {
-                            SlotState::Locked(rtype) => {
-                                // draw the block
-                                let rect =
-                                    board_block_rect([x as i32, y as i32], &self.view_settings);
-                                draw_rectangle(rect.x, rect.y, rect.w, rect.h, rtype.color());
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-
-                if let Some(next) = &self.next_rustomino {
-                    for slot in next.blocks {
-                        // display the preview
-                        // draw the block
-                        let rect = next_block_rect([slot[0], slot[1]], &self.view_settings);
-                        draw_rectangle(rect.x, rect.y, rect.w, rect.h, next.rustomino_type.color());
-                    }
-                }
-
-                if let Some(held) = &self.hold_rustomino {
-                    for slot in held.blocks {
-                        // display the preview
-                        // draw the block
-                        let rect = hold_block_rect([slot[0], slot[1]], &self.view_settings);
-                        draw_rectangle(rect.x, rect.y, rect.w, rect.h, held.rustomino_type.color());
-                    }
-                }
-
-                if let Some(rustomino) = &self.board.current_rustomino {
-                    for slot in rustomino.board_slots() {
-                        // display the preview
-                        // draw the block
-                        let rect = board_block_rect([slot[0], slot[1]], &self.view_settings);
-                        draw_rectangle(
-                            rect.x,
-                            rect.y,
-                            rect.w,
-                            rect.h,
-                            rustomino.rustomino_type.color(),
-                        );
-                    }
-                }
-
-                if let Some(ghost) = &self.board.ghost_rustomino {
-                    for block in ghost.board_slots() {
-                        // draw the block
-                        let rect = board_block_rect([block[0], block[1]], &self.view_settings);
-                        draw_rectangle_lines(rect.x, rect.y, rect.w, rect.h, 4., view::GHOST_COLOR);
-                    }
-                }
+            GameState::Menu => {
+                self.draw_playing_backgound();
+                self.draw_menu(text_params);
             }
-            GameState::GameOver => todo!(),
+            GameState::Playing => {
+                self.draw_playing_backgound();
+                self.draw_playing();
+                self.draw_playing_ui(text_params)
+            }
+            GameState::Paused => {
+                self.draw_playing_backgound();
+                self.draw_playing();
+                self.draw_playing_ui(text_params);
+                self.draw_paused(text_params)
+            }
+            GameState::GameOver => {
+                self.draw_playing_backgound();
+                self.draw_playing();
+                self.draw_playing_ui(text_params);
+                self.draw_gameover(text_params)
+            }
         }
     }
 
-    pub fn draw_overlay(&mut self, text_params: &TextParams) {
+    fn draw_playing_backgound(&self) {
+        draw_rectangle(
+            self.view_settings.staging_rect.x,
+            self.view_settings.staging_rect.y,
+            self.view_settings.staging_rect.w,
+            self.view_settings.staging_rect.h,
+            view::STAGING_BACKGROUND_COLOR,
+        );
+
+        draw_rectangle(
+            self.view_settings.board_rect.x,
+            self.view_settings.board_rect.y,
+            self.view_settings.board_rect.w,
+            self.view_settings.board_rect.h,
+            view::BOARD_BACKGROUND_COLOR,
+        );
+
+        draw_rectangle(
+            self.view_settings.preview_rect.x,
+            self.view_settings.preview_rect.y,
+            self.view_settings.preview_rect.w,
+            self.view_settings.preview_rect.h,
+            view::PREVIEW_BACKGROUND_COLOR,
+        );
+
+        draw_rectangle(
+            self.view_settings.hold_rect.x,
+            self.view_settings.hold_rect.y,
+            self.view_settings.hold_rect.w,
+            self.view_settings.hold_rect.h,
+            view::HOLD_BACKGROUND_COLOR,
+        );
+    }
+
+    fn draw_playing(&self) {
+        for (y, slots_x) in self.board.slots.iter().enumerate() {
+            for (x, slot) in slots_x.iter().enumerate() {
+                match slot {
+                    SlotState::Locked(rtype) => {
+                        // draw the block
+                        let rect = board_block_rect([x as i32, y as i32], &self.view_settings);
+                        draw_rectangle(rect.x, rect.y, rect.w, rect.h, rtype.color());
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        if let Some(next) = &self.next_rustomino {
+            for slot in next.blocks {
+                // display the preview
+                // draw the block
+                let rect = next_block_rect([slot[0], slot[1]], &self.view_settings);
+                draw_rectangle(rect.x, rect.y, rect.w, rect.h, next.rustomino_type.color());
+            }
+        }
+
+        if let Some(held) = &self.held_rustomino {
+            for slot in held.blocks {
+                // display the preview
+                // draw the block
+                let rect = hold_block_rect([slot[0], slot[1]], &self.view_settings);
+                draw_rectangle(rect.x, rect.y, rect.w, rect.h, held.rustomino_type.color());
+            }
+        }
+
+        if let Some(rustomino) = &self.board.current_rustomino {
+            for slot in rustomino.board_slots() {
+                // display the preview
+                // draw the block
+                let rect = board_block_rect([slot[0], slot[1]], &self.view_settings);
+                draw_rectangle(
+                    rect.x,
+                    rect.y,
+                    rect.w,
+                    rect.h,
+                    rustomino.rustomino_type.color(),
+                );
+            }
+        }
+
+        if let Some(ghost) = &self.board.ghost_rustomino {
+            for block in ghost.board_slots() {
+                // draw the block
+                let rect = board_block_rect([block[0], block[1]], &self.view_settings);
+                draw_rectangle_lines(rect.x, rect.y, rect.w, rect.h, 4., view::GHOST_COLOR);
+            }
+        }
+    }
+
+    fn draw_playing_ui(&self, text_params: &TextParams) {
         draw_text_ex(
             "Rustris",
             self.view_settings.title_label_pos.x as f32,
@@ -497,12 +400,76 @@ impl RustrisGame {
         );
     }
 
-    pub fn update(&mut self, inputs: &mut GameInputs) {
+    fn draw_paused(&self, text_params: &TextParams) {
+        draw_rectangle(
+            0.,
+            0.,
+            VIEW_DIMENSIONS[0] as f32,
+            VIEW_DIMENSIONS[1] as f32,
+            view::PAUSED_OVERLAY_COLOR,
+        );
+        draw_text_ex(
+            "Paused",
+            (VIEW_DIMENSIONS[0] / 2 - 55) as f32,
+            (VIEW_DIMENSIONS[1] / 2) as f32,
+            *text_params,
+        );
+    }
+
+    fn draw_menu(&self, text_params: &TextParams) {
+        draw_rectangle(
+            0.,
+            0.,
+            VIEW_DIMENSIONS[0] as f32,
+            VIEW_DIMENSIONS[1] as f32,
+            view::PAUSED_OVERLAY_COLOR,
+        );
+        draw_text_ex(
+            "Welcome to Rustris!",
+            (VIEW_DIMENSIONS[0] / 2 - 168) as f32,
+            (VIEW_DIMENSIONS[1] / 2) as f32,
+            *text_params,
+        );
+        draw_text_ex(
+            "Press Enter To Start",
+            (VIEW_DIMENSIONS[0] / 2 - 185) as f32,
+            (VIEW_DIMENSIONS[1] / 2 + 50) as f32,
+            *text_params,
+        );
+    }
+
+    fn draw_gameover(&self, text_params: &TextParams) {
+        draw_rectangle(
+            0.,
+            0.,
+            VIEW_DIMENSIONS[0] as f32,
+            VIEW_DIMENSIONS[1] as f32,
+            view::PAUSED_OVERLAY_COLOR,
+        );
+        draw_text_ex(
+            "Game Over!",
+            (VIEW_DIMENSIONS[0] / 2 - 100) as f32,
+            (VIEW_DIMENSIONS[1] / 2) as f32,
+            *text_params,
+        );
+        draw_text_ex(
+            "Press Enter To Play Again",
+            (VIEW_DIMENSIONS[0] / 2 - 200) as f32,
+            (VIEW_DIMENSIONS[1] / 2 + 50) as f32,
+            *text_params,
+        );
+    }
+
+    pub fn update(&mut self, controls: &mut ControlStates) {
         let now = get_time();
         let delta_time = now - self.last_update;
 
         match self.game_state {
-            GameState::Menu => todo!(),
+            GameState::Menu => {
+                if is_key_pressed(KeyCode::Enter) {
+                    self.resume();
+                }
+            }
             GameState::Playing => {
                 // check board ready for the next rustomino
                 if self.board.ready_for_next() {
@@ -511,15 +478,20 @@ impl RustrisGame {
                     // unwrap should be safe here
                     let current_rustomino = self.next_rustomino.take().unwrap();
                     // we used next_rustomino so we need to replace it
-                    self.set_next_rustomino();
+                    self.get_next_rustomino();
                     // add the next rustomino to the board
                     // game over if it can't be placed without a collision
-                    if !self.board.add_new_rustomino(current_rustomino) {
+                    if !self.board.set_current_rustomino(current_rustomino) {
                         self.game_over();
                     }
                 }
-                self.handle_keys(inputs);
-                self.handle_inputs(inputs, delta_time);
+
+                if is_key_pressed(KeyCode::Escape) {
+                    controls.clear_inputs();
+                    self.pause();
+                }
+                self.handle_inputs(controls);
+                self.handle_held_inputs(controls, delta_time);
                 // Apply "gravity" to move the current rustomino down the board
                 // or if it can't move lock it
                 self.gravity_time_accum += delta_time;
@@ -533,84 +505,109 @@ impl RustrisGame {
                     self.increase_game_level();
                 }
             }
-            GameState::GameOver => todo!(),
+            GameState::Paused => {
+                if is_key_pressed(KeyCode::Escape) {
+                    self.resume();
+                }
+            }
+            GameState::GameOver => {
+                if is_key_pressed(KeyCode::Enter) {
+                    self.play_again();
+                }
+            }
         }
         self.last_update = now;
     }
 
-    fn handle_inputs(&mut self, inputs: &mut GameInputs, delta_time: f64) {
+    fn pause(&mut self) {
+        self.game_state = GameState::Paused;
+    }
+
+    fn resume(&mut self) {
+        self.game_state = GameState::Playing;
+    }
+
+    fn play_again(&mut self) {
+        self.game_state = GameState::Playing;
+        self.board = RustrisBoard::new();
+        self.next_rustomino = None;
+        self.held_rustomino = None;
+        self.game_state = GameState::Playing;
+        self.score = 0;
+        self.game_level = 1;
+        self.hold_used = false;
+        self.rustomino_bag = Vec::new();
+        self.gravity_time_accum = 0.0;
+        self.gravity_delay = gravity_delay(1);
+        self.completed_lines = 0;
+        self.last_update = get_time();
+        self.get_next_rustomino();
+    }
+
+    fn handle_held_inputs(&mut self, controls: &mut ControlStates, delta_time: f64) {
         // check each input
-        for input in Inputs::iter() {
-            inputs
+        for input in Controls::iter() {
+            controls
                 .input_states
                 .entry(input.clone())
                 .and_modify(|e| match e {
-                    KeyState::Down(down_time) => {
+                    InputState::Down(down_time) => {
                         if let Some(action_delay) = input.action_delay_for_input() {
                             *down_time += delta_time;
                             if *down_time >= action_delay {
-                                *e = KeyState::Held(0.0);
+                                *e = InputState::Held(0.0);
                             }
                         }
                     }
-                    KeyState::Held(held_time) => {
+                    InputState::Held(held_time) => {
                         *held_time += delta_time;
                     }
                     _ => (),
                 });
-            if let Some(state) = inputs.input_states.get_mut(&input) {
-                match state {
-                    KeyState::Held(held_time) => {
-                        if let Some(action_repeat_delay) = input.action_repeat_delay_for_input() {
-                            if *held_time >= action_repeat_delay {
-                                *state = KeyState::Held(0.0);
-                                match input {
-                                    Inputs::Left => self.translate(TranslationDirection::Left),
-                                    Inputs::Right => self.translate(TranslationDirection::Right),
-                                    Inputs::RotateCW => self.rotate(RotationDirection::Cw),
-                                    Inputs::RotateCCW => self.rotate(RotationDirection::Ccw),
-                                    Inputs::SoftDrop => self.soft_drop(),
-                                    _ => (),
-                                }
+            if let Some(state) = controls.input_states.get_mut(&input) {
+                if let InputState::Held(held_time) = state {
+                    if let Some(action_repeat_delay) = input.action_repeat_delay_for_input() {
+                        if *held_time >= action_repeat_delay {
+                            *state = InputState::Held(0.0);
+                            match input {
+                                Controls::Left => self.translate(TranslationDirection::Left),
+                                Controls::Right => self.translate(TranslationDirection::Right),
+                                Controls::RotateCW => self.rotate(RotationDirection::Cw),
+                                Controls::RotateCCW => self.rotate(RotationDirection::Ccw),
+                                Controls::SoftDrop => self.soft_drop(),
+                                _ => (),
                             }
                         }
                     }
-                    _ => (),
                 }
             }
         }
     }
 
-    fn handle_keys(&mut self, inputs: &mut GameInputs) {
-        match self.game_state {
-            GameState::Menu => todo!(),
-            GameState::Playing => {
-                for (input, keys) in &inputs.input_map.clone() {
-                    for key in keys.iter().flatten() {
-                        if is_key_pressed(*key) {
-                            inputs
-                                .input_states
-                                .entry(input.clone())
-                                .and_modify(|e| *e = KeyState::Down(0.0));
-                            match input {
-                                Inputs::Left => self.translate(TranslationDirection::Left),
-                                Inputs::Right => self.translate(TranslationDirection::Right),
-                                Inputs::RotateCW => self.rotate(RotationDirection::Cw),
-                                Inputs::RotateCCW => self.rotate(RotationDirection::Ccw),
-                                Inputs::SoftDrop => self.soft_drop(),
-                                Inputs::HardDrop => self.hard_drop(),
-                                Inputs::Hold => self.hold(),
-                            }
-                        } else if is_key_released(*key) {
-                            inputs
-                                .input_states
-                                .entry(input.clone())
-                                .and_modify(|e| *e = KeyState::Up);
-                        }
+    fn handle_inputs(&mut self, inputs: &mut ControlStates) {
+        for (input, keys) in &inputs.input_map.clone() {
+            for key in keys.iter().flatten() {
+                if is_key_pressed(*key) {
+                    inputs
+                        .input_states
+                        .entry(input.clone())
+                        .and_modify(|e| *e = InputState::Down(0.0));
+                    match input {
+                        Controls::Left => self.translate(TranslationDirection::Left),
+                        Controls::Right => self.translate(TranslationDirection::Right),
+                        Controls::RotateCW => self.rotate(RotationDirection::Cw),
+                        Controls::RotateCCW => self.rotate(RotationDirection::Ccw),
+                        Controls::SoftDrop => self.soft_drop(),
+                        Controls::HardDrop => self.hard_drop(),
+                        Controls::Hold => self.hold(),
                     }
+                } else if is_key_released(*key) {
+                    inputs
+                        .input_states
+                        .entry(input.clone())
+                        .and_modify(|e| *e = InputState::Up);
                 }
             }
-            GameState::GameOver => todo!(),
         }
     }
 }

@@ -1,6 +1,5 @@
 use macroquad::{
     prelude::*,
-    rand::{gen_range, ChooseRandom},
 };
 
 use std::fmt::Display;
@@ -250,23 +249,23 @@ pub enum RustominoType {
 }
 
 impl RustominoType {
-    const I_COLOR: Color = Color::new(0.0, 0.9, 1.0, 1.0); // light blue
-    const O_COLOR: Color = Color::new(1.0, 0.87, 0.0, 1.0); // yellow
-    const T_COLOR: Color = Color::new(0.72, 0.01, 0.99, 1.0); // purple
-    const L_COLOR: Color = Color::new(1.0, 0.45, 0.03, 1.0); // orange
-    const J_COLOR: Color = Color::new(0.09, 0.0, 1.0, 1.0); // blue
-    const S_COLOR: Color = Color::new(0.4, 0.99, 0.0, 1.0); // green
-    const Z_COLOR: Color = Color::new(1.0, 0.06, 0.24, 1.0); // red
+    const CYAN: Color = Color::new(0.0, 0.9, 1.0, 1.0); 
+    const YELLOW: Color = Color::new(1.0, 0.87, 0.0, 1.0);
+    const PURPLE: Color = Color::new(0.72, 0.01, 0.99, 1.0);
+    const ORANGE: Color = Color::new(1.0, 0.45, 0.03, 1.0); 
+    const BLUE: Color = Color::new(0.09, 0.0, 1.0, 1.0); 
+    const GREEN: Color = Color::new(0.4, 0.99, 0.0, 1.0); 
+    const RED: Color = Color::new(1.0, 0.06, 0.24, 1.0); 
 
     pub fn color(&self) -> Color {
         match self {
-            RustominoType::I => RustominoType::I_COLOR,
-            RustominoType::O => RustominoType::O_COLOR,
-            RustominoType::T => RustominoType::T_COLOR,
-            RustominoType::L => RustominoType::L_COLOR,
-            RustominoType::J => RustominoType::J_COLOR,
-            RustominoType::S => RustominoType::S_COLOR,
-            RustominoType::Z => RustominoType::Z_COLOR,
+            RustominoType::I => RustominoType::CYAN,
+            RustominoType::O => RustominoType::YELLOW,
+            RustominoType::T => RustominoType::PURPLE,
+            RustominoType::L => RustominoType::ORANGE,
+            RustominoType::J => RustominoType::BLUE,
+            RustominoType::S => RustominoType::GREEN,
+            RustominoType::Z => RustominoType::RED,
         }
     }
 }
