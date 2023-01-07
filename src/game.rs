@@ -3,13 +3,11 @@ use crate::{
     rustomino::*,
     view::{self, ViewSettings},
 };
-use ::rand::seq::SliceRandom;
-use ::rand::SeedableRng;
 use std::collections::HashMap;
 use std::f64::consts::E;
 use strum::{EnumIter, IntoEnumIterator};
 
-use macroquad::prelude::*;
+use macroquad::{prelude::*, rand::ChooseRandom};
 
 const GRAVITY_NUMERATOR: f64 = 1.0; // how
 const GRAVITY_FACTOR: f64 = 2.0; // slow or increase gravity factor
@@ -173,9 +171,7 @@ pub struct RustrisGame {
     pub game_state: GameState,
     pub score: usize,
     pub game_level: usize,
-    inputs: GameInputs,
     rustomino_bag: Vec<RustominoType>,
-    rng: rand_xoshiro::Xoshiro256PlusPlus,
     gravity_time_accum: f64,
     gravity_delay: f64,
     completed_lines: usize,
@@ -194,13 +190,9 @@ impl RustrisGame {
             score: 0,
             game_level: 1,
             hold_set: false,
-            // rng: rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(DEBUG_RNG_SEED), // FOR DEBUGING
-            inputs: GameInputs::default(),
-            // input_controller: InputController::from (),
             rustomino_bag: Vec::new(),
-            rng: rand_xoshiro::Xoshiro256PlusPlus::from_entropy(),
             gravity_time_accum: 0.0,
-            gravity_delay: gravity_delay(1), // self.options.gravity_delay(game_level)
+            gravity_delay: gravity_delay(1),
             completed_lines: 0,
             last_update: get_time(),
             view_settings,
@@ -213,49 +205,6 @@ impl RustrisGame {
         self.fill_rustomino_bag();
         self.set_next_rustomino();
         self
-    }
-
-    fn handle_inputs(&mut self, delta_time: f64) {
-        // check each input
-        for input in Inputs::iter() {
-            self.inputs
-                .input_states
-                .entry(input.clone())
-                .and_modify(|e| match e {
-                    KeyState::Down(down_time) => {
-                        if let Some(action_delay) = input.action_delay_for_input() {
-                            *down_time += delta_time;
-                            if *down_time >= action_delay {
-                                *e = KeyState::Held(0.0);
-                            }
-                        }
-                    }
-                    KeyState::Held(held_time) => {
-                        *held_time += delta_time;
-                    }
-                    _ => (),
-                });
-            if let Some(state) = self.inputs.input_states.get_mut(&input) {
-                match state {
-                    KeyState::Held(held_time) => {
-                        if let Some(action_repeat_delay) = input.action_repeat_delay_for_input() {
-                            if *held_time >= action_repeat_delay {
-                                *state = KeyState::Held(0.0);
-                                match input {
-                                    Inputs::Left => self.translate(TranslationDirection::Left),
-                                    Inputs::Right => self.translate(TranslationDirection::Right),
-                                    Inputs::RotateCW => self.rotate(RotationDirection::Cw),
-                                    Inputs::RotateCCW => self.rotate(RotationDirection::Ccw),
-                                    Inputs::SoftDrop => self.soft_drop(),
-                                    _ => (),
-                                }
-                            }
-                        }
-                    }
-                    _ => (),
-                }
-            }
-        }
     }
 
     fn increase_game_level(&mut self) {
@@ -284,7 +233,7 @@ impl RustrisGame {
     fn fill_rustomino_bag(&mut self) {
         self.rustomino_bag
             .append(&mut RustominoType::iter().collect());
-        self.rustomino_bag.shuffle(&mut self.rng);
+        self.rustomino_bag.shuffle();
     }
 
     fn gravity_tick(&mut self) {
@@ -503,14 +452,7 @@ impl RustrisGame {
                     for block in ghost.board_slots() {
                         // draw the block
                         let rect = board_block_rect([block[0], block[1]], &self.view_settings);
-                        draw_rectangle_lines(
-                            rect.x,
-                            rect.y,
-                            rect.w,
-                            rect.h,
-                            2.0,
-                            view::GHOST_COLOR,
-                        );
+                        draw_rectangle_lines(rect.x, rect.y, rect.w, rect.h, 4., view::GHOST_COLOR);
                     }
                 }
             }
@@ -518,7 +460,44 @@ impl RustrisGame {
         }
     }
 
-    pub fn update(&mut self) {
+    pub fn draw_overlay(&mut self, text_params: &TextParams) {
+        draw_text_ex(
+            "Rustris",
+            self.view_settings.title_label_pos.x as f32,
+            self.view_settings.title_label_pos.y as f32,
+            *text_params,
+        );
+
+        draw_text_ex(
+            "Level:",
+            self.view_settings.level_label_pos.x as f32,
+            self.view_settings.level_label_pos.y as f32,
+            *text_params,
+        );
+
+        draw_text_ex(
+            &self.game_level.to_string(),
+            self.view_settings.level_pos.x as f32,
+            self.view_settings.level_pos.y as f32,
+            *text_params,
+        );
+
+        draw_text_ex(
+            "Score:",
+            self.view_settings.score_label_pos.x as f32,
+            self.view_settings.score_label_pos.y as f32,
+            *text_params,
+        );
+
+        draw_text_ex(
+            &self.score.to_string(),
+            self.view_settings.score_pos.x as f32,
+            self.view_settings.score_pos.y as f32,
+            *text_params,
+        );
+    }
+
+    pub fn update(&mut self, inputs: &mut GameInputs) {
         let now = get_time();
         let delta_time = now - self.last_update;
 
@@ -539,8 +518,8 @@ impl RustrisGame {
                         self.game_over();
                     }
                 }
-                self.handle_keys();
-                self.handle_inputs(delta_time);
+                self.handle_keys(inputs);
+                self.handle_inputs(inputs, delta_time);
                 // Apply "gravity" to move the current rustomino down the board
                 // or if it can't move lock it
                 self.gravity_time_accum += delta_time;
@@ -559,14 +538,57 @@ impl RustrisGame {
         self.last_update = now;
     }
 
-    fn handle_keys(&mut self) {
+    fn handle_inputs(&mut self, inputs: &mut GameInputs, delta_time: f64) {
+        // check each input
+        for input in Inputs::iter() {
+            inputs
+                .input_states
+                .entry(input.clone())
+                .and_modify(|e| match e {
+                    KeyState::Down(down_time) => {
+                        if let Some(action_delay) = input.action_delay_for_input() {
+                            *down_time += delta_time;
+                            if *down_time >= action_delay {
+                                *e = KeyState::Held(0.0);
+                            }
+                        }
+                    }
+                    KeyState::Held(held_time) => {
+                        *held_time += delta_time;
+                    }
+                    _ => (),
+                });
+            if let Some(state) = inputs.input_states.get_mut(&input) {
+                match state {
+                    KeyState::Held(held_time) => {
+                        if let Some(action_repeat_delay) = input.action_repeat_delay_for_input() {
+                            if *held_time >= action_repeat_delay {
+                                *state = KeyState::Held(0.0);
+                                match input {
+                                    Inputs::Left => self.translate(TranslationDirection::Left),
+                                    Inputs::Right => self.translate(TranslationDirection::Right),
+                                    Inputs::RotateCW => self.rotate(RotationDirection::Cw),
+                                    Inputs::RotateCCW => self.rotate(RotationDirection::Ccw),
+                                    Inputs::SoftDrop => self.soft_drop(),
+                                    _ => (),
+                                }
+                            }
+                        }
+                    }
+                    _ => (),
+                }
+            }
+        }
+    }
+
+    fn handle_keys(&mut self, inputs: &mut GameInputs) {
         match self.game_state {
             GameState::Menu => todo!(),
             GameState::Playing => {
-                for (input, keys) in &self.inputs.input_map.clone() {
+                for (input, keys) in &inputs.input_map.clone() {
                     for key in keys.iter().flatten() {
                         if is_key_pressed(*key) {
-                            self.inputs
+                            inputs
                                 .input_states
                                 .entry(input.clone())
                                 .and_modify(|e| *e = KeyState::Down(0.0));
@@ -580,7 +602,7 @@ impl RustrisGame {
                                 Inputs::Hold => self.hold(),
                             }
                         } else if is_key_released(*key) {
-                            self.inputs
+                            inputs
                                 .input_states
                                 .entry(input.clone())
                                 .and_modify(|e| *e = KeyState::Up);
@@ -593,151 +615,39 @@ impl RustrisGame {
     }
 }
 
-// pub fn draw(&mut self, controller: &RustrisGame) {
-//     clear(BACKGROUND_COLOR, g);
-
-//     match controller.game_state {
-//         crate::controller::GameState::Menu => {}
-//         crate::controller::GameState::Playing => {
-//             self.draw_playing_background(ctx, g);
-//             self.draw_playing_foreground(controller, ctx, g);
-//             self.draw_overlay(controller, ctx, g);
-//         }
-//         crate::controller::GameState::GameOver => {}
-//     }
-//     // playing game state would be
-//     // display the rustris board
-//     // display the score
-//     // display the level
-// }
-
-// fn draw_overlay(&mut self, controller: &RustrisGame) {
-//     text(
-//         [1.0, 1.0, 1.0, 1.0],
-//         18,
-//         "Rustris",
-//         &mut self.glyph_cache,
-//         ctx.transform.trans(
-//             self.settings.title_label_pos[0],
-//             self.settings.title_label_pos[1],
-//         ),
-//         g,
-//     )
-//     .expect("unable to render text");
-
-//     text(
-//         [1.0, 1.0, 1.0, 1.0],
-//         18,
-//         "Level:",
-//         &mut self.glyph_cache,
-//         ctx.transform.trans(
-//             self.settings.level_label_pos[0],
-//             self.settings.level_label_pos[1],
-//         ),
-//         g,
-//     )
-//     .expect("unable to render text");
-
-//     text(
-//         [1.0, 1.0, 1.0, 1.0],
-//         18,
-//         &controller.game_level.to_string(),
-//         &mut self.glyph_cache,
-//         ctx.transform
-//             .trans(self.settings.level_pos[0], self.settings.level_pos[1]),
-//         g,
-//     )
-//     .expect("unable to render text");
-
-//     text(
-//         [1.0, 1.0, 1.0, 1.0],
-//         18,
-//         "Score:",
-//         &mut self.glyph_cache,
-//         ctx.transform.trans(
-//             self.settings.score_label_pos[0],
-//             self.settings.score_label_pos[1],
-//         ),
-//         g,
-//     )
-//     .expect("unable to render text");
-
-//     text(
-//         [1.0, 1.0, 1.0, 1.0],
-//         18,
-//         &controller.score.to_string(),
-//         &mut self.glyph_cache,
-//         ctx.transform
-//             .trans(self.settings.score_pos[0], self.settings.score_pos[1]),
-//         g,
-//     )
-//     .expect("unable to render text");
-// }
-
-// fn draw_playing_foreground(&self, controller: &RustrisGame) {
-
-//     // draw the board state
-//     controller.board.draw(&self.settings, ctx, g);
-
-//     // draw next rustomino
-//     if let Some(rustomino) = controller.next_rustomino.as_ref() {
-//         for block in rustomino.blocks {
-//             // piece hold background
-//             Rectangle::new(rustomino_color(rustomino.rustomino_type)).draw(
-//                 next_block_rect(block, &self.settings),
-//                 &ctx.draw_state,
-//                 ctx.transform,
-//                 g,
-//             );
-//         }
-//     }
-
-//     // draw held rustomino
-//     if let Some(rustomino) = controller.hold_rustomino.as_ref() {
-//         for block in rustomino.blocks {
-//             // piece hold background
-//             Rectangle::new(rustomino_color(rustomino.rustomino_type)).draw(
-//                 hold_block_rect(block, &self.settings),
-//                 &ctx.draw_state,
-//                 ctx.transform,
-//                 g,
-//             );
-//         }
-//     }
-// }
-
 fn next_block_rect(block: [i32; 2], settings: &ViewSettings) -> Rect {
     // block[x,y] absolute units
     let x = settings.preview_rect.x
-        + (block[0] as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING))
+        + (block[0] as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING) as f32)
         + 1.0;
     // get bottom left of board_rect
     let y = settings.preview_rect.y + settings.preview_rect.h
-        - (block[1] as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING));
+        - (block[1] as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING) as f32);
 
-    Rect::new(x, y, view::BLOCK_SIZE, view::BLOCK_SIZE)
+    Rect::new(x, y, view::BLOCK_SIZE as f32, view::BLOCK_SIZE as f32)
 }
 
 fn hold_block_rect(block: [i32; 2], settings: &ViewSettings) -> Rect {
     // block[x,y] absolute units
-    let x =
-        settings.hold_rect.x + (block[0] as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING)) + 1.0;
+    let x = settings.hold_rect.x
+        + (block[0] as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING) as f32)
+        + 1.0;
     // get bottom left of board_rect
     let y = settings.hold_rect.y + settings.hold_rect.h
-        - (block[1] as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING));
+        - (block[1] as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING) as f32);
 
-    Rect::new(x, y, view::BLOCK_SIZE, view::BLOCK_SIZE)
+    Rect::new(x, y, view::BLOCK_SIZE as f32, view::BLOCK_SIZE as f32)
 }
 
 fn board_block_rect(block: [i32; 2], settings: &ViewSettings) -> Rect {
     // block[x,y] absolute units
     let x = settings.staging_rect.x
-        + (block[0] as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING))
+        + (block[0] as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING) as f32)
         + 1.0;
     // get bottom left of board_rect
     let y = settings.board_rect.y + settings.board_rect.h
-        - ((block[1] + 1) as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING))
+        - ((block[1] + 1) as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING) as f32)
         - 1.0;
 
-    Rect::new(x, y, view::BLOCK_SIZE, view::BLOCK_SIZE)
+    Rect::new(x, y, view::BLOCK_SIZE as f32, view::BLOCK_SIZE as f32)
 }

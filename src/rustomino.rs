@@ -1,5 +1,7 @@
-use ::rand::distributions::{Distribution, Standard};
-use macroquad::prelude::*;
+use macroquad::{
+    prelude::*,
+    rand::{gen_range, ChooseRandom},
+};
 
 use std::fmt::Display;
 use strum::EnumIter;
@@ -265,29 +267,6 @@ impl RustominoType {
             RustominoType::J => RustominoType::J_COLOR,
             RustominoType::S => RustominoType::S_COLOR,
             RustominoType::Z => RustominoType::Z_COLOR,
-        }
-    }
-}
-
-// use rand::distributions::{Distribution, Standard};
-// use rand::SeedableRng;
-// let mut rng = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(123);
-// let values: Vec<RustominoType> = Standard.sample_iter(&mut rng).take(50).collect();
-
-// println!("{:?}", values);
-
-/// Allow random generation for RustominoTypes
-impl Distribution<RustominoType> for Standard {
-    fn sample<R: ::rand::Rng + ?Sized>(&self, rng: &mut R) -> RustominoType {
-        match rng.gen_range(0..7) {
-            0 => RustominoType::I,
-            1 => RustominoType::O,
-            2 => RustominoType::T,
-            3 => RustominoType::L,
-            4 => RustominoType::J,
-            5 => RustominoType::S,
-            6 => RustominoType::Z,
-            _ => unreachable!(),
         }
     }
 }
