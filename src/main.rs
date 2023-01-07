@@ -1,13 +1,11 @@
 // #![windows_subsystem = "windows"]
-use macroquad::{
-    prelude::*, text::load_ttf_font, window::Conf,
-};
+use macroquad::{prelude::*, text::load_ttf_font, window::Conf};
 
 mod board;
+mod controls;
 mod game;
 mod rustomino;
 mod view;
-mod controls;
 
 const VIEW_DIMENSIONS: [i32; 2] = [1024, 768];
 const ASSETS_FOLDER: &str = "assets";
@@ -35,7 +33,9 @@ async fn main() {
 
     // load the font
     let font_path = assets_path.join("04b30.ttf");
-    let font = load_ttf_font(&font_path.to_string_lossy()).await.expect("unable to load UI font");
+    let font = load_ttf_font(&font_path.to_string_lossy())
+        .await
+        .expect("unable to load UI font");
 
     // setup parameters for drawing text
     let overlay_text_params = TextParams {
@@ -44,7 +44,7 @@ async fn main() {
         ..Default::default()
     };
 
-    // 
+    //
     let mut game = game::RustrisGame::new(
         board::RustrisBoard::new(),
         view::ViewSettings::new(VIEW_DIMENSIONS),
@@ -55,6 +55,7 @@ async fn main() {
     loop {
         clear_background(view::BACKGROUND_COLOR);
 
+        // draw_text_ex(&get_fps().to_string(), 100., 200., overlay_text_params);
         game.update(&mut controls);
         game.draw(&overlay_text_params);
 

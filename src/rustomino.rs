@@ -1,6 +1,4 @@
-use macroquad::{
-    prelude::*,
-};
+use macroquad::prelude::*;
 
 use std::fmt::Display;
 use strum::EnumIter;
@@ -249,13 +247,13 @@ pub enum RustominoType {
 }
 
 impl RustominoType {
-    const CYAN: Color = Color::new(0.0, 0.9, 1.0, 1.0); 
+    const CYAN: Color = Color::new(0.0, 0.9, 1.0, 1.0);
     const YELLOW: Color = Color::new(1.0, 0.87, 0.0, 1.0);
     const PURPLE: Color = Color::new(0.72, 0.01, 0.99, 1.0);
-    const ORANGE: Color = Color::new(1.0, 0.45, 0.03, 1.0); 
-    const BLUE: Color = Color::new(0.09, 0.0, 1.0, 1.0); 
-    const GREEN: Color = Color::new(0.4, 0.99, 0.0, 1.0); 
-    const RED: Color = Color::new(1.0, 0.06, 0.24, 1.0); 
+    const ORANGE: Color = Color::new(1.0, 0.45, 0.03, 1.0);
+    const BLUE: Color = Color::new(0.09, 0.0, 1.0, 1.0);
+    const GREEN: Color = Color::new(0.4, 0.99, 0.0, 1.0);
+    const RED: Color = Color::new(1.0, 0.06, 0.24, 1.0);
 
     pub fn color(&self) -> Color {
         match self {
