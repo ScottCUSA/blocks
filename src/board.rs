@@ -28,7 +28,7 @@ impl RustrisBoard {
     /// Adds a new rustomino to the board
     /// returns false if there was a collision
     /// while adding the block (game over)
-    pub fn add_new_rustomino(&mut self, rustomino: Rustomino) -> bool {
+    pub fn set_current_rustomino(&mut self, rustomino: Rustomino) -> bool {
         let ok = !self.check_collision(rustomino.board_slots());
         // slots[y][x]
         self.set_slot_states(rustomino.board_slots(), SlotState::Occupied);
