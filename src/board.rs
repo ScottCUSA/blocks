@@ -4,13 +4,15 @@ use macroquad::prelude::*;
 
 use crate::rustomino::{RotationDirection, Rustomino, RustominoType};
 
-pub(crate) const BOARD_SLOTS: [i32; 2] = [10, 22];
+pub(crate) const BOARD_SLOTS: [usize; 2] = [10, 22];
 pub(crate) const PLAYFIELD_SIZE: [i32; 2] = [10, 20];
+
+type BoardSlots = [[SlotState; BOARD_SLOTS[0]]; BOARD_SLOTS[1]];
 
 // RustrisBoard
 #[derive(Debug)]
 pub struct RustrisBoard {
-    pub(crate) slots: [[SlotState; BOARD_SLOTS[0] as usize]; BOARD_SLOTS[1] as usize],
+    pub(crate) slots: BoardSlots,
     pub(crate) current_rustomino: Option<Rustomino>,
     pub(crate) ghost_rustomino: Option<Rustomino>,
 }
@@ -19,7 +21,7 @@ impl RustrisBoard {
     pub fn new() -> Self {
         log::info!("Initializing Rustris Board");
         RustrisBoard {
-            slots: [[SlotState::Empty; BOARD_SLOTS[0] as usize]; BOARD_SLOTS[1] as usize],
+            slots: [[SlotState::Empty; BOARD_SLOTS[0]]; BOARD_SLOTS[1]],
             current_rustomino: None,
             ghost_rustomino: None,
         }
@@ -315,7 +317,7 @@ fn check_collision(
 ) -> bool {
     for location in block_locations {
         // check for left and right wall collisions
-        if location[0] < 0 || location[0] >= BOARD_SLOTS[0] {
+        if location[0] < 0 || location[0] >= BOARD_SLOTS[0] as i32 {
             log::debug!("collided with left/right wall: {:?}", block_locations);
             return true;
         }
