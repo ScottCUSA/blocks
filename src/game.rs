@@ -208,36 +208,28 @@ impl RustrisGame {
             return;
         }
         self.completed_lines += completed_lines.len();
-        self.score_completed_lines(completed_lines);
+        log::info!("number of completed lines: {}", self.completed_lines);
+        self.score_completed_lines(completed_lines.len());
+        // increase the game level every LINES_PER_LEVEL
+        if self.completed_lines >= self.game_level * LINES_PER_LEVEL {
+            self.increase_game_level();
+        }
     }
 
-    fn score_completed_lines(&mut self, completed_lines: Vec<usize>) {
+    fn score_completed_lines(&mut self, num_completed_lines: usize) {
         // Single line 100xlevel
         // Double line 300xlevel
         // Triple line 500xlevel
         // Rustris (4 lines) 800xlevel
-        let score = match completed_lines.len() {
-            1 => {
-                log::info!("scored! single line");
-                SINGLE_LINE_SCORE
-            }
-            2 => {
-                log::info!("scored! double line");
-                DOUBLE_LINE_SCORE
-            }
-            3 => {
-                log::info!("scored! triple line");
-                TRIPLE_LINE_SCORE
-            }
-            4 => {
-                log::info!("scored! rustris");
-                RUSTRIS_SCORE
-            }
+        let score = match num_completed_lines {
+            1 => SINGLE_LINE_SCORE,
+            2 => DOUBLE_LINE_SCORE,
+            3 => TRIPLE_LINE_SCORE,
+            4 => RUSTRIS_SCORE,
             _ => {
-                panic!("shouldn't be able to score more than 4 lines")
+                panic!("impossibru")
             }
-        };
-        let score = score * self.game_level;
+        } * self.game_level;
         self.score += score;
         log::info!(
             "scored! game_level: {} score: {} total score: {}",
@@ -311,11 +303,6 @@ impl RustrisGame {
                 if self.gravity_time_accum >= self.gravity_delay {
                     self.gravity_time_accum = 0.0;
                     self.gravity_tick();
-                }
-
-                // increase the game level every LINES_PER_LEVEL
-                if self.completed_lines > self.game_level * LINES_PER_LEVEL {
-                    self.increase_game_level();
                 }
             }
             GameState::Paused => {
