@@ -1,6 +1,7 @@
 use macroquad::prelude::*;
 
 use crate::board::{self, RustrisBoard, SlotState};
+use crate::game::{self, RustrisGame};
 use crate::rustomino::{Rustomino, RustominoType};
 use crate::VIEW_DIMENSIONS;
 
@@ -78,6 +79,34 @@ impl ViewSettings {
             title_pos: ivec2(board_x - 280, board_y - 50),
             level_pos: ivec2(board_x - 60, board_y + board_h - 30),
             score_pos: ivec2(board_x + board_w + 150, board_y + board_h - 30),
+        }
+    }
+}
+
+pub fn draw(game: &RustrisGame, font_20pt: &TextParams, font_30pt: &TextParams) {
+    match game.game_state {
+        game::GameState::Menu => {
+            draw_playing_backgound();
+            draw_menu(font_30pt);
+            draw_help_text(font_30pt, font_20pt);
+        }
+        game::GameState::Playing => {
+            draw_playing_backgound();
+            draw_playing(&game.board, &game.next_rustomino, &game.held_rustomino);
+            draw_playing_overlay(font_20pt, game.game_level, game.score);
+        }
+        game::GameState::Paused => {
+            draw_playing_backgound();
+            draw_playing(&game.board, &game.next_rustomino, &game.held_rustomino);
+            draw_playing_overlay(font_20pt, game.game_level, game.score);
+            draw_paused(font_30pt);
+            draw_help_text(font_30pt, font_20pt);
+        }
+        game::GameState::GameOver => {
+            draw_playing_backgound();
+            draw_playing(&game.board, &game.next_rustomino, &game.held_rustomino);
+            draw_playing_overlay(font_20pt, game.game_level, game.score);
+            draw_gameover(font_30pt)
         }
     }
 }
@@ -215,12 +244,6 @@ pub fn draw_paused(text_params: &TextParams) {
 }
 
 pub fn draw_menu(text_params: &TextParams) {
-    let text = TextParams {
-        font: text_params.font,
-        font_size: 30,
-        color: RustominoType::I.color(),
-        ..Default::default()
-    };
     draw_rectangle(
         0.,
         0.,
