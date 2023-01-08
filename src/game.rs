@@ -4,10 +4,11 @@ use crate::{
     rustomino::*,
     view,
 };
+use ::rand::{seq::SliceRandom, SeedableRng};
 use std::f64::consts::E;
 use strum::IntoEnumIterator;
 
-use macroquad::{prelude::*, rand::ChooseRandom};
+use macroquad::prelude::*;
 
 const GRAVITY_NUMERATOR: f64 = 1.0; // how
 const GRAVITY_FACTOR: f64 = 2.0; // slow or increase gravity factor
@@ -45,6 +46,7 @@ pub struct RustrisGame {
     pub score: usize,
     pub game_level: usize,
     rustomino_bag: Vec<RustominoType>,
+    rng: rand_xoshiro::Xoshiro256PlusPlus,
     gravity_time_accum: f64,
     gravity_delay: f64,
     completed_lines: usize,
@@ -59,6 +61,7 @@ impl RustrisGame {
             next_rustomino: None,
             held_rustomino: None,
             game_state: GameState::Menu, // GameState::Menu,
+            rng: rand_xoshiro::Xoshiro256PlusPlus::from_entropy(),
             score: 0,
             game_level: 1,
             hold_used: false,
@@ -108,7 +111,7 @@ impl RustrisGame {
         }
         self.rustomino_bag
             .append(&mut RustominoType::iter().collect());
-        self.rustomino_bag.shuffle();
+        self.rustomino_bag.shuffle(&mut self.rng);
         log::debug!("filled rustomino bag: {:?}", self.rustomino_bag);
     }
 
