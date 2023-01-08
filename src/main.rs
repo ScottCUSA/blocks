@@ -1,4 +1,4 @@
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 use macroquad::{
     audio::{load_sound, play_sound, PlaySoundParams},
@@ -27,6 +27,10 @@ fn window_conf() -> Conf {
     }
 }
 
+// TODO: implement move reset lock down
+// https://tetris.wiki/Tetris_Guideline
+// TODO: implement rotation wall kicks
+
 #[macroquad::main(window_conf())]
 async fn main() {
     // initialize the debug logger
@@ -45,21 +49,6 @@ async fn main() {
         .await
         .expect("unable to load UI font");
 
-    log::info!("Loading font: {:?}", font_path);
-
-    // load the background
-
-    let background_path = assets_path.join("background1.wav");
-    let background = load_sound(&background_path.to_string_lossy())
-        .await
-        .expect("unable to load background music");
-
-    // let background_path = assets_path.join("background2.wav");
-    // log::info!("Loading background music: {:?}", background_path);
-    // let background = load_sound(&background_path.to_string_lossy())
-    //     .await
-    //     .expect("unable to load background music");
-
     // setup parameters for drawing text
     let font_20pt = TextParams {
         font,
@@ -74,10 +63,25 @@ async fn main() {
         ..Default::default()
     };
 
-    //
-    let mut game = game::RustrisGame::new(board::RustrisBoard::new());
+    log::info!("Loading font: {:?}", font_path);
 
+    let mut game = game::RustrisGame::new(board::RustrisBoard::new());
     let mut controls = controls::ControlStates::default();
+
+    // load the background music
+
+    // let background_path = assets_path.join("background1.wav");
+    // let background = load_sound(&background_path.to_string_lossy())
+    //     .await
+    //     .expect("unable to load background music");
+
+    let background_path = assets_path.join("background.ogg");
+    log::info!("Loading background music: {:?}", background_path);
+    let background = load_sound(&background_path.to_string_lossy())
+        .await
+        .expect("unable to load background music");
+
+    //
 
     play_sound(
         background,
