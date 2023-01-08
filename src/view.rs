@@ -32,8 +32,9 @@ pub struct ViewSettings {
 
 impl ViewSettings {
     const fn new(view_dimensions: [i32; 2]) -> Self {
-        let board_w = (board::BOARD_SLOTS[0] * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
-        let board_h = ((board::BOARD_SLOTS[1] - 2) * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
+        let board_w = (board::BOARD_SLOTS[0] as i32 * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
+        let board_h =
+            ((board::BOARD_SLOTS[1] as i32 - 2) * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
         let staging_w = board_w;
         let staging_h = (2 * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
         let preview_w = (4 * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
