@@ -1,20 +1,16 @@
 use crate::{
     board::{RustrisBoard, TranslationDirection},
-    controls::{ControlStates, Controls, InputState},
+    controls::ControlStates,
     rustomino::*,
-    view, BACKGROUND_MUSIC_VOL,
 };
 use ::rand::{seq::SliceRandom, SeedableRng};
 use std::f64::consts::E;
 use strum::IntoEnumIterator;
 
-use macroquad::{
-    audio::{set_sound_volume, Sound},
-    prelude::*,
-};
+use macroquad::prelude::*;
 
 const GRAVITY_NUMERATOR: f64 = 1.0; // how
-const GRAVITY_FACTOR: f64 = 2.0; // slow or increase gravity factor
+const GRAVITY_FACTOR: f64 = 4.0; // slow or increase gravity factor
 const LINES_PER_LEVEL: usize = 10; // how many blocks between levels (should this be score based?)
 
 // const DEBUG_RNG_SEED: u64 = 123456789; // for debugging RNG
@@ -25,7 +21,6 @@ const SINGLE_LINE_SCORE: usize = 100;
 const DOUBLE_LINE_SCORE: usize = 300;
 const TRIPLE_LINE_SCORE: usize = 500;
 const RUSTRIS_SCORE: usize = 800;
-const MUSIC_VOLUME_CHANGE: f32 = 0.025;
 
 pub enum GameState {
     Menu,
@@ -56,7 +51,6 @@ pub struct RustrisGame {
     completed_lines: usize,
     last_update: f64,
     hold_used: bool,
-    music_volume: f32,
 }
 
 impl RustrisGame {
@@ -75,7 +69,6 @@ impl RustrisGame {
             gravity_delay: gravity_delay(1),
             completed_lines: 0,
             last_update: get_time(),
-            music_volume: BACKGROUND_MUSIC_VOL,
         }
         .init()
     }
@@ -149,22 +142,22 @@ impl RustrisGame {
         self.handle_completed_lines();
     }
 
-    fn translate(&mut self, direction: TranslationDirection) {
+    pub fn translate(&mut self, direction: TranslationDirection) {
         self.board.translate_current(direction);
     }
 
-    fn rotate(&mut self, direction: RotationDirection) {
+    pub fn rotate(&mut self, direction: RotationDirection) {
         self.board.rotate_current(direction);
     }
 
-    fn soft_drop(&mut self) {
+    pub fn soft_drop(&mut self) {
         if !self.board.translate_current(TranslationDirection::Down) {
             self.lock("soft drop");
         }
         self.gravity_time_accum = 0.0;
     }
 
-    fn hard_drop(&mut self) {
+    pub fn hard_drop(&mut self) {
         self.board.hard_drop();
         self.lock("hard drop");
         self.gravity_time_accum = 0.0;
@@ -176,7 +169,7 @@ impl RustrisGame {
     // If a rustomino is already held, this rustomino is added to the board,
     // and the current rustomino is held
     // The player can't use the hold action again until the current rustomino is locked
-    fn hold(&mut self) {
+    pub fn hold(&mut self) {
         // check to see if the player has used the hold action
         // and they haven't yet locked the rustomino they took
         if self.hold_used {
@@ -245,115 +238,17 @@ impl RustrisGame {
         )
     }
 
-    pub fn draw(&self, font_20pt: &TextParams, font_30pt: &TextParams) {
-        match self.game_state {
-            GameState::Menu => {
-                view::draw_playing_backgound();
-                view::draw_menu(font_30pt);
-                view::draw_help_text(font_30pt, font_20pt);
-            }
-            GameState::Playing => {
-                view::draw_playing_backgound();
-                view::draw_playing(&self.board, &self.next_rustomino, &self.held_rustomino);
-                view::draw_playing_overlay(font_20pt, self.game_level, self.score);
-            }
-            GameState::Paused => {
-                view::draw_playing_backgound();
-                view::draw_playing(&self.board, &self.next_rustomino, &self.held_rustomino);
-                view::draw_playing_overlay(font_20pt, self.game_level, self.score);
-                view::draw_paused(font_30pt);
-                view::draw_help_text(font_30pt, font_20pt);
-            }
-            GameState::GameOver => {
-                view::draw_playing_backgound();
-                view::draw_playing(&self.board, &self.next_rustomino, &self.held_rustomino);
-                view::draw_playing_overlay(font_20pt, self.game_level, self.score);
-                view::draw_gameover(font_30pt)
-            }
-        }
-    }
-
-    pub fn update(&mut self, background_music: Sound, controls: &mut ControlStates) {
-        let now = get_time();
-        let delta_time = now - self.last_update;
-
-        if is_key_pressed(KeyCode::Minus) || is_key_pressed(KeyCode::KpSubtract) {
-            self.music_volume -= MUSIC_VOLUME_CHANGE;
-            self.music_volume = clamp(self.music_volume, 0.0, 1.0);
-            set_sound_volume(background_music, self.music_volume);
-            log::debug!("volume decrease {}", self.music_volume);
-        }
-
-        if is_key_pressed(KeyCode::Equal) || is_key_pressed(KeyCode::KpAdd) {
-            self.music_volume += MUSIC_VOLUME_CHANGE;
-            self.music_volume = clamp(self.music_volume, 0.0, 1.0);
-            set_sound_volume(background_music, self.music_volume);
-            log::debug!("volume increase {}", self.music_volume);
-        }
-
-        match self.game_state {
-            GameState::Menu => {
-                if is_key_pressed(KeyCode::Enter) {
-                    self.resume();
-                }
-            }
-            GameState::Playing => {
-                // check board ready for the next rustomino
-                if self.board.ready_for_next() {
-                    // TODO: move this whole block to a fn
-                    // take the next rustomino
-                    // unwrap should be safe here
-                    let current_rustomino = self.next_rustomino.take().unwrap();
-                    // we used next_rustomino so we need to replace it
-                    self.get_next_rustomino();
-                    // add the next rustomino to the board
-                    // game over if it can't be placed without a collision
-                    if !self.board.set_current_rustomino(current_rustomino) {
-                        self.game_over();
-                    }
-                }
-
-                if is_key_pressed(KeyCode::Escape) {
-                    controls.clear_inputs();
-                    self.pause();
-                }
-                self.handle_inputs(controls);
-                self.handle_held_inputs(controls, delta_time);
-                // Apply "gravity" to move the current rustomino down the board
-                // or if it can't move lock it
-                self.gravity_time_accum += delta_time;
-                if self.gravity_time_accum >= self.gravity_delay {
-                    self.gravity_time_accum = 0.0;
-                    self.gravity_tick();
-                }
-            }
-            GameState::Paused => {
-                if is_key_pressed(KeyCode::Escape) {
-                    controls.clear_inputs();
-                    self.resume();
-                }
-            }
-            GameState::GameOver => {
-                if is_key_pressed(KeyCode::Enter) {
-                    controls.clear_inputs();
-                    self.play_again();
-                }
-            }
-        }
-        self.last_update = now;
-    }
-
-    fn pause(&mut self) {
+    pub fn pause(&mut self) {
         log::info!("game paused");
         self.game_state = GameState::Paused;
     }
 
-    fn resume(&mut self) {
+    pub fn resume(&mut self) {
         log::info!("game resumed");
         self.game_state = GameState::Playing;
     }
 
-    fn play_again(&mut self) {
+    pub fn play_again(&mut self) {
         log::info!("starting new game");
         self.game_state = GameState::Playing;
         self.board = RustrisBoard::new();
@@ -371,70 +266,48 @@ impl RustrisGame {
         self.get_next_rustomino();
     }
 
-    fn handle_held_inputs(&mut self, controls: &mut ControlStates, delta_time: f64) {
-        // check each input
-        for input in Controls::iter() {
-            controls
-                .input_states
-                .entry(input.clone())
-                .and_modify(|e| match e {
-                    InputState::Down(down_time) => {
-                        if let Some(action_delay) = input.action_delay_for_input() {
-                            *down_time += delta_time;
-                            if *down_time >= action_delay {
-                                *e = InputState::Held(0.0);
-                            }
-                        }
-                    }
-                    InputState::Held(held_time) => {
-                        *held_time += delta_time;
-                    }
-                    _ => (),
-                });
-            if let Some(state) = controls.input_states.get_mut(&input) {
-                if let InputState::Held(held_time) = state {
-                    if let Some(action_repeat_delay) = input.action_repeat_delay_for_input() {
-                        if *held_time >= action_repeat_delay {
-                            *state = InputState::Held(0.0);
-                            match input {
-                                Controls::Left => self.translate(TranslationDirection::Left),
-                                Controls::Right => self.translate(TranslationDirection::Right),
-                                Controls::RotateCW => self.rotate(RotationDirection::Cw),
-                                Controls::RotateCCW => self.rotate(RotationDirection::Ccw),
-                                Controls::SoftDrop => self.soft_drop(),
-                                _ => (),
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    pub fn update(&mut self, controls: &mut ControlStates) {
+        let now = get_time();
+        let delta_time = now - self.last_update;
 
-    fn handle_inputs(&mut self, inputs: &mut ControlStates) {
-        for (input, keys) in &inputs.input_map.clone() {
-            for key in keys.iter().flatten() {
-                if is_key_pressed(*key) {
-                    inputs
-                        .input_states
-                        .entry(input.clone())
-                        .and_modify(|e| *e = InputState::Down(0.0));
-                    match input {
-                        Controls::Left => self.translate(TranslationDirection::Left),
-                        Controls::Right => self.translate(TranslationDirection::Right),
-                        Controls::RotateCW => self.rotate(RotationDirection::Cw),
-                        Controls::RotateCCW => self.rotate(RotationDirection::Ccw),
-                        Controls::SoftDrop => self.soft_drop(),
-                        Controls::HardDrop => self.hard_drop(),
-                        Controls::Hold => self.hold(),
+        match self.game_state {
+            GameState::Menu => {
+                controls.handle_menu_inputs(self);
+            }
+            GameState::Playing => {
+                // check board ready for the next rustomino
+                if self.board.ready_for_next() {
+                    // TODO: move this whole block to a fn
+                    // take the next rustomino
+                    // unwrap should be safe here
+                    let current_rustomino = self.next_rustomino.take().unwrap();
+                    // we used next_rustomino so we need to replace it
+                    self.get_next_rustomino();
+                    // add the next rustomino to the board
+                    // game over if it can't be placed without a collision
+                    if !self.board.set_current_rustomino(current_rustomino) {
+                        self.game_over();
                     }
-                } else if is_key_released(*key) {
-                    inputs
-                        .input_states
-                        .entry(input.clone())
-                        .and_modify(|e| *e = InputState::Up);
+                }
+
+                controls.handle_playing_inputs(self);
+                controls.handle_held_playing_inputs(self, delta_time);
+
+                // Apply "gravity" to move the current rustomino down the board
+                // or if it can't move lock it
+                self.gravity_time_accum += delta_time;
+                if self.gravity_time_accum >= self.gravity_delay {
+                    self.gravity_time_accum = 0.0;
+                    self.gravity_tick();
                 }
             }
+            GameState::Paused => {
+                controls.handle_paused_inputs(self);
+            }
+            GameState::GameOver => {
+                controls.handle_game_over_inputs(self);
+            }
         }
+        self.last_update = now;
     }
 }

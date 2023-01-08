@@ -1,7 +1,12 @@
 use std::collections::HashMap;
 
-use macroquad::prelude::KeyCode;
+use macroquad::{
+    audio::{set_sound_volume, Sound},
+    prelude::*,
+};
 use strum::{EnumIter, IntoEnumIterator};
+
+use crate::{board::TranslationDirection, game::RustrisGame, rustomino::RotationDirection};
 
 // default control settings
 const LEFT_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Left), Some(KeyCode::A)];
@@ -18,6 +23,9 @@ const TRANSLATE_ACTION_REPEAT_DELAY: f64 = 0.030;
 
 const ROTATE_ACTION_DELAY: f64 = 0.14;
 const ROTATE_ACTION_REPEAT_DELAY: f64 = 0.2;
+
+// volume change amount per key press
+const MUSIC_VOLUME_CHANGE: f32 = 0.025;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputState {
@@ -140,5 +148,117 @@ impl ControlStates {
                 .entry(input.clone())
                 .and_modify(|e| *e = InputState::Up);
         }
+    }
+
+    pub fn handle_held_playing_inputs(&mut self, game: &mut RustrisGame, delta_time: f64) {
+        // check each input
+        for input in Controls::iter() {
+            self.input_states
+                .entry(input.clone())
+                .and_modify(|e| match e {
+                    InputState::Down(down_time) => {
+                        if let Some(action_delay) = input.action_delay_for_input() {
+                            *down_time += delta_time;
+                            if *down_time >= action_delay {
+                                *e = InputState::Held(0.0);
+                            }
+                        }
+                    }
+                    InputState::Held(held_time) => {
+                        *held_time += delta_time;
+                    }
+                    _ => (),
+                });
+            if let Some(state) = self.input_states.get_mut(&input) {
+                if let InputState::Held(held_time) = state {
+                    if let Some(action_repeat_delay) = input.action_repeat_delay_for_input() {
+                        if *held_time >= action_repeat_delay {
+                            *state = InputState::Held(0.0);
+                            match input {
+                                Controls::Left => game.translate(TranslationDirection::Left),
+                                Controls::Right => game.translate(TranslationDirection::Right),
+                                Controls::RotateCW => game.rotate(RotationDirection::Cw),
+                                Controls::RotateCCW => game.rotate(RotationDirection::Ccw),
+                                Controls::SoftDrop => game.soft_drop(),
+                                _ => (),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn handle_playing_inputs(&mut self, game: &mut RustrisGame) {
+        if is_key_pressed(KeyCode::Escape) {
+            self.clear_inputs();
+            game.pause();
+        }
+
+        for (input, keys) in &self.input_map.clone() {
+            for key in keys.iter().flatten() {
+                if is_key_pressed(*key) {
+                    self.input_states
+                        .entry(input.clone())
+                        .and_modify(|e| *e = InputState::Down(0.0));
+                    match input {
+                        Controls::Left => game.translate(TranslationDirection::Left),
+                        Controls::Right => game.translate(TranslationDirection::Right),
+                        Controls::RotateCW => game.rotate(RotationDirection::Cw),
+                        Controls::RotateCCW => game.rotate(RotationDirection::Ccw),
+                        Controls::SoftDrop => game.soft_drop(),
+                        Controls::HardDrop => {
+                            self.clear_inputs();
+                            game.hard_drop();
+                        }
+                        Controls::Hold => {
+                            self.clear_inputs();
+                            game.hold();
+                        }
+                    }
+                } else if is_key_released(*key) {
+                    self.input_states
+                        .entry(input.clone())
+                        .and_modify(|e| *e = InputState::Up);
+                }
+            }
+        }
+    }
+
+    pub fn handle_paused_inputs(&mut self, game: &mut RustrisGame) {
+        if is_key_pressed(KeyCode::Escape) {
+            self.clear_inputs();
+            game.pause();
+        }
+    }
+
+    pub fn handle_game_over_inputs(&mut self, game: &mut RustrisGame) {
+        if is_key_pressed(KeyCode::Enter) {
+            self.clear_inputs();
+            game.play_again();
+        }
+    }
+
+    pub fn handle_menu_inputs(&mut self, game: &mut RustrisGame) {
+        if is_key_pressed(KeyCode::Enter) {
+            game.resume();
+        }
+    }
+}
+
+pub fn handle_global_controls(background_music: &Sound, music_volume: &mut f32) {
+    // allow control of the game volume
+    if is_key_pressed(KeyCode::Minus) || is_key_pressed(KeyCode::KpSubtract) {
+        *music_volume -= MUSIC_VOLUME_CHANGE;
+        *music_volume = music_volume.clamp(0.0, 1.0);
+        set_sound_volume(*background_music, *music_volume);
+        log::debug!("volume decrease {}", music_volume);
+    }
+
+    if is_key_pressed(KeyCode::Equal) || is_key_pressed(KeyCode::KpAdd) {
+        *music_volume += MUSIC_VOLUME_CHANGE;
+        *music_volume = music_volume.clamp(0.0, 1.0);
+        set_sound_volume(*background_music, *music_volume);
+        log::debug!("volume increase {}", music_volume);
     }
 }
