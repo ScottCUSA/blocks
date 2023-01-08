@@ -1,7 +1,7 @@
-#![windows_subsystem = "windows"]
+// #![windows_subsystem = "windows"]
 
 use macroquad::{
-    audio::{load_sound, play_sound, PlaySoundParams},
+    audio::{load_sound, play_sound, set_sound_volume, PlaySoundParams},
     prelude::*,
     text::load_ttf_font,
     window::Conf,
@@ -15,6 +15,7 @@ mod view;
 
 const VIEW_DIMENSIONS: [i32; 2] = [1024, 768];
 const ASSETS_FOLDER: &str = "assets";
+const BACKGROUND_MUSIC_VOL: f32 = 0.25;
 
 fn window_conf() -> Conf {
     Conf {
@@ -30,18 +31,21 @@ fn window_conf() -> Conf {
 async fn main() {
     // initialize the debug logger
     env_logger::init_from_env("RUSTRIS_LOG_LEVEL");
-    log::info!("Startup: Initializing Rustris");
+    log::info!("Startup: Initializing Rustris;");
 
     // find our assets path
     let assets_path = find_folder::Search::ParentsThenKids(2, 2)
         .for_folder(ASSETS_FOLDER)
         .expect("unable to find assets folder");
 
+    log::info!("Loading Resources");
     // load the font
     let font_path = assets_path.join("04b30.ttf");
     let font = load_ttf_font(&font_path.to_string_lossy())
         .await
         .expect("unable to load UI font");
+
+    log::info!("Loading font: {:?}", font_path);
 
     // load the background
 
@@ -51,6 +55,7 @@ async fn main() {
     //     .expect("unable to load background music");
 
     let background2_path = assets_path.join("background2.wav");
+    log::info!("Loading background music: {:?}", background2_path);
     let background2 = load_sound(&background2_path.to_string_lossy())
         .await
         .expect("unable to load background music");
@@ -78,14 +83,21 @@ async fn main() {
         background2,
         PlaySoundParams {
             looped: true,
-            volume: 0.5,
+            volume: BACKGROUND_MUSIC_VOL,
         },
     );
+    log::info!("Playing background music at volume: {BACKGROUND_MUSIC_VOL}");
 
     loop {
         clear_background(view::BACKGROUND_COLOR);
 
-        // draw_text_ex(&get_fps().to_string(), 100., 200., overlay_text_params);
+        // draw FPS
+        // draw_text_ex(
+        //     &get_fps().to_string(),
+        //     VIEW_DIMENSIONS[0] as f32 - 100.,
+        //     50.,
+        //     font_22pt,
+        // );
         game.update(&mut controls);
         game.draw(&font_22pt, &font_30pt);
 
