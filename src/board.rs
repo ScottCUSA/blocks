@@ -32,7 +32,7 @@ impl RustrisBoard {
     /// while adding the block (game over)
     pub fn set_current_rustomino(&mut self, rustomino: Rustomino) -> bool {
         log::debug!("setting current rustomino: {:?}", rustomino);
-        let ok = !check_collision(&mut self.slots, rustomino.board_slots());
+        let ok = !check_collision(&self.slots, rustomino.board_slots());
         set_board_slot_states(
             &mut self.slots,
             &rustomino.board_slots(),
@@ -170,7 +170,7 @@ impl RustrisBoard {
                 break;
             }
             for (x, slot) in slots_x.iter_mut().enumerate() {
-                *slot = slots_before_clear[y + num_completed_lines as usize][x];
+                *slot = slots_before_clear[y + num_completed_lines][x];
             }
         }
         self.update_ghost_rustomino(false);
@@ -184,7 +184,7 @@ impl RustrisBoard {
             let rotated_blocks = current_rustomino.rotated(&direction);
 
             // check to see if the translation would cause a collision with a locked block
-            if check_collision(&mut self.slots, rotated_blocks) {
+            if check_collision(&self.slots, rotated_blocks) {
                 log::debug!("rotation collision detected: {:?}", rotated_blocks);
                 return false;
             }
@@ -209,7 +209,7 @@ impl RustrisBoard {
         if let Some(current_rustomino) = self.current_rustomino.as_mut() {
             // check to see if the translation would cause a collision with a locked block
             if check_collision(
-                &mut self.slots,
+                &self.slots,
                 current_rustomino.translated(direction.get_translation()),
             ) {
                 return false;
@@ -232,7 +232,7 @@ impl RustrisBoard {
 
     pub fn update_ghost_rustomino(&mut self, translating: bool) {
         if let Some(current_rustomino) = &self.current_rustomino {
-            let drop_translation = get_hard_drop_translation(&self.slots, &current_rustomino);
+            let drop_translation = get_hard_drop_translation(&self.slots, current_rustomino);
             if let Some(ghost_rustomino) = self.ghost_rustomino.as_mut() {
                 if translating {
                     for slot in ghost_rustomino.board_slots() {
@@ -276,7 +276,7 @@ impl RustrisBoard {
 
     pub fn hard_drop(&mut self) {
         if let Some(current_rustomino) = self.current_rustomino.as_mut() {
-            let delta = get_hard_drop_translation(&self.slots, &current_rustomino);
+            let delta = get_hard_drop_translation(&self.slots, current_rustomino);
             set_board_slot_states(
                 &mut self.slots,
                 &current_rustomino.board_slots(),
@@ -287,14 +287,11 @@ impl RustrisBoard {
     }
 }
 
-fn get_hard_drop_translation(
-    board_slots: &[[SlotState; BOARD_SLOTS[0] as usize]; BOARD_SLOTS[1] as usize],
-    rustomino: &Rustomino,
-) -> IVec2 {
+fn get_hard_drop_translation(board_slots: &BoardSlots, rustomino: &Rustomino) -> IVec2 {
     let mut translation = TranslationDirection::DOWN_TRANSLATION;
 
     // if we can't move it down without colliding the delta is 0
-    if check_collision(&board_slots, rustomino.translated(translation)) {
+    if check_collision(board_slots, rustomino.translated(translation)) {
         return IVec2::ZERO;
     }
 
@@ -302,8 +299,8 @@ fn get_hard_drop_translation(
     // the last non-coliding translation
     loop {
         let good_translation = translation;
-        translation = translation + TranslationDirection::DOWN_TRANSLATION;
-        if check_collision(&board_slots, rustomino.translated(translation)) {
+        translation += TranslationDirection::DOWN_TRANSLATION;
+        if check_collision(board_slots, rustomino.translated(translation)) {
             return good_translation;
         }
     }
@@ -311,10 +308,7 @@ fn get_hard_drop_translation(
 
 /// check to see if the provided block locations collide with other locked blocks
 /// or with walls
-fn check_collision(
-    board_slots: &[[SlotState; BOARD_SLOTS[0] as usize]; BOARD_SLOTS[1] as usize],
-    block_locations: [IVec2; 4],
-) -> bool {
+fn check_collision(board_slots: &BoardSlots, block_locations: [IVec2; 4]) -> bool {
     for location in block_locations {
         // check for left and right wall collisions
         if location[0] < 0 || location[0] >= BOARD_SLOTS[0] as i32 {
@@ -338,7 +332,7 @@ fn check_collision(
 }
 
 fn translate_rustomino(
-    board_slots: &mut [[SlotState; BOARD_SLOTS[0] as usize]; BOARD_SLOTS[1] as usize],
+    board_slots: &mut BoardSlots,
     new_state: SlotState,
     rustomino: &mut Rustomino,
     translation: IVec2,
@@ -352,7 +346,7 @@ fn translate_rustomino(
 }
 
 fn rotate_rustomino(
-    board_slots: &mut [[SlotState; BOARD_SLOTS[0] as usize]; BOARD_SLOTS[1] as usize],
+    board_slots: &mut BoardSlots,
     new_state: SlotState,
     rustomino: &mut Rustomino,
     rotation: &RotationDirection,
@@ -366,7 +360,7 @@ fn rotate_rustomino(
 }
 
 fn set_board_slot_states(
-    board_slots: &mut [[SlotState; BOARD_SLOTS[0] as usize]; BOARD_SLOTS[1] as usize],
+    board_slots: &mut BoardSlots,
     block_slots: &[IVec2; 4],
     new_state: SlotState,
 ) {
@@ -383,14 +377,14 @@ fn set_board_slot_states(
 // display the board's slot states for debugging
 impl Display for RustrisBoard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", "-".repeat(BOARD_SLOTS[0] as usize * 2))?;
+        write!(f, "{}", "-".repeat(BOARD_SLOTS[0] * 2))?;
         for row in self.slots.iter().rev() {
             for slot in row {
                 write!(f, "{}", slot)?;
             }
             writeln!(f)?;
         }
-        write!(f, "{}", "-".repeat(BOARD_SLOTS[0] as usize * 2))?;
+        write!(f, "{}", "-".repeat(BOARD_SLOTS[0] * 2))?;
         Ok(())
     }
 }

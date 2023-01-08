@@ -338,7 +338,7 @@ impl Rustomino {
 
     pub fn translate(&mut self, delta: IVec2) {
         log::debug!("translate called: delta {:?}", delta);
-        self.translation = self.translation + delta;
+        self.translation += delta;
     }
 
     pub fn translated(&self, delta: IVec2) -> [IVec2; 4] {
