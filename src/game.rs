@@ -25,6 +25,7 @@ const SINGLE_LINE_SCORE: usize = 100;
 const DOUBLE_LINE_SCORE: usize = 300;
 const TRIPLE_LINE_SCORE: usize = 500;
 const RUSTRIS_SCORE: usize = 800;
+const MUSIC_VOLUME_CHANGE: f32 = 0.025;
 
 pub enum GameState {
     Menu,
@@ -277,14 +278,14 @@ impl RustrisGame {
         let delta_time = now - self.last_update;
 
         if is_key_pressed(KeyCode::Minus) || is_key_pressed(KeyCode::KpSubtract) {
-            self.music_volume -= 0.05;
+            self.music_volume -= MUSIC_VOLUME_CHANGE;
             self.music_volume = clamp(self.music_volume, 0.0, 1.0);
             set_sound_volume(background_music, self.music_volume);
             log::debug!("volume decrease {}", self.music_volume);
         }
 
         if is_key_pressed(KeyCode::Equal) || is_key_pressed(KeyCode::KpAdd) {
-            self.music_volume += 0.05;
+            self.music_volume += MUSIC_VOLUME_CHANGE;
             self.music_volume = clamp(self.music_volume, 0.0, 1.0);
             set_sound_volume(background_music, self.music_volume);
             log::debug!("volume increase {}", self.music_volume);
@@ -328,11 +329,13 @@ impl RustrisGame {
             }
             GameState::Paused => {
                 if is_key_pressed(KeyCode::Escape) {
+                    controls.clear_inputs();
                     self.resume();
                 }
             }
             GameState::GameOver => {
                 if is_key_pressed(KeyCode::Enter) {
+                    controls.clear_inputs();
                     self.play_again();
                 }
             }
