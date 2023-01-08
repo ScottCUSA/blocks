@@ -244,28 +244,30 @@ impl RustrisGame {
         )
     }
 
-    pub fn draw(&self, font_22pt: &TextParams, font_33pt: &TextParams) {
+    pub fn draw(&self, font_20pt: &TextParams, font_30pt: &TextParams) {
         match self.game_state {
             GameState::Menu => {
                 view::draw_playing_backgound();
-                view::draw_menu(font_33pt);
+                view::draw_menu(font_30pt);
+                view::draw_help_text(font_30pt, font_20pt);
             }
             GameState::Playing => {
                 view::draw_playing_backgound();
                 view::draw_playing(&self.board, &self.next_rustomino, &self.held_rustomino);
-                view::draw_playing_overlay(font_22pt, self.game_level, self.score);
+                view::draw_playing_overlay(font_20pt, self.game_level, self.score);
             }
             GameState::Paused => {
                 view::draw_playing_backgound();
                 view::draw_playing(&self.board, &self.next_rustomino, &self.held_rustomino);
-                view::draw_playing_overlay(font_22pt, self.game_level, self.score);
-                view::draw_paused(font_33pt)
+                view::draw_playing_overlay(font_20pt, self.game_level, self.score);
+                view::draw_paused(font_30pt);
+                view::draw_help_text(font_30pt, font_20pt);
             }
             GameState::GameOver => {
                 view::draw_playing_backgound();
                 view::draw_playing(&self.board, &self.next_rustomino, &self.held_rustomino);
-                view::draw_playing_overlay(font_22pt, self.game_level, self.score);
-                view::draw_gameover(font_33pt)
+                view::draw_playing_overlay(font_20pt, self.game_level, self.score);
+                view::draw_gameover(font_30pt)
             }
         }
     }
