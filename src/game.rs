@@ -1,9 +1,8 @@
 use crate::{
-    board::{RustrisBoard, SlotState, TranslationDirection},
+    board::{RustrisBoard, TranslationDirection},
     controls::{ControlStates, Controls, InputState},
     rustomino::*,
-    view::{self, ViewSettings},
-    VIEW_DIMENSIONS,
+    view,
 };
 use std::f64::consts::E;
 use strum::IntoEnumIterator;
@@ -50,12 +49,11 @@ pub struct RustrisGame {
     gravity_delay: f64,
     completed_lines: usize,
     last_update: f64,
-    view_settings: ViewSettings,
     hold_used: bool,
 }
 
 impl RustrisGame {
-    pub fn new(board: RustrisBoard, view_settings: ViewSettings) -> Self {
+    pub fn new(board: RustrisBoard) -> Self {
         RustrisGame {
             board,
             next_rustomino: None,
@@ -69,7 +67,6 @@ impl RustrisGame {
             gravity_delay: gravity_delay(1),
             completed_lines: 0,
             last_update: get_time(),
-            view_settings,
         }
         .init()
     }
@@ -234,7 +231,7 @@ impl RustrisGame {
                 RUSTRIS_SCORE
             }
             _ => {
-                panic!("shouldn't be able to score more than 4 l ines")
+                panic!("shouldn't be able to score more than 4 lines")
             }
         };
         let score = score * self.game_level;
@@ -247,201 +244,30 @@ impl RustrisGame {
         )
     }
 
-    pub fn draw(&self, text_params: &TextParams) {
+    pub fn draw(&self, font_22pt: &TextParams, font_33pt: &TextParams) {
         match self.game_state {
             GameState::Menu => {
-                self.draw_playing_backgound();
-                self.draw_menu(text_params);
+                view::draw_playing_backgound();
+                view::draw_menu(font_33pt);
             }
             GameState::Playing => {
-                self.draw_playing_backgound();
-                self.draw_playing();
-                self.draw_playing_ui(text_params)
+                view::draw_playing_backgound();
+                view::draw_playing(&self.board, &self.next_rustomino, &self.held_rustomino);
+                view::draw_playing_overlay(font_22pt, self.game_level, self.score);
             }
             GameState::Paused => {
-                self.draw_playing_backgound();
-                self.draw_playing();
-                self.draw_playing_ui(text_params);
-                self.draw_paused(text_params)
+                view::draw_playing_backgound();
+                view::draw_playing(&self.board, &self.next_rustomino, &self.held_rustomino);
+                view::draw_playing_overlay(font_22pt, self.game_level, self.score);
+                view::draw_paused(font_33pt)
             }
             GameState::GameOver => {
-                self.draw_playing_backgound();
-                self.draw_playing();
-                self.draw_playing_ui(text_params);
-                self.draw_gameover(text_params)
+                view::draw_playing_backgound();
+                view::draw_playing(&self.board, &self.next_rustomino, &self.held_rustomino);
+                view::draw_playing_overlay(font_22pt, self.game_level, self.score);
+                view::draw_gameover(font_33pt)
             }
         }
-    }
-
-    fn draw_playing_backgound(&self) {
-        draw_rectangle(
-            self.view_settings.staging_rect.x,
-            self.view_settings.staging_rect.y,
-            self.view_settings.staging_rect.w,
-            self.view_settings.staging_rect.h,
-            view::STAGING_BACKGROUND_COLOR,
-        );
-
-        draw_rectangle(
-            self.view_settings.board_rect.x,
-            self.view_settings.board_rect.y,
-            self.view_settings.board_rect.w,
-            self.view_settings.board_rect.h,
-            view::BOARD_BACKGROUND_COLOR,
-        );
-
-        draw_rectangle(
-            self.view_settings.preview_rect.x,
-            self.view_settings.preview_rect.y,
-            self.view_settings.preview_rect.w,
-            self.view_settings.preview_rect.h,
-            view::PREVIEW_BACKGROUND_COLOR,
-        );
-
-        draw_rectangle(
-            self.view_settings.hold_rect.x,
-            self.view_settings.hold_rect.y,
-            self.view_settings.hold_rect.w,
-            self.view_settings.hold_rect.h,
-            view::HOLD_BACKGROUND_COLOR,
-        );
-    }
-
-    fn draw_playing(&self) {
-        for (y, slots_x) in self.board.slots.iter().enumerate() {
-            for (x, slot) in slots_x.iter().enumerate() {
-                match slot {
-                    SlotState::Locked(rtype) | SlotState::Occupied(rtype) => {
-                        // draw the block
-                        let rect = board_block_rect([x as i32, y as i32], &self.view_settings);
-                        draw_rectangle(rect.x, rect.y, rect.w, rect.h, rtype.color());
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        if let Some(next) = &self.next_rustomino {
-            for slot in next.blocks {
-                // display the preview
-                // draw the block
-                let rect = next_block_rect([slot[0], slot[1]], &self.view_settings);
-                draw_rectangle(rect.x, rect.y, rect.w, rect.h, next.rustomino_type.color());
-            }
-        }
-
-        if let Some(held) = &self.held_rustomino {
-            for slot in held.blocks {
-                // display the preview
-                // draw the block
-                let rect = hold_block_rect([slot[0], slot[1]], &self.view_settings);
-                draw_rectangle(rect.x, rect.y, rect.w, rect.h, held.rustomino_type.color());
-            }
-        }
-        if let Some(ghost) = &self.board.ghost_rustomino {
-            for block in ghost.board_slots() {
-                // draw the block
-                let rect = board_block_rect([block[0], block[1]], &self.view_settings);
-                draw_rectangle_lines(rect.x, rect.y, rect.w, rect.h, 4., view::GHOST_COLOR);
-            }
-        }
-    }
-
-    fn draw_playing_ui(&self, text_params: &TextParams) {
-        draw_text_ex(
-            "Rustris",
-            self.view_settings.title_label_pos.x as f32,
-            self.view_settings.title_label_pos.y as f32,
-            *text_params,
-        );
-
-        draw_text_ex(
-            "Level:",
-            self.view_settings.level_label_pos.x as f32,
-            self.view_settings.level_label_pos.y as f32,
-            *text_params,
-        );
-
-        draw_text_ex(
-            &self.game_level.to_string(),
-            self.view_settings.level_pos.x as f32,
-            self.view_settings.level_pos.y as f32,
-            *text_params,
-        );
-
-        draw_text_ex(
-            "Score:",
-            self.view_settings.score_label_pos.x as f32,
-            self.view_settings.score_label_pos.y as f32,
-            *text_params,
-        );
-
-        draw_text_ex(
-            &self.score.to_string(),
-            self.view_settings.score_pos.x as f32,
-            self.view_settings.score_pos.y as f32,
-            *text_params,
-        );
-    }
-
-    fn draw_paused(&self, text_params: &TextParams) {
-        draw_rectangle(
-            0.,
-            0.,
-            VIEW_DIMENSIONS[0] as f32,
-            VIEW_DIMENSIONS[1] as f32,
-            view::PAUSED_OVERLAY_COLOR,
-        );
-        draw_text_ex(
-            "Paused",
-            (VIEW_DIMENSIONS[0] / 2 - 55) as f32,
-            (VIEW_DIMENSIONS[1] / 2) as f32,
-            *text_params,
-        );
-    }
-
-    fn draw_menu(&self, text_params: &TextParams) {
-        draw_rectangle(
-            0.,
-            0.,
-            VIEW_DIMENSIONS[0] as f32,
-            VIEW_DIMENSIONS[1] as f32,
-            view::PAUSED_OVERLAY_COLOR,
-        );
-        draw_text_ex(
-            "Welcome to Rustris!",
-            (VIEW_DIMENSIONS[0] / 2 - 168) as f32,
-            (VIEW_DIMENSIONS[1] / 2) as f32,
-            *text_params,
-        );
-        draw_text_ex(
-            "Press Enter To Start",
-            (VIEW_DIMENSIONS[0] / 2 - 185) as f32,
-            (VIEW_DIMENSIONS[1] / 2 + 50) as f32,
-            *text_params,
-        );
-    }
-
-    fn draw_gameover(&self, text_params: &TextParams) {
-        draw_rectangle(
-            0.,
-            0.,
-            VIEW_DIMENSIONS[0] as f32,
-            VIEW_DIMENSIONS[1] as f32,
-            view::PAUSED_OVERLAY_COLOR,
-        );
-        draw_text_ex(
-            "Game Over!",
-            (VIEW_DIMENSIONS[0] / 2 - 100) as f32,
-            (VIEW_DIMENSIONS[1] / 2) as f32,
-            *text_params,
-        );
-        draw_text_ex(
-            "Press Enter To Play Again",
-            (VIEW_DIMENSIONS[0] / 2 - 200) as f32,
-            (VIEW_DIMENSIONS[1] / 2 + 50) as f32,
-            *text_params,
-        );
     }
 
     pub fn update(&mut self, controls: &mut ControlStates) {
@@ -597,41 +423,4 @@ impl RustrisGame {
             }
         }
     }
-}
-
-fn next_block_rect(block: [i32; 2], settings: &ViewSettings) -> Rect {
-    // block[x,y] absolute units
-    let x = settings.preview_rect.x
-        + (block[0] as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING) as f32)
-        + 1.0;
-    // get bottom left of board_rect
-    let y = settings.preview_rect.y + settings.preview_rect.h
-        - (block[1] as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING) as f32);
-
-    Rect::new(x, y, view::BLOCK_SIZE as f32, view::BLOCK_SIZE as f32)
-}
-
-fn hold_block_rect(block: [i32; 2], settings: &ViewSettings) -> Rect {
-    // block[x,y] absolute units
-    let x = settings.hold_rect.x
-        + (block[0] as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING) as f32)
-        + 1.0;
-    // get bottom left of board_rect
-    let y = settings.hold_rect.y + settings.hold_rect.h
-        - (block[1] as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING) as f32);
-
-    Rect::new(x, y, view::BLOCK_SIZE as f32, view::BLOCK_SIZE as f32)
-}
-
-fn board_block_rect(block: [i32; 2], settings: &ViewSettings) -> Rect {
-    // block[x,y] absolute units
-    let x = settings.staging_rect.x
-        + (block[0] as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING) as f32)
-        + 1.0;
-    // get bottom left of board_rect
-    let y = settings.board_rect.y + settings.board_rect.h
-        - ((block[1] + 1) as f32 * (view::BLOCK_SIZE + view::BLOCK_PADDING) as f32)
-        - 1.0;
-
-    Rect::new(x, y, view::BLOCK_SIZE as f32, view::BLOCK_SIZE as f32)
 }
