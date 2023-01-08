@@ -2,13 +2,16 @@ use crate::{
     board::{RustrisBoard, TranslationDirection},
     controls::{ControlStates, Controls, InputState},
     rustomino::*,
-    view,
+    view, BACKGROUND_MUSIC_VOL,
 };
 use ::rand::{seq::SliceRandom, SeedableRng};
 use std::f64::consts::E;
 use strum::IntoEnumIterator;
 
-use macroquad::prelude::*;
+use macroquad::{
+    audio::{set_sound_volume, Sound},
+    prelude::*,
+};
 
 const GRAVITY_NUMERATOR: f64 = 1.0; // how
 const GRAVITY_FACTOR: f64 = 2.0; // slow or increase gravity factor
@@ -52,6 +55,7 @@ pub struct RustrisGame {
     completed_lines: usize,
     last_update: f64,
     hold_used: bool,
+    music_volume: f32,
 }
 
 impl RustrisGame {
@@ -70,6 +74,7 @@ impl RustrisGame {
             gravity_delay: gravity_delay(1),
             completed_lines: 0,
             last_update: get_time(),
+            music_volume: BACKGROUND_MUSIC_VOL,
         }
         .init()
     }
@@ -265,9 +270,23 @@ impl RustrisGame {
         }
     }
 
-    pub fn update(&mut self, controls: &mut ControlStates) {
+    pub fn update(&mut self, background_music: Sound, controls: &mut ControlStates) {
         let now = get_time();
         let delta_time = now - self.last_update;
+
+        if is_key_pressed(KeyCode::Minus) || is_key_pressed(KeyCode::KpSubtract) {
+            self.music_volume -= 0.05;
+            self.music_volume = clamp(self.music_volume, 0.0, 1.0);
+            set_sound_volume(background_music, self.music_volume);
+            log::debug!("volume decrease {}", self.music_volume);
+        }
+
+        if is_key_pressed(KeyCode::Equal) || is_key_pressed(KeyCode::KpAdd) {
+            self.music_volume += 0.05;
+            self.music_volume = clamp(self.music_volume, 0.0, 1.0);
+            set_sound_volume(background_music, self.music_volume);
+            log::debug!("volume increase {}", self.music_volume);
+        }
 
         match self.game_state {
             GameState::Menu => {

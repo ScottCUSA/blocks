@@ -1,7 +1,7 @@
 // #![windows_subsystem = "windows"]
 
 use macroquad::{
-    audio::{load_sound, play_sound, set_sound_volume, PlaySoundParams},
+    audio::{load_sound, play_sound, PlaySoundParams},
     prelude::*,
     text::load_ttf_font,
     window::Conf,
@@ -15,7 +15,7 @@ mod view;
 
 const VIEW_DIMENSIONS: [i32; 2] = [1024, 768];
 const ASSETS_FOLDER: &str = "assets";
-const BACKGROUND_MUSIC_VOL: f32 = 0.25;
+const BACKGROUND_MUSIC_VOL: f32 = 0.1;
 
 fn window_conf() -> Conf {
     Conf {
@@ -49,16 +49,16 @@ async fn main() {
 
     // load the background
 
-    // let background1_path = assets_path.join("background1.wav");
-    // let background1 = load_sound(&background1_path.to_string_lossy())
-    //     .await
-    //     .expect("unable to load background music");
-
-    let background2_path = assets_path.join("background2.wav");
-    log::info!("Loading background music: {:?}", background2_path);
-    let background2 = load_sound(&background2_path.to_string_lossy())
+    let background_path = assets_path.join("background1.wav");
+    let background = load_sound(&background_path.to_string_lossy())
         .await
         .expect("unable to load background music");
+
+    // let background_path = assets_path.join("background2.wav");
+    // log::info!("Loading background music: {:?}", background_path);
+    // let background = load_sound(&background_path.to_string_lossy())
+    //     .await
+    //     .expect("unable to load background music");
 
     // setup parameters for drawing text
     let font_22pt = TextParams {
@@ -80,7 +80,7 @@ async fn main() {
     let mut controls = controls::ControlStates::default();
 
     play_sound(
-        background2,
+        background,
         PlaySoundParams {
             looped: true,
             volume: BACKGROUND_MUSIC_VOL,
@@ -98,7 +98,7 @@ async fn main() {
         //     50.,
         //     font_22pt,
         // );
-        game.update(&mut controls);
+        game.update(background, &mut controls);
         game.draw(&font_22pt, &font_30pt);
 
         next_frame().await
