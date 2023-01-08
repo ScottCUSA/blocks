@@ -45,15 +45,15 @@ async fn main() {
 
     // load the background
 
-    let background1_path = assets_path.join("background1.wav");
-    let background1 = load_sound(&background1_path.to_string_lossy())
-        .await
-        .expect("unable to load background music");
-
-    // let background2_path = assets_path.join("background2.wav");
-    // let background2 = load_sound(&background2_path.to_string_lossy())
+    // let background1_path = assets_path.join("background1.wav");
+    // let background1 = load_sound(&background1_path.to_string_lossy())
     //     .await
     //     .expect("unable to load background music");
+
+    let background2_path = assets_path.join("background2.wav");
+    let background2 = load_sound(&background2_path.to_string_lossy())
+        .await
+        .expect("unable to load background music");
 
     // setup parameters for drawing text
     let font_22pt = TextParams {
@@ -75,10 +75,10 @@ async fn main() {
     let mut controls = controls::ControlStates::default();
 
     play_sound(
-        background1,
+        background2,
         PlaySoundParams {
             looped: true,
-            volume: 0.8,
+            volume: 0.5,
         },
     );
 
