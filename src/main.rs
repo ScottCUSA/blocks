@@ -61,9 +61,9 @@ async fn main() {
     //     .expect("unable to load background music");
 
     // setup parameters for drawing text
-    let font_22pt = TextParams {
+    let font_20pt = TextParams {
         font,
-        font_size: 22,
+        font_size: 20,
         ..Default::default()
     };
 
@@ -99,7 +99,7 @@ async fn main() {
         //     font_22pt,
         // );
         game.update(background, &mut controls);
-        game.draw(&font_22pt, &font_30pt);
+        game.draw(&font_20pt, &font_30pt);
 
         next_frame().await
     }
