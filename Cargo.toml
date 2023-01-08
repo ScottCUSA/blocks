@@ -11,3 +11,5 @@ find_folder = "0.3.0"
 log = "0.4"
 macroquad = { version = "0.3.25", features = ["log"] }
 strum = { version = "0.24", features = ["derive"] }
+rand = "0.8"
+rand_xoshiro = "0.6"

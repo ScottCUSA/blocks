@@ -1,6 +1,11 @@
 #![windows_subsystem = "windows"]
 
-use macroquad::{prelude::*, text::load_ttf_font, window::Conf};
+use macroquad::{
+    audio::{load_sound, play_sound, PlaySoundParams},
+    prelude::*,
+    text::load_ttf_font,
+    window::Conf,
+};
 
 mod board;
 mod controls;
@@ -38,6 +43,18 @@ async fn main() {
         .await
         .expect("unable to load UI font");
 
+    // load the background
+
+    let background1_path = assets_path.join("background1.wav");
+    let background1 = load_sound(&background1_path.to_string_lossy())
+        .await
+        .expect("unable to load background music");
+
+    // let background2_path = assets_path.join("background2.wav");
+    // let background2 = load_sound(&background2_path.to_string_lossy())
+    //     .await
+    //     .expect("unable to load background music");
+
     // setup parameters for drawing text
     let font_22pt = TextParams {
         font,
@@ -56,6 +73,14 @@ async fn main() {
     let mut game = game::RustrisGame::new(board::RustrisBoard::new());
 
     let mut controls = controls::ControlStates::default();
+
+    play_sound(
+        background1,
+        PlaySoundParams {
+            looped: true,
+            volume: 0.8,
+        },
+    );
 
     loop {
         clear_background(view::BACKGROUND_COLOR);
