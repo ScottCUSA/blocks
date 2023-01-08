@@ -1,4 +1,5 @@
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
+
 use macroquad::{prelude::*, text::load_ttf_font, window::Conf};
 
 mod board;
@@ -38,17 +39,21 @@ async fn main() {
         .expect("unable to load UI font");
 
     // setup parameters for drawing text
-    let overlay_text_params = TextParams {
+    let font_22pt = TextParams {
         font,
         font_size: 22,
         ..Default::default()
     };
 
+    // setup parameters for drawing text
+    let font_30pt = TextParams {
+        font,
+        font_size: 30,
+        ..Default::default()
+    };
+
     //
-    let mut game = game::RustrisGame::new(
-        board::RustrisBoard::new(),
-        view::ViewSettings::new(VIEW_DIMENSIONS),
-    );
+    let mut game = game::RustrisGame::new(board::RustrisBoard::new());
 
     let mut controls = controls::ControlStates::default();
 
@@ -57,7 +62,7 @@ async fn main() {
 
         // draw_text_ex(&get_fps().to_string(), 100., 200., overlay_text_params);
         game.update(&mut controls);
-        game.draw(&overlay_text_params);
+        game.draw(&font_22pt, &font_30pt);
 
         next_frame().await
     }
