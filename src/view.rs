@@ -17,6 +17,7 @@ pub(crate) const GHOST_COLOR: Color = Color::new(0.7, 0.7, 0.7, 1.0);
 pub(crate) const PAUSED_OVERLAY_COLOR: Color = Color::new(0.1, 0.1, 0.1, 0.6);
 pub(crate) const VIEW_SETTINGS: ViewSettings = ViewSettings::new(VIEW_DIMENSIONS);
 pub(crate) const CONTROLS_BACKGROUND_COLOR: Color = Color::new(0.34, 0.09, 0.12, 0.8);
+
 pub struct ViewSettings {
     pub view_w: i32,
     pub view_h: i32,
