@@ -1,7 +1,8 @@
 [package]
 name = "rustris"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
+build = "build.rs"
 
 [dependencies]
 env_logger = "0.10"
@@ -11,3 +12,7 @@ macroquad = { version = "0.3.25", features = ["log"] }
 strum = { version = "0.24", features = ["derive"] }
 rand = "0.8"
 rand_xoshiro = "0.6"
+
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
