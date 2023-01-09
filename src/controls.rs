@@ -228,7 +228,7 @@ impl ControlStates {
     pub fn handle_paused_inputs(&mut self, game: &mut RustrisGame) {
         if is_key_pressed(KeyCode::Escape) {
             self.clear_inputs();
-            game.pause();
+            game.resume();
         }
     }
 
