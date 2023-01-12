@@ -350,7 +350,7 @@ impl Rustomino {
         ]
     }
 
-    pub fn board_slots(&self) -> [IVec2; 4] {
+    pub fn playfield_slots(&self) -> [IVec2; 4] {
         self.translated(IVec2::ZERO)
     }
 

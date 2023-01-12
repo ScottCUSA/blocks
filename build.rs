@@ -1,12 +1,9 @@
 // build.rs
 
 #[cfg(windows)]
-use winres;
-
-#[cfg(windows)]
 fn main() {
     let mut res = winres::WindowsResource::new();
-    res.set_icon("assets/rustris.ico");
+    res.set_icon("assets/rustris256x256.ico");
     res.compile().unwrap();
 }
 

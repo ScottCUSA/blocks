@@ -6,7 +6,7 @@ use macroquad::{
 };
 use strum::{EnumIter, IntoEnumIterator};
 
-use crate::{board::TranslationDirection, game::RustrisGame, rustomino::RotationDirection};
+use crate::{game::RustrisGame, playfield::TranslationDirection, rustomino::RotationDirection};
 
 // default control settings
 const LEFT_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Left), Some(KeyCode::A)];
@@ -154,9 +154,11 @@ impl ControlStates {
         // check each input
         for input in Controls::iter() {
             self.input_states
-                .entry(input.clone())
+                .entry(input.clone()) // modify in place
                 .and_modify(|e| match e {
                     InputState::Down(down_time) => {
+                        // if the down time is longer than the action delay for this input
+                        // change it to held
                         if let Some(action_delay) = input.action_delay_for_input() {
                             *down_time += delta_time;
                             if *down_time >= action_delay {
@@ -164,15 +166,20 @@ impl ControlStates {
                             }
                         }
                     }
+                    // if the input state is held, add delta time to the held time
                     InputState::Held(held_time) => {
                         *held_time += delta_time;
                     }
                     _ => (),
                 });
             if let Some(state) = self.input_states.get_mut(&input) {
+                // if this state input is in a held state
                 if let InputState::Held(held_time) = state {
+                    // check to see if the key has been held longer than the repeat delay for
+                    // the input
                     if let Some(action_repeat_delay) = input.action_repeat_delay_for_input() {
                         if *held_time >= action_repeat_delay {
+                            // if it is then call the input function
                             *state = InputState::Held(0.0);
                             match input {
                                 Controls::Left => game.translate(TranslationDirection::Left),

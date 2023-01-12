@@ -4,38 +4,38 @@ use macroquad::prelude::*;
 
 use crate::rustomino::{RotationDirection, Rustomino, RustominoType};
 
-pub(crate) const BOARD_SLOTS: [usize; 2] = [10, 22];
+pub(crate) const PLAYFIELD_SLOTS: [usize; 2] = [10, 22];
 pub(crate) const PLAYFIELD_SIZE: [i32; 2] = [10, 20];
 
-type BoardSlots = [[SlotState; BOARD_SLOTS[0]]; BOARD_SLOTS[1]];
+type Slots = [[SlotState; PLAYFIELD_SLOTS[0]]; PLAYFIELD_SLOTS[1]];
 
-// RustrisBoard
+// RustrisPlayfield
 #[derive(Debug)]
-pub struct RustrisBoard {
-    pub(crate) slots: BoardSlots,
+pub struct RustrisPlayfield {
+    pub(crate) slots: Slots,
     pub(crate) current_rustomino: Option<Rustomino>,
     pub(crate) ghost_rustomino: Option<Rustomino>,
 }
 
-impl RustrisBoard {
+impl RustrisPlayfield {
     pub fn new() -> Self {
-        log::info!("Initializing Rustris Board");
-        RustrisBoard {
-            slots: [[SlotState::Empty; BOARD_SLOTS[0]]; BOARD_SLOTS[1]],
+        log::info!("Initializing Rustris Playfield");
+        RustrisPlayfield {
+            slots: [[SlotState::Empty; PLAYFIELD_SLOTS[0]]; PLAYFIELD_SLOTS[1]],
             current_rustomino: None,
             ghost_rustomino: None,
         }
     }
 
-    /// Adds a new rustomino to the board
+    /// Adds a new rustomino to the playfield
     /// returns false if there was a collision
     /// while adding the block (game over)
     pub fn set_current_rustomino(&mut self, rustomino: Rustomino) -> bool {
         log::debug!("setting current rustomino: {:?}", rustomino);
-        let ok = !check_collision(&self.slots, rustomino.board_slots());
-        set_board_slot_states(
+        let ok = !check_collision(&self.slots, rustomino.playfield_slots());
+        set_playfield_slot_states(
             &mut self.slots,
-            &rustomino.board_slots(),
+            &rustomino.playfield_slots(),
             SlotState::Occupied(rustomino.rustomino_type),
         );
         self.ghost_rustomino = Some(rustomino.clone());
@@ -44,15 +44,15 @@ impl RustrisBoard {
         ok
     }
 
-    /// Adds a new rustomino to the board
+    /// Adds a new rustomino to the playfield
     /// returns false if there was a collision
     /// while adding the block (game over)
     pub fn take_current(&mut self) -> Option<Rustomino> {
         if let Some(current_rustomino) = self.current_rustomino.take() {
             log::debug!("taking current rustomino: {:?}", current_rustomino);
-            set_board_slot_states(
+            set_playfield_slot_states(
                 &mut self.slots,
-                &current_rustomino.board_slots(),
+                &current_rustomino.playfield_slots(),
                 SlotState::Empty,
             );
             self.update_ghost_rustomino(false);
@@ -60,7 +60,7 @@ impl RustrisBoard {
         }
         None
     }
-    /// checks to see if the board needs the next rustomino
+    /// checks to see if the playfield needs the next rustomino
     pub fn ready_for_next(&self) -> bool {
         self.current_rustomino.is_none()
     }
@@ -107,9 +107,9 @@ impl RustrisBoard {
         if let Some(current_rustomino) = self.current_rustomino.as_mut() {
             log::debug!("locking rustomino: {:?}", current_rustomino);
 
-            set_board_slot_states(
+            set_playfield_slot_states(
                 &mut self.slots,
-                &current_rustomino.board_slots(),
+                &current_rustomino.playfield_slots(),
                 SlotState::Locked(current_rustomino.rustomino_type),
             );
 
@@ -119,7 +119,7 @@ impl RustrisBoard {
         }
     }
 
-    /// Returns the get complete lines of this [`RustrisBoard`].
+    /// Returns the get complete lines of this [`RustrisPlayfield`].
     pub fn get_complete_lines(&self) -> Vec<usize> {
         let mut complete_lines = vec![];
         'outer: for (i, line) in self.slots.iter().enumerate() {
@@ -235,7 +235,7 @@ impl RustrisBoard {
             let drop_translation = get_hard_drop_translation(&self.slots, current_rustomino);
             if let Some(ghost_rustomino) = self.ghost_rustomino.as_mut() {
                 if translating {
-                    for slot in ghost_rustomino.board_slots() {
+                    for slot in ghost_rustomino.playfield_slots() {
                         if discriminant(&self.slots[slot[1] as usize][slot[0] as usize])
                             != discriminant(&SlotState::Occupied(RustominoType::I))
                         {
@@ -251,7 +251,7 @@ impl RustrisBoard {
                 ghost_rustomino.translate(drop_translation);
                 // set the new slot states to occupied
 
-                for slot in ghost_rustomino.board_slots() {
+                for slot in ghost_rustomino.playfield_slots() {
                     if discriminant(&self.slots[slot[1] as usize][slot[0] as usize])
                         != discriminant(&SlotState::Occupied(RustominoType::I))
                     {
@@ -263,9 +263,9 @@ impl RustrisBoard {
         } else {
             if !translating {
                 if let Some(ghost_rustomino) = self.ghost_rustomino.as_mut() {
-                    set_board_slot_states(
+                    set_playfield_slot_states(
                         &mut self.slots,
-                        &ghost_rustomino.board_slots(),
+                        &ghost_rustomino.playfield_slots(),
                         SlotState::Empty,
                     );
                 }
@@ -277,9 +277,9 @@ impl RustrisBoard {
     pub fn hard_drop(&mut self) {
         if let Some(current_rustomino) = self.current_rustomino.as_mut() {
             let delta = get_hard_drop_translation(&self.slots, current_rustomino);
-            set_board_slot_states(
+            set_playfield_slot_states(
                 &mut self.slots,
-                &current_rustomino.board_slots(),
+                &current_rustomino.playfield_slots(),
                 SlotState::Empty,
             );
             current_rustomino.translate(delta);
@@ -287,11 +287,11 @@ impl RustrisBoard {
     }
 }
 
-fn get_hard_drop_translation(board_slots: &BoardSlots, rustomino: &Rustomino) -> IVec2 {
+fn get_hard_drop_translation(playfield_slots: &Slots, rustomino: &Rustomino) -> IVec2 {
     let mut translation = TranslationDirection::DOWN_TRANSLATION;
 
     // if we can't move it down without colliding the delta is 0
-    if check_collision(board_slots, rustomino.translated(translation)) {
+    if check_collision(playfield_slots, rustomino.translated(translation)) {
         return IVec2::ZERO;
     }
 
@@ -300,7 +300,7 @@ fn get_hard_drop_translation(board_slots: &BoardSlots, rustomino: &Rustomino) ->
     loop {
         let good_translation = translation;
         translation += TranslationDirection::DOWN_TRANSLATION;
-        if check_collision(board_slots, rustomino.translated(translation)) {
+        if check_collision(playfield_slots, rustomino.translated(translation)) {
             return good_translation;
         }
     }
@@ -308,10 +308,10 @@ fn get_hard_drop_translation(board_slots: &BoardSlots, rustomino: &Rustomino) ->
 
 /// check to see if the provided block locations collide with other locked blocks
 /// or with walls
-fn check_collision(board_slots: &BoardSlots, block_locations: [IVec2; 4]) -> bool {
+fn check_collision(playfield_slots: &Slots, block_locations: [IVec2; 4]) -> bool {
     for location in block_locations {
         // check for left and right wall collisions
-        if location[0] < 0 || location[0] >= BOARD_SLOTS[0] as i32 {
+        if location[0] < 0 || location[0] >= PLAYFIELD_SLOTS[0] as i32 {
             log::debug!("collided with left/right wall: {:?}", block_locations);
             return true;
         }
@@ -321,7 +321,7 @@ fn check_collision(board_slots: &BoardSlots, block_locations: [IVec2; 4]) -> boo
             return true;
         }
         // slots[y][x] compare variant ignoring value
-        if discriminant(&board_slots[location[1] as usize][location[0] as usize])
+        if discriminant(&playfield_slots[location[1] as usize][location[0] as usize])
             == discriminant(&SlotState::Locked(RustominoType::I))
         {
             log::debug!("collided with locked block: {:?}", block_locations);
@@ -332,35 +332,43 @@ fn check_collision(board_slots: &BoardSlots, block_locations: [IVec2; 4]) -> boo
 }
 
 fn translate_rustomino(
-    board_slots: &mut BoardSlots,
+    playfield_slots: &mut Slots,
     new_state: SlotState,
     rustomino: &mut Rustomino,
     translation: IVec2,
 ) {
     // clear the current slot states
-    set_board_slot_states(board_slots, &rustomino.board_slots(), SlotState::Empty);
+    set_playfield_slot_states(
+        playfield_slots,
+        &rustomino.playfield_slots(),
+        SlotState::Empty,
+    );
     // perform the tranlsation
     rustomino.translate(translation);
     // set the new slot states to occupied
-    set_board_slot_states(board_slots, &rustomino.board_slots(), new_state);
+    set_playfield_slot_states(playfield_slots, &rustomino.playfield_slots(), new_state);
 }
 
 fn rotate_rustomino(
-    board_slots: &mut BoardSlots,
+    playfield_slots: &mut Slots,
     new_state: SlotState,
     rustomino: &mut Rustomino,
     rotation: &RotationDirection,
 ) {
     // clear the current slot states
-    set_board_slot_states(board_slots, &rustomino.board_slots(), SlotState::Empty);
+    set_playfield_slot_states(
+        playfield_slots,
+        &rustomino.playfield_slots(),
+        SlotState::Empty,
+    );
     // perform the tranlsation
     rustomino.rotate(rotation);
     // set the new slot states to occupied
-    set_board_slot_states(board_slots, &rustomino.board_slots(), new_state);
+    set_playfield_slot_states(playfield_slots, &rustomino.playfield_slots(), new_state);
 }
 
-fn set_board_slot_states(
-    board_slots: &mut BoardSlots,
+fn set_playfield_slot_states(
+    playfield_slots: &mut Slots,
     block_slots: &[IVec2; 4],
     new_state: SlotState,
 ) {
@@ -370,21 +378,21 @@ fn set_board_slot_states(
         new_state
     );
     for slot in block_slots {
-        board_slots[slot[1] as usize][slot[0] as usize] = new_state;
+        playfield_slots[slot[1] as usize][slot[0] as usize] = new_state;
     }
 }
 
-// display the board's slot states for debugging
-impl Display for RustrisBoard {
+// display the playfield's slot states for debugging
+impl Display for RustrisPlayfield {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", "-".repeat(BOARD_SLOTS[0] * 2))?;
+        write!(f, "{}", "-".repeat(PLAYFIELD_SLOTS[0] * 2))?;
         for row in self.slots.iter().rev() {
             for slot in row {
                 write!(f, "{}", slot)?;
             }
             writeln!(f)?;
         }
-        write!(f, "{}", "-".repeat(BOARD_SLOTS[0] * 2))?;
+        write!(f, "{}", "-".repeat(PLAYFIELD_SLOTS[0] * 2))?;
         Ok(())
     }
 }

@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+// #![windows_subsystem = "windows"]
 
 use macroquad::{
     audio::{load_sound, play_sound, PlaySoundParams},
@@ -7,15 +7,16 @@ use macroquad::{
     window::Conf,
 };
 
-mod board;
 mod controls;
 mod game;
+mod playfield;
 mod rustomino;
 mod view;
 
 const VIEW_DIMENSIONS: [i32; 2] = [1024, 768];
 const ASSETS_FOLDER: &str = "assets";
 const BACKGROUND_MUSIC_VOL: f32 = 0.1;
+// const MINIMUM_FRAME_TIME: f32 = 1. / 60.; // frametime for to limit framerate to 60fps
 
 fn window_conf() -> Conf {
     Conf {
@@ -27,9 +28,11 @@ fn window_conf() -> Conf {
     }
 }
 
-// TODO: implement move reset lock down
 // https://tetris.wiki/Tetris_Guideline
 // TODO: implement rotation wall kicks
+// TODO: debug repeat collision call wierdness
+// TODO: load icon for rustris window
+// https://docs.rs/macroquad/0.3.25/macroquad/texture/struct.Image.html
 
 #[macroquad::main(window_conf())]
 async fn main() {
@@ -42,6 +45,7 @@ async fn main() {
     let assets_path = find_folder::Search::ParentsThenKids(2, 2)
         .for_folder(ASSETS_FOLDER)
         .expect("unable to find assets folder");
+
     // load the font
     let font_path = assets_path.join("04b30.ttf");
     let font = load_ttf_font(&font_path.to_string_lossy())
@@ -62,7 +66,7 @@ async fn main() {
 
     log::info!("Loading font: {:?}", font_path);
 
-    let mut game = game::RustrisGame::new(board::RustrisBoard::new());
+    let mut game = game::RustrisGame::new(playfield::RustrisPlayfield::new());
     let mut controls = controls::ControlStates::default();
 
     // load the background music
@@ -84,7 +88,25 @@ async fn main() {
     log::info!("Playing background music at volume: {BACKGROUND_MUSIC_VOL}");
 
     loop {
+        // attempt to limit framerate to 60fps
+        // let frame_time = get_frame_time();
+        // // log::debug!("frame_time: {}", frame_time);
+        // if frame_time < MINIMUM_FRAME_TIME {
+        //     let time_to_sleep = (MINIMUM_FRAME_TIME - frame_time) * 1000.;
+        //     // log::debug!("sleeping: {}", time_to_sleep);
+        //     std::thread::sleep(std::time::Duration::from_millis(time_to_sleep as u64));
+        // }
+
         clear_background(view::BACKGROUND_COLOR);
+
+        // // draw FPS
+        // draw_text(
+        //     &get_fps().to_string(),
+        //     VIEW_DIMENSIONS[0] as f32 - 50.0,
+        //     50.0,
+        //     30.,
+        //     WHITE,
+        // );
 
         // handle global controls
         controls::handle_global_controls(&background_music, &mut music_volume);
@@ -94,6 +116,7 @@ async fn main() {
 
         // draw the menus, game, overlays, etc.
         view::draw(&game, &font_20pt, &font_30pt);
-        next_frame().await
+
+        next_frame().await;
     }
 }
