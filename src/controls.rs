@@ -197,11 +197,16 @@ impl ControlStates {
     }
 
     pub fn handle_playing_inputs(&mut self, game: &mut RustrisGame) {
+        // if the escape key is pressed while playing the game is 
+        // immediately paused
         if is_key_pressed(KeyCode::Escape) {
             self.clear_inputs();
             game.pause();
+            return;
         }
 
+        // iterate through all of the inputs, checking to see if the configured keys
+        // were pressed this frame
         for (input, keys) in &self.input_map.clone() {
             for key in keys.iter().flatten() {
                 if is_key_pressed(*key) {
@@ -217,12 +222,17 @@ impl ControlStates {
                         Controls::HardDrop => {
                             self.clear_inputs();
                             game.hard_drop();
+                            return;
                         }
                         Controls::Hold => {
                             self.clear_inputs();
                             game.hold();
+                            return;
                         }
                     }
+                    // ignore other key bindings for this
+                    // input if one was pressed this frame
+                    break;
                 } else if is_key_released(*key) {
                     self.input_states
                         .entry(input.clone())
@@ -248,6 +258,7 @@ impl ControlStates {
 
     pub fn handle_menu_inputs(&mut self, game: &mut RustrisGame) {
         if is_key_pressed(KeyCode::Enter) {
+            self.clear_inputs();
             game.resume();
         }
     }

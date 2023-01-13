@@ -1,6 +1,6 @@
 use crate::{
     controls::ControlStates,
-    playfield::{RustrisPlayfield, TranslationDirection},
+    playfield::{RustrisPlayfield, TranslationDirection, PLAYFIELD_SIZE},
     rustomino::*,
 };
 use ::rand::{seq::SliceRandom, SeedableRng};
@@ -14,6 +14,7 @@ const GRAVITY_FACTOR: f64 = 0.1; // slow or increase gravity factor
 const LINES_PER_LEVEL: usize = 10; // used to increase or decrease how quickly the game progresses
 const LOCKDOWN_MAX_TIME: f64 = 0.5; // lockdown delay is 0.5 seconds
 const LOCKDOWN_MAX_RESETS: u32 = 15; // maximum number of times the lockdown timer can be reset
+const STARTING_LEVEL: usize = 0;
 
 // const DEBUG_RNG_SEED: u64 = 123456789; // for debugging RNG
 // const DELAY_TO_LOCK: f64 = 0.5; // how long to wait before locking a block which cannot move down
@@ -69,7 +70,7 @@ impl RustrisGame {
             held_rustomino: None,
             state: GameState::Menu, // Start the game at the menu screen
             score: 0,
-            level: 0,
+            level: STARTING_LEVEL,
             rustomino_bag: Vec::new(),
             rng: rand_xoshiro::Xoshiro256PlusPlus::from_entropy(),
             gravity_delay: gravity_delay(0),
@@ -244,6 +245,11 @@ impl RustrisGame {
                 rustomino.rustomino_type,
                 rustomino.playfield_slots()
             );
+            // check for full out of bounds lockout (game over)
+            if fully_out_of_bounds(&rustomino.playfield_slots()) {
+                self.game_over();
+                return;
+            }
         }
         self.hold_used = false;
         self.playfield.lock_rustomino();
@@ -383,7 +389,7 @@ impl RustrisGame {
         self.state = GameState::Playing;
         self.current_rustomino_state = CurrentRustominoState::Falling { time: 0.0 };
         self.score = 0;
-        self.level = 1;
+        self.level = STARTING_LEVEL;
         self.hold_used = false;
         self.rustomino_bag = Vec::new();
         self.gravity_delay = gravity_delay(1);
@@ -391,4 +397,15 @@ impl RustrisGame {
         self.last_update = get_time();
         self.get_next_rustomino();
     }
+}
+
+fn fully_out_of_bounds(&slots: &[IVec2; 4]) -> bool {
+    // check for out of bounds lockout
+    // if any slot is not out of bounds return false
+    for slot in slots {
+        if slot[1] < PLAYFIELD_SIZE[1] {
+            return false;
+        }
+    }
+    return true;
 }

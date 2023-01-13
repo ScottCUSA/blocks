@@ -3,7 +3,7 @@ use macroquad::prelude::*;
 use crate::game::{self, RustrisGame};
 use crate::playfield::{self, RustrisPlayfield, SlotState};
 use crate::rustomino::{Rustomino, RustominoType};
-use crate::VIEW_DIMENSIONS;
+use crate::VIEW_WH;
 
 pub(crate) const BLOCK_SIZE: i32 = 30;
 pub(crate) const BLOCK_PADDING: i32 = 1;
@@ -15,7 +15,7 @@ pub(crate) const PREVIEW_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5
 pub(crate) const HOLD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.2);
 pub(crate) const GHOST_COLOR: Color = Color::new(0.7, 0.7, 0.7, 1.0);
 pub(crate) const PAUSED_OVERLAY_COLOR: Color = Color::new(0.1, 0.1, 0.1, 0.6);
-pub(crate) const VIEW_SETTINGS: ViewSettings = ViewSettings::new(VIEW_DIMENSIONS);
+pub(crate) const VIEW_SETTINGS: ViewSettings = ViewSettings::new(VIEW_WH);
 pub(crate) const CONTROLS_BACKGROUND_COLOR: Color = Color::new(0.34, 0.09, 0.12, 0.8);
 
 pub struct ViewSettings {

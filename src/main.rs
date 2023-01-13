@@ -13,16 +13,16 @@ mod playfield;
 mod rustomino;
 mod view;
 
-const VIEW_DIMENSIONS: [i32; 2] = [1024, 768];
+const VIEW_WH: [i32; 2] = [1024, 768];
 const ASSETS_FOLDER: &str = "assets";
-const BACKGROUND_MUSIC_VOL: f32 = 0.1;
-// const MINIMUM_FRAME_TIME: f32 = 1. / 60.; // frametime for to limit framerate to 60fps
+const MUSIC_VOL: f32 = 0.1;
+// const MINIMUM_FRAME_TIME: f32 = 1. / 60.; // used to limit framerate to 60fps
 
 fn window_conf() -> Conf {
     Conf {
         window_title: "Rustris".to_owned(),
-        window_width: VIEW_DIMENSIONS[0],
-        window_height: VIEW_DIMENSIONS[1],
+        window_width: VIEW_WH[0],
+        window_height: VIEW_WH[1],
         window_resizable: false,
         ..Default::default()
     }
@@ -38,9 +38,9 @@ fn window_conf() -> Conf {
 async fn main() {
     // initialize the debug logger
     env_logger::init_from_env("RUSTRIS_LOG_LEVEL");
+    log::info!("startup: initializing Rustris;");
+    log::info!("loading Resources");
 
-    log::info!("Startup: Initializing Rustris;");
-    log::info!("Loading Resources");
     // find our assets path
     let assets_path = find_folder::Search::ParentsThenKids(2, 2)
         .for_folder(ASSETS_FOLDER)
@@ -48,11 +48,12 @@ async fn main() {
 
     // load the font
     let font_path = assets_path.join("04b30.ttf");
+    log::info!("loading font: {:?}", font_path);
     let font = load_ttf_font(&font_path.to_string_lossy())
         .await
-        .expect("unable to load UI font");
+        .expect("unable to load font");
 
-    // setup parameters for drawing text
+    // setup two different sized "fonts"
     let font_20pt = TextParams {
         font,
         font_size: 20,
@@ -64,20 +65,20 @@ async fn main() {
         ..Default::default()
     };
 
-    log::info!("Loading font: {:?}", font_path);
-
+    // init the game and control states 
     let mut game = game::RustrisGame::new(playfield::RustrisPlayfield::new());
     let mut controls = controls::ControlStates::default();
 
     // load the background music
     let background_path = assets_path.join("background.ogg");
-    log::info!("Loading background music: {:?}", background_path);
+    log::info!("loading background music: {:?}", background_path);
     let background_music = load_sound(&background_path.to_string_lossy())
         .await
         .expect("unable to load background music");
 
-    //
-    let mut music_volume = BACKGROUND_MUSIC_VOL;
+    // play background music
+    let mut music_volume = MUSIC_VOL;
+    log::info!("playing background music at volume: {music_volume}");
     play_sound(
         background_music,
         PlaySoundParams {
@@ -85,7 +86,6 @@ async fn main() {
             volume: music_volume,
         },
     );
-    log::info!("Playing background music at volume: {BACKGROUND_MUSIC_VOL}");
 
     loop {
         // attempt to limit framerate to 60fps
