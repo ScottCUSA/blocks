@@ -407,5 +407,5 @@ fn fully_out_of_bounds(&slots: &[IVec2; 4]) -> bool {
             return false;
         }
     }
-    return true;
+    true
 }

@@ -197,7 +197,7 @@ impl ControlStates {
     }
 
     pub fn handle_playing_inputs(&mut self, game: &mut RustrisGame) {
-        // if the escape key is pressed while playing the game is 
+        // if the escape key is pressed while playing the game is
         // immediately paused
         if is_key_pressed(KeyCode::Escape) {
             self.clear_inputs();

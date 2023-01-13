@@ -65,7 +65,7 @@ async fn main() {
         ..Default::default()
     };
 
-    // init the game and control states 
+    // init the game and control states
     let mut game = game::RustrisGame::new(playfield::RustrisPlayfield::new());
     let mut controls = controls::ControlStates::default();
 
