@@ -1,24 +1,18 @@
 use crate::{
     controls::ControlStates,
     playfield::{RustrisPlayfield, TranslationDirection, PLAYFIELD_SIZE},
-    rustomino::*,
+    rustomino::{RotationDirection, Rustomino, RustominoBag, RustominoState},
 };
-use ::rand::{seq::SliceRandom, SeedableRng};
 use std::f64::consts::E;
-use strum::IntoEnumIterator;
 
 use macroquad::prelude::*;
 
-const GRAVITY_NUMERATOR: f64 = 1.0; // how
-const GRAVITY_FACTOR: f64 = 0.1; // slow or increase gravity factor
+const GRAVITY_NUMERATOR: f64 = 1.0;
+const GRAVITY_FACTOR: f64 = 0.1; // used to slow or increase gravity factor
 const LINES_PER_LEVEL: usize = 10; // used to increase or decrease how quickly the game progresses
 const LOCKDOWN_MAX_TIME: f64 = 0.5; // lockdown delay is 0.5 seconds
 const LOCKDOWN_MAX_RESETS: u32 = 15; // maximum number of times the lockdown timer can be reset
 const STARTING_LEVEL: usize = 0;
-
-// const DEBUG_RNG_SEED: u64 = 123456789; // for debugging RNG
-// const DELAY_TO_LOCK: f64 = 0.5; // how long to wait before locking a block which cannot move down
-// const MAX_DELAY_RESETS: i32 = 10; // how many times to reset the delay
 
 const SINGLE_LINE_SCORE: usize = 100;
 const DOUBLE_LINE_SCORE: usize = 300;
@@ -47,19 +41,12 @@ pub struct RustrisGame {
     pub state: GameState,
     pub level: usize,
     pub score: usize,
-    rustomino_bag: Vec<RustominoType>, // contains the next rustomino types, shuffled
-    rng: rand_xoshiro::Xoshiro256PlusPlus,
+    rustomino_bag: RustominoBag,
     gravity_delay: f64, // time between gravity ticks
     total_lines_cleared: usize,
     last_update: f64, // when did the last game update occur
     hold_used: bool,  // if user has held a rustomino, resets on lock
     lockdown_resets: u32,
-    current_rustomino_state: CurrentRustominoState, // state of current rustomino, falling/lockdown
-}
-
-pub enum CurrentRustominoState {
-    Falling { time: f64 },
-    Lockdown { time: f64 },
 }
 
 impl RustrisGame {
@@ -71,22 +58,13 @@ impl RustrisGame {
             state: GameState::Menu, // Start the game at the menu screen
             level: STARTING_LEVEL,
             score: 0,
-            rustomino_bag: Vec::new(),
-            rng: rand_xoshiro::Xoshiro256PlusPlus::from_entropy(),
+            rustomino_bag: RustominoBag::new(),
             gravity_delay: gravity_delay(0),
             total_lines_cleared: 0,
             last_update: get_time(),
             hold_used: false,
             lockdown_resets: 0,
-            current_rustomino_state: CurrentRustominoState::Falling { time: 0.0 },
         }
-        .init()
-    }
-
-    fn init(mut self) -> Self {
-        log::info!("Initializing RustrisGame");
-        self.get_next_rustomino();
-        self
     }
 
     pub fn update(&mut self, controls: &mut ControlStates) {
@@ -100,95 +78,10 @@ impl RustrisGame {
                 controls.handle_menu_inputs(self);
             }
             GameState::Playing => {
-                // check to see if the playfield is ready for the next rustomino
-                if self.playfield.ready_for_next() {
-                    log::debug!("playfield is ready for next rustomino");
-                    // take the next rustomino
-                    if let Some(current_rustomino) = self.next_rustomino.take() {
-                        // we used next_rustomino so we need to replace it
-                        self.get_next_rustomino();
-                        // new rustomino state is always falling
-                        self.current_rustomino_state = CurrentRustominoState::Falling { time: 0.0 };
-                        // add the next rustomino to the playfield
-                        if !self.playfield.set_current_rustomino(current_rustomino) {
-                            // game over if it can't be placed without a collision
-                            self.game_over();
-                            return;
-                        }
-                    } else {
-                        log::debug!("next_rustomomino was None when it shouldn't have been.");
-                        self.get_next_rustomino();
-                        return;
-                    }
-                }
-
+                self.ready_playfield();
                 controls.handle_playing_inputs(self);
                 controls.handle_held_playing_inputs(self, delta_time);
-
-                // handle the current rustomino
-                match self.current_rustomino_state {
-                    CurrentRustominoState::Falling {
-                        time: mut gravity_time_accum,
-                    } => {
-                        // if the block is falling accumulate the time delta
-                        gravity_time_accum += delta_time;
-                        // if the accumulated time exceeds the current gravity delay
-                        // apply gravity
-                        if gravity_time_accum >= self.gravity_delay {
-                            // check to see if the playfield's current rustomino can fall
-                            if self.playfield.can_fall() {
-                                // apply gravity if it can
-                                self.playfield.apply_gravity();
-                                // reset the accumulated time
-                                log::debug!("setting current rustomino state to falling");
-                                self.current_rustomino_state =
-                                    CurrentRustominoState::Falling { time: 0.0 };
-                            } else {
-                                // the block can't move down so it's state becomes "Lockdown"
-                                // If this block has been in Lockdown state before
-                                if self.lockdown_resets > 0 {
-                                    // hitting the deck again causes a lockdown reset
-                                    self.lockdown_resets += 1;
-                                    log::debug!(
-                                        "incrementing lockdown resets: {}",
-                                        self.lockdown_resets
-                                    );
-                                }
-                                log::debug!("setting current rustomino state to lockdown");
-                                self.current_rustomino_state =
-                                    CurrentRustominoState::Lockdown { time: 0. };
-                            }
-                        } else {
-                            // no condition has been met to lock the block so
-                            // update the accumulated gravity time
-                            self.current_rustomino_state = CurrentRustominoState::Falling {
-                                time: gravity_time_accum,
-                            };
-                        }
-                    }
-                    CurrentRustominoState::Lockdown {
-                        time: mut lockdown_time,
-                    } => {
-                        // if the block is currently in a lockdown state
-                        // we need to add the time delta to the lockdown time
-                        lockdown_time += delta_time;
-                        if lockdown_time >= LOCKDOWN_MAX_TIME {
-                            // if the current lockdown time has exceed the maximum
-                            // lock the block
-                            self.lock("lockdown time expired");
-                        } else if self.lockdown_resets >= LOCKDOWN_MAX_RESETS {
-                            // if the user has exceeded the maximum number of resets
-                            // lock the block
-                            self.lock("max lockdown resets reached");
-                        } else {
-                            // no condition has been met to lock the block so continue
-                            // accumulating lockdown time
-                            self.current_rustomino_state = CurrentRustominoState::Lockdown {
-                                time: lockdown_time,
-                            };
-                        }
-                    }
-                }
+                self.playing_update(delta_time);
             }
             GameState::Paused => {
                 controls.handle_paused_inputs(self);
@@ -200,47 +93,97 @@ impl RustrisGame {
         self.last_update = now;
     }
 
+    fn ensure_next_rustomino(&mut self) {
+        // make sure next_rustomino is available
+        if self.next_rustomino.is_none() {
+            self.next_rustomino = Some(self.rustomino_bag.get_next_rustomino());
+        }
+    }
+
+    fn ready_playfield(&mut self) {
+        // make sure next_rustomino is available
+        self.ensure_next_rustomino();
+        // check to see if the playfield is ready for the next rustomino
+        if self.playfield.ready_for_next() {
+            log::debug!("playfield is ready for next rustomino");
+            // take the next rustomino
+            let current_rustomino = self.next_rustomino.take().unwrap();
+            // this makes sure next_rustomino is set
+            self.ensure_next_rustomino();
+            // add the next rustomino to the playfield
+            if !self.playfield.play_rustomino(current_rustomino) {
+                // game over if it can't be placed without a collision
+                self.game_over();
+                return;
+            }
+        }
+    }
+
+    fn playing_update(&mut self, delta_time: f64) {
+        let Some(current_state) = self.playfield.get_active_state() else {
+            // no active state
+            return;
+        };
+        match current_state {
+            RustominoState::Falling { time } if time + delta_time >= self.gravity_delay => {
+                // check to see if the block can still fall
+                if self.playfield.can_fall() {
+                    // apply gravity if it can
+                    self.playfield.apply_gravity();
+                    // reset the accumulated time
+                    self.playfield
+                        .set_active_state(RustominoState::Falling { time: 0. });
+                } else {
+                    // the block can't move down so it's state becomes "Lockdown"
+                    // If this block has been in Lockdown state before
+                    if self.lockdown_resets > 0 {
+                        // hitting the deck again causes a lockdown reset
+                        self.lockdown_resets += 1;
+                        log::debug!("incrementing lockdown resets: {}", self.lockdown_resets);
+                    }
+                    log::debug!("setting current rustomino state to lockdown");
+
+                    self.playfield
+                        .set_active_state(RustominoState::Lockdown { time: 0. });
+                }
+            }
+            RustominoState::Falling { time } => {
+                self.playfield.set_active_state(RustominoState::Falling {
+                    time: time + delta_time,
+                });
+            }
+            RustominoState::Lockdown { time } if time + delta_time >= LOCKDOWN_MAX_TIME => {
+                // if the current lockdown time has exceed the maximum
+                // lock the block
+                self.lock("lockdown time expired");
+            }
+            RustominoState::Lockdown { time: _ } if self.lockdown_resets >= LOCKDOWN_MAX_RESETS => {
+                // if the user has exceeded the maximum number of resets
+                // lock the block
+                self.lock("max lockdown resets reached");
+            }
+            RustominoState::Lockdown { time } => {
+                // accumulate lockdown time
+                self.playfield.set_active_state(RustominoState::Lockdown {
+                    time: time + delta_time,
+                });
+            }
+        }
+    }
+
     fn increase_game_level(&mut self) {
         self.level += 1;
         log::info!("increasing game level to {}", self.level);
         self.gravity_delay = gravity_delay(self.level);
     }
 
-    fn get_next_rustomino(&mut self) {
-        // this can be called even if next_rustomino is some
-        // in this case do nothing
-        if self.next_rustomino.is_some() {
-            return;
-        }
-
-        // if we've used all of the rustomino's fill the bag
-        self.fill_rustomino_bag();
-
-        if let Some(next_type) = self.rustomino_bag.pop() {
-            log::debug!("next rustomino: {:?}", next_type);
-            self.next_rustomino = Some(Rustomino::new(next_type));
-        }
-    }
-
-    // add one of each rustomino type to bag
-    // then shuffle the bag
-    fn fill_rustomino_bag(&mut self) {
-        if !self.rustomino_bag.is_empty() {
-            log::debug!("rustomino bag: {:?}", self.rustomino_bag);
-            return;
-        }
-        self.rustomino_bag
-            .append(&mut RustominoType::iter().collect());
-        self.rustomino_bag.shuffle(&mut self.rng);
-        log::debug!("filled rustomino bag: {:?}", self.rustomino_bag);
-    }
-
     fn lock(&mut self, reason: &str) {
-        log::debug!("locking block: playfield:\n{}", self.playfield);
-        if let Some(rustomino) = &self.playfield.current_rustomino {
-            log::info!(
-                "locking rustomnio for {reason}; type: {:?} blocks: {:?}",
-                rustomino.rustomino_type,
+        log::trace!("locking block: playfield:\n{}", self.playfield);
+        if let Some(rustomino) = &self.playfield.active_rustomino {
+            log::debug!("locking rustomnio for {reason}");
+            log::trace!(
+                "type: {:?} blocks: {:?}",
+                rustomino.rtype,
                 rustomino.playfield_slots()
             );
             // check for full out of bounds lockout (game over)
@@ -258,52 +201,73 @@ impl RustrisGame {
         self.handle_completed_lines();
     }
 
-    // incrementing the number of lockdown resets
-    // reseting the lockdown time to 0
-    fn reset_lockdown(&mut self) {
-        match self.current_rustomino_state {
-            CurrentRustominoState::Falling { time: _ } => {
-                // if the block can't fall
-                if !self.playfield.can_fall() {
-                    // if so set the state to lockdown
-                    log::debug!("block can't fall setting rustomino to lockdown");
-                    self.current_rustomino_state = CurrentRustominoState::Lockdown { time: 0. };
-                    if self.lockdown_resets > 0 {
-                        self.lockdown_resets += 1;
-                        log::debug!("incrementing lockdown resets: {}", self.lockdown_resets);
-                    }
-                }
+    // increment the number of lockdown resets
+    // and reset the lockdown time to 0
+    fn increment_lockdown_resets(&mut self) {
+        let Some(active_state) = self.playfield.get_active_state() else {
+            // no active state
+            return;
+        };
+        // this is handled differently depending on the active rustomino's state
+        match active_state {
+            /*
+            if the active rustomino is in a Falling state
+            we only want to increment the lockdown counter
+            if the current block is on the stack (can't fall)
+            and the block has previously been in locked down (lockdown_resets > 0)
+            */
+            RustominoState::Falling { time: _ }
+                if !self.playfield.can_fall() && self.lockdown_resets > 0 =>
+            {
+                log::debug!("block can't fall setting rustomino state back to lockdown");
+                // set the state back to lockdown
+                self.playfield
+                    .set_active_state(RustominoState::Lockdown { time: 0. });
+                self.lockdown_resets += 1;
+                log::debug!("incrementing lockdown resets: {}", self.lockdown_resets);
             }
-            CurrentRustominoState::Lockdown { time: _ } => {
+            RustominoState::Lockdown { time: _ }
+                if self.lockdown_resets + 1 >= LOCKDOWN_MAX_RESETS =>
+            {
+                log::debug!(
+                    "maximum lockdown resets reached, locking block: {}",
+                    self.lockdown_resets
+                );
+                self.lock("max lockdown resets reached");
+            }
+            RustominoState::Lockdown { time: _ } => {
                 self.lockdown_resets += 1;
                 log::debug!("incrementing lockdown resets: {}", self.lockdown_resets);
                 // if the block can fall again we don't want to lock it
                 if self.playfield.can_fall() {
                     // if so set the state back to falling
                     log::debug!("block can fall setting rustomino state back to falling");
-                    self.current_rustomino_state = CurrentRustominoState::Falling { time: 0.0 };
-                    return;
+                    self.playfield
+                        .set_active_state(RustominoState::Falling { time: 0. });
+                } else {
+                    log::debug!("resetting lockdown timer");
+                    self.playfield
+                        .set_active_state(RustominoState::Lockdown { time: 0. });
                 }
-                log::debug!("resetting lockdown timer");
-                self.current_rustomino_state = CurrentRustominoState::Lockdown { time: 0. }
             }
+            _ => {}
         }
     }
 
     pub fn translate(&mut self, direction: TranslationDirection) {
         log::debug!("translate called, direction: {:?}", direction);
         if self.playfield.translate_current(direction) {
-            self.reset_lockdown();
+            self.increment_lockdown_resets();
         }
-        log::debug!("translated block: playfield:\n{}", self.playfield);
+        log::trace!("playfield:\n{}", self.playfield);
     }
 
     pub fn rotate(&mut self, direction: RotationDirection) {
         log::debug!("rotate called, direction: {:?}", direction);
         if self.playfield.rotate_current(direction) {
-            self.reset_lockdown();
+            self.increment_lockdown_resets();
         }
-        log::debug!("rotated block: playfield:\n{}", self.playfield);
+        log::trace!("playfield:\n{}", self.playfield);
     }
 
     pub fn soft_drop(&mut self) {
@@ -311,7 +275,7 @@ impl RustrisGame {
         if !self.playfield.translate_current(TranslationDirection::Down) {
             self.lock("soft drop");
         }
-        log::debug!("soft_drop: playfield:\n{}", self.playfield);
+        log::trace!("playfield:\n{}", self.playfield);
     }
 
     pub fn hard_drop(&mut self) {
@@ -333,21 +297,28 @@ impl RustrisGame {
         if self.hold_used {
             return;
         }
+
         // check to see if there is a held rustomino
         let rustomino = if self.held_rustomino.is_some() {
             // take the held_rustomino
             self.held_rustomino.take().unwrap()
         } else {
             // if not we take the next rustomino
-            self.next_rustomino.take().unwrap()
+            self.next_rustomino
+                .take()
+                .unwrap_or(self.rustomino_bag.get_next_rustomino())
         };
 
         // if we used next_rustomino we need to replace it
-        self.get_next_rustomino();
+        self.ensure_next_rustomino();
 
         // take current_rustomino and make it the hold_rustomino
-        self.held_rustomino = self.playfield.take_current();
-        self.playfield.set_current_rustomino(rustomino);
+        self.held_rustomino = self.playfield.take_active();
+
+        if !self.playfield.play_rustomino(rustomino.reset()) {
+            log::info!("on hold, replacement piece couldn't be added to the board");
+            self.game_over();
+        }
 
         // prevent the player from taking the hold action again
         // until the next rustomino is locked
@@ -419,16 +390,12 @@ impl RustrisGame {
         self.state = GameState::Playing;
         self.level = STARTING_LEVEL;
         self.score = 0;
-        self.rustomino_bag = Vec::new();
+        self.rustomino_bag = RustominoBag::new();
         self.last_update = get_time();
         self.gravity_delay = gravity_delay(1);
         self.total_lines_cleared = 0;
         self.lockdown_resets = 0;
         self.hold_used = false;
-        self.current_rustomino_state = CurrentRustominoState::Falling { time: 0.0 };
-
-        // init rustomino bag and next rustomino
-        self.get_next_rustomino();
     }
 }
 

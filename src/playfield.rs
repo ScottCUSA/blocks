@@ -2,7 +2,7 @@ use std::{fmt::Display, mem::discriminant};
 
 use macroquad::prelude::*;
 
-use crate::rustomino::{RotationDirection, Rustomino, RustominoType};
+use crate::rustomino::{RotationDirection, Rustomino, RustominoState, RustominoType};
 
 pub(crate) const PLAYFIELD_SLOTS: [usize; 2] = [10, 22];
 pub(crate) const PLAYFIELD_SIZE: [i32; 2] = [10, 20];
@@ -13,7 +13,7 @@ type Slots = [[SlotState; PLAYFIELD_SLOTS[0]]; PLAYFIELD_SLOTS[1]];
 #[derive(Debug)]
 pub struct RustrisPlayfield {
     pub(crate) slots: Slots,
-    pub(crate) current_rustomino: Option<Rustomino>,
+    pub(crate) active_rustomino: Option<Rustomino>,
     pub(crate) ghost_rustomino: Option<Rustomino>,
 }
 
@@ -22,7 +22,7 @@ impl RustrisPlayfield {
         log::info!("Initializing Rustris Playfield");
         RustrisPlayfield {
             slots: [[SlotState::Empty; PLAYFIELD_SLOTS[0]]; PLAYFIELD_SLOTS[1]],
-            current_rustomino: None,
+            active_rustomino: None,
             ghost_rustomino: None,
         }
     }
@@ -30,46 +30,45 @@ impl RustrisPlayfield {
     /// Adds a new rustomino to the playfield
     /// returns false if there was a collision
     /// while adding the block (game over)
-    pub fn set_current_rustomino(&mut self, rustomino: Rustomino) -> bool {
-        log::debug!("setting current rustomino: {:?}", rustomino);
+    pub fn play_rustomino(&mut self, rustomino: Rustomino) -> bool {
+        log::info!("playing new rustomino: {:?}", rustomino.rtype);
+        log::trace!("new rustomino: {:?}", rustomino);
         let ok = !check_collision(&self.slots, rustomino.playfield_slots());
         set_playfield_slot_states(
             &mut self.slots,
             &rustomino.playfield_slots(),
-            SlotState::Occupied(rustomino.rustomino_type),
+            SlotState::Occupied(rustomino.rtype),
         );
         self.ghost_rustomino = Some(rustomino.clone());
-        self.current_rustomino = Some(rustomino);
+        self.active_rustomino = Some(rustomino);
         self.update_ghost_rustomino(false);
         ok
     }
 
-    /// Adds a new rustomino to the playfield
-    /// returns false if there was a collision
-    /// while adding the block (game over)
-    pub fn take_current(&mut self) -> Option<Rustomino> {
-        if let Some(current_rustomino) = self.current_rustomino.take() {
-            log::debug!("taking current rustomino: {:?}", current_rustomino);
+    pub fn take_active(&mut self) -> Option<Rustomino> {
+        if let Some(active_rustomino) = self.active_rustomino.take() {
+            log::debug!("taking active rustomino: {:?}", active_rustomino.rtype);
+            log::trace!("rustomino: {:?}", active_rustomino);
             set_playfield_slot_states(
                 &mut self.slots,
-                &current_rustomino.playfield_slots(),
+                &active_rustomino.playfield_slots(),
                 SlotState::Empty,
             );
             self.update_ghost_rustomino(false);
-            return Some(current_rustomino.reset());
+            return Some(active_rustomino.reset());
         }
         None
     }
     /// checks to see if the playfield needs the next rustomino
     pub fn ready_for_next(&self) -> bool {
-        self.current_rustomino.is_none()
+        self.active_rustomino.is_none()
     }
 
     // checking if rustomino can fall
     pub fn can_fall(&self) -> bool {
         log::debug!("checking if the current rustomino can fall");
         // get the current rustomino
-        let Some(rustomino) = &self.current_rustomino else {
+        let Some(rustomino) = &self.active_rustomino else {
             // no blocks to move/or lock
             return false;
         };
@@ -85,18 +84,33 @@ impl RustrisPlayfield {
         true
     }
 
+    pub fn get_active_state(&self) -> Option<RustominoState> {
+        if let Some(active_rustomino) = self.active_rustomino.as_ref() {
+            Some(active_rustomino.state)
+        } else {
+            None
+        }
+    }
+
+    pub fn set_active_state(&mut self, new_state: RustominoState) {
+        if let Some(active_rustomino) = self.active_rustomino.as_mut() {
+            active_rustomino.set_state(new_state)
+        }
+    }
+
     /// apply gravity to the current rustomino
     pub fn apply_gravity(&mut self) {
+        log::debug!("applying gravity");
         // apply the gravity translation rustomino
-        if let Some(current_rustomino) = self.current_rustomino.as_mut() {
-            log::debug!(
+        if let Some(current_rustomino) = self.active_rustomino.as_mut() {
+            log::trace!(
                 "applying gravity: {:?} to {:?}",
                 current_rustomino,
                 current_rustomino.translated(TranslationDirection::DOWN_TRANSLATION),
             );
             translate_rustomino(
                 &mut self.slots,
-                SlotState::Occupied(current_rustomino.rustomino_type),
+                SlotState::Occupied(current_rustomino.rtype),
                 current_rustomino,
                 TranslationDirection::Down.get_translation(),
             );
@@ -106,17 +120,18 @@ impl RustrisPlayfield {
     /// lock the current rustomino
     pub fn lock_rustomino(&mut self) {
         // get the current rustomino
-        if let Some(current_rustomino) = self.current_rustomino.as_mut() {
-            log::debug!("locking rustomino: {:?}", current_rustomino);
+        if let Some(active_rustomino) = self.active_rustomino.as_mut() {
+            log::info!("locking rustomino");
+            log::trace!("rustomino: {:?}", active_rustomino);
 
             set_playfield_slot_states(
                 &mut self.slots,
-                &current_rustomino.playfield_slots(),
-                SlotState::Locked(current_rustomino.rustomino_type),
+                &active_rustomino.playfield_slots(),
+                SlotState::Locked(active_rustomino.rtype),
             );
 
             // prepare for the next rustomino
-            self.current_rustomino = None;
+            self.active_rustomino = None;
             self.update_ghost_rustomino(true);
         }
     }
@@ -143,7 +158,7 @@ impl RustrisPlayfield {
             return completed_lines;
         }
 
-        log::debug!("clearing lines before: playfield:\n{}", self);
+        log::trace!("clearing lines before: playfield:\n{}", self);
 
         log::info!("clearing completed lines: {:?}", completed_lines);
 
@@ -165,7 +180,7 @@ impl RustrisPlayfield {
             }
         }
 
-        log::debug!("clearing lines middle: playfield:\n{}", self);
+        log::trace!("clearing lines middle: playfield:\n{}", self);
         // then "move" the states of the slots above cleared lines
         // down by the number of cleared lines
         // start at the lowest completed line
@@ -183,14 +198,14 @@ impl RustrisPlayfield {
                 *slot = slots_before_clear[y + num_completed_lines][x];
             }
         }
-        log::debug!("clearing lines after: playfield:\n{}", self);
+        log::trace!("clearing lines after: playfield:\n{}", self);
         self.update_ghost_rustomino(false);
         completed_lines
     }
 
     /// Attempt to rotate the current rustomino
     pub fn rotate_current(&mut self, direction: RotationDirection) -> bool {
-        if let Some(current_rustomino) = self.current_rustomino.as_mut() {
+        if let Some(current_rustomino) = self.active_rustomino.as_mut() {
             // get the rustomino blocks if they were rotated
             let rotated_blocks = current_rustomino.rotated(&direction);
 
@@ -202,7 +217,7 @@ impl RustrisPlayfield {
 
             rotate_rustomino(
                 &mut self.slots,
-                SlotState::Occupied(current_rustomino.rustomino_type),
+                SlotState::Occupied(current_rustomino.rtype),
                 current_rustomino,
                 &direction,
             );
@@ -217,17 +232,17 @@ impl RustrisPlayfield {
     /// Attempt to translate the current rustomino.
     /// Return true if possible
     pub fn translate_current(&mut self, direction: TranslationDirection) -> bool {
-        if let Some(current_rustomino) = self.current_rustomino.as_mut() {
+        if let Some(current_rustomino) = self.active_rustomino.as_mut() {
             // check to see if the translation would cause a collision with a locked block
             let translated_blocks = current_rustomino.translated(direction.get_translation());
             if check_collision(&self.slots, translated_blocks) {
-                log::debug!("translate collision detected: {:?}", translated_blocks);
+                log::debug!("cannot translate, collision detected");
                 return false;
             }
 
             translate_rustomino(
                 &mut self.slots,
-                SlotState::Occupied(current_rustomino.rustomino_type),
+                SlotState::Occupied(current_rustomino.rtype),
                 current_rustomino,
                 direction.get_translation(),
             );
@@ -241,8 +256,8 @@ impl RustrisPlayfield {
     }
 
     pub fn update_ghost_rustomino(&mut self, translating: bool) {
-        if let Some(current_rustomino) = &self.current_rustomino {
-            log::debug!("update_ghost_rustomino: updating ghost location");
+        if let Some(current_rustomino) = &self.active_rustomino {
+            log::debug!("updating ghost location");
             let drop_translation = get_hard_drop_translation(&self.slots, current_rustomino);
             if let Some(ghost_rustomino) = self.ghost_rustomino.as_mut() {
                 if translating {
@@ -261,7 +276,7 @@ impl RustrisPlayfield {
                 // perform the tranlsation
                 ghost_rustomino.translate(drop_translation);
 
-                log::debug!(
+                log::trace!(
                     "update_ghost_rustomino: new ghost rustomino location: {:?}",
                     ghost_rustomino.playfield_slots()
                 );
@@ -272,7 +287,7 @@ impl RustrisPlayfield {
                         != discriminant(&SlotState::Occupied(RustominoType::I))
                     {
                         self.slots[slot[1] as usize][slot[0] as usize] =
-                            SlotState::Ghost(ghost_rustomino.rustomino_type);
+                            SlotState::Ghost(ghost_rustomino.rtype);
                     }
                 }
             }
@@ -292,7 +307,7 @@ impl RustrisPlayfield {
     }
 
     pub fn hard_drop(&mut self) {
-        if let Some(current_rustomino) = self.current_rustomino.as_mut() {
+        if let Some(current_rustomino) = self.active_rustomino.as_mut() {
             let delta = get_hard_drop_translation(&self.slots, current_rustomino);
             set_playfield_slot_states(
                 &mut self.slots,
@@ -334,19 +349,19 @@ fn check_collision(playfield_slots: &Slots, block_locations: [IVec2; 4]) -> bool
     for location in block_locations {
         // check for left and right wall collisions
         if location[0] < 0 || location[0] >= PLAYFIELD_SLOTS[0] as i32 {
-            log::debug!("collided with left/right wall: {:?}", block_locations);
+            log::trace!("collided with left/right wall: {:?}", block_locations);
             return true;
         }
         // check for bottom wall collision
         if location[1] < 0 {
-            log::debug!("collided with bottom wall: {:?}", block_locations);
+            log::trace!("collided with bottom wall: {:?}", block_locations);
             return true;
         }
         // slots[y][x] compare variant ignoring value
         if discriminant(&playfield_slots[location[1] as usize][location[0] as usize])
             == discriminant(&SlotState::Locked(RustominoType::I))
         {
-            log::debug!("collided with locked block: {:?}", block_locations);
+            log::trace!("collided with locked block: {:?}", block_locations);
             return true;
         }
     }
@@ -394,7 +409,7 @@ fn set_playfield_slot_states(
     block_slots: &[IVec2; 4],
     new_state: SlotState,
 ) {
-    log::debug!(
+    log::trace!(
         "set_slot_state called block_slots: {:?} to state: {:?}",
         block_slots,
         new_state
@@ -418,6 +433,7 @@ impl Display for RustrisPlayfield {
         Ok(())
     }
 }
+
 #[derive(Debug)]
 pub enum TranslationDirection {
     Left,

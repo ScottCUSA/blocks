@@ -177,7 +177,7 @@ pub fn draw_playing(
             // display the preview
             // draw the block
             let rect = next_block_rect([slot[0], slot[1]]);
-            draw_rectangle(rect.x, rect.y, rect.w, rect.h, next.rustomino_type.color());
+            draw_rectangle(rect.x, rect.y, rect.w, rect.h, next.rtype.color());
         }
     }
 
@@ -186,7 +186,7 @@ pub fn draw_playing(
             // display the preview
             // draw the block
             let rect = hold_block_rect([slot[0], slot[1]]);
-            draw_rectangle(rect.x, rect.y, rect.w, rect.h, held.rustomino_type.color());
+            draw_rectangle(rect.x, rect.y, rect.w, rect.h, held.rtype.color());
         }
     }
 

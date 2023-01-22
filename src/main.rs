@@ -6,6 +6,7 @@ use macroquad::{
     text::load_ttf_font,
     window::Conf,
 };
+use simplelog::{format_description, ConfigBuilder};
 
 mod controls;
 mod game;
@@ -36,8 +37,20 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf())]
 async fn main() {
-    // initialize the debug logger
-    env_logger::init_from_env("RUSTRIS_LOG_LEVEL");
+    let config = ConfigBuilder::new()
+        .set_time_format_custom(format_description!("[hour]:[minute]:[second].[subsecond]"))
+        .build();
+    // initialize the logger
+    if simplelog::TermLogger::init(
+        simplelog::LevelFilter::Debug,
+        config,
+        simplelog::TerminalMode::Mixed,
+        simplelog::ColorChoice::Auto,
+    )
+    .is_err()
+    {
+        eprintln!("WARNING: unable to initialize logger");
+    }
     log::info!("startup: initializing Rustris;");
     log::info!("loading Resources");
 
