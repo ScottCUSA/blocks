@@ -65,7 +65,9 @@ impl RustrisPlayfield {
         self.current_rustomino.is_none()
     }
 
+    // checking if rustomino can fall
     pub fn can_fall(&self) -> bool {
+        log::debug!("checking if the current rustomino can fall");
         // get the current rustomino
         let Some(rustomino) = &self.current_rustomino else {
             // no blocks to move/or lock
@@ -141,6 +143,8 @@ impl RustrisPlayfield {
             return completed_lines;
         }
 
+        log::debug!("clearing lines before: playfield:\n{}", self);
+
         log::info!("clearing completed lines: {:?}", completed_lines);
 
         // iterate through the slots
@@ -160,6 +164,8 @@ impl RustrisPlayfield {
                 }
             }
         }
+
+        log::debug!("clearing lines middle: playfield:\n{}", self);
         // then "move" the states of the slots above cleared lines
         // down by the number of cleared lines
         // start at the lowest completed line
@@ -177,6 +183,7 @@ impl RustrisPlayfield {
                 *slot = slots_before_clear[y + num_completed_lines][x];
             }
         }
+        log::debug!("clearing lines after: playfield:\n{}", self);
         self.update_ghost_rustomino(false);
         completed_lines
     }
@@ -212,10 +219,9 @@ impl RustrisPlayfield {
     pub fn translate_current(&mut self, direction: TranslationDirection) -> bool {
         if let Some(current_rustomino) = self.current_rustomino.as_mut() {
             // check to see if the translation would cause a collision with a locked block
-            if check_collision(
-                &self.slots,
-                current_rustomino.translated(direction.get_translation()),
-            ) {
+            let translated_blocks = current_rustomino.translated(direction.get_translation());
+            if check_collision(&self.slots, translated_blocks) {
+                log::debug!("translate collision detected: {:?}", translated_blocks);
                 return false;
             }
 
@@ -236,6 +242,7 @@ impl RustrisPlayfield {
 
     pub fn update_ghost_rustomino(&mut self, translating: bool) {
         if let Some(current_rustomino) = &self.current_rustomino {
+            log::debug!("update_ghost_rustomino: updating ghost location");
             let drop_translation = get_hard_drop_translation(&self.slots, current_rustomino);
             if let Some(ghost_rustomino) = self.ghost_rustomino.as_mut() {
                 if translating {
@@ -253,8 +260,13 @@ impl RustrisPlayfield {
 
                 // perform the tranlsation
                 ghost_rustomino.translate(drop_translation);
-                // set the new slot states to occupied
 
+                log::debug!(
+                    "update_ghost_rustomino: new ghost rustomino location: {:?}",
+                    ghost_rustomino.playfield_slots()
+                );
+
+                // set the new slot states to occupied
                 for slot in ghost_rustomino.playfield_slots() {
                     if discriminant(&self.slots[slot[1] as usize][slot[0] as usize])
                         != discriminant(&SlotState::Occupied(RustominoType::I))
@@ -265,6 +277,7 @@ impl RustrisPlayfield {
                 }
             }
         } else {
+            log::debug!("update_ghost_rustomino: removing ghost rustomino");
             if !translating {
                 if let Some(ghost_rustomino) = self.ghost_rustomino.as_mut() {
                     set_playfield_slot_states(
@@ -296,6 +309,7 @@ fn get_hard_drop_translation(playfield_slots: &Slots, rustomino: &Rustomino) -> 
 
     // if we can't move it down without colliding the delta is 0
     if check_collision(playfield_slots, rustomino.translated(translation)) {
+        log::debug!("hard_drop_translation: cannot move, block on stack");
         return IVec2::ZERO;
     }
 
@@ -305,6 +319,10 @@ fn get_hard_drop_translation(playfield_slots: &Slots, rustomino: &Rustomino) -> 
         let good_translation = translation;
         translation += TranslationDirection::DOWN_TRANSLATION;
         if check_collision(playfield_slots, rustomino.translated(translation)) {
+            log::debug!(
+                "hard_drop_translation: found hard drop translation: {:?}",
+                good_translation
+            );
             return good_translation;
         }
     }
@@ -400,6 +418,7 @@ impl Display for RustrisPlayfield {
         Ok(())
     }
 }
+#[derive(Debug)]
 pub enum TranslationDirection {
     Left,
     Right,
