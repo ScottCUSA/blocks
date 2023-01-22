@@ -1,4 +1,4 @@
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 use macroquad::{
     audio::{load_sound, play_sound, PlaySoundParams},
