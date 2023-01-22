@@ -1,7 +1,8 @@
 use macroquad::prelude::*;
 
+use ::rand::{seq::SliceRandom, SeedableRng};
 use std::fmt::Display;
-use strum::EnumIter;
+use strum::{EnumIter, IntoEnumIterator};
 
 const I_BOUNDING_BOX: IVec2 = ivec2(4, 4);
 const O_BOUNDING_BOX: IVec2 = ivec2(4, 3);
@@ -270,7 +271,8 @@ impl RustominoType {
 
 #[derive(Debug, Clone)]
 pub struct Rustomino {
-    pub rustomino_type: RustominoType,
+    pub rtype: RustominoType,
+    pub state: RustominoState,
     pub rotation: RustominoRotation,
     pub blocks: [IVec2; 4],
     pub translation: IVec2,
@@ -281,49 +283,56 @@ impl Rustomino {
     pub fn new(block_type: RustominoType) -> Rustomino {
         match block_type {
             RustominoType::I => Rustomino {
-                rustomino_type: block_type,
+                rtype: block_type,
+                state: RustominoState::Falling { time: 0. },
                 rotation: RustominoRotation::new(I_ROTATIONS),
                 blocks: I_BLOCKS,
                 translation: I_START_TRANSLATION,
                 bounding_box: I_BOUNDING_BOX,
             },
             RustominoType::O => Rustomino {
-                rustomino_type: block_type,
+                rtype: block_type,
+                state: RustominoState::Falling { time: 0. },
                 rotation: RustominoRotation::new(O_ROTATIONS),
                 blocks: O_BLOCKS,
                 bounding_box: O_BOUNDING_BOX,
                 translation: O_T_L_J_S_Z_START_TRANSLATION,
             },
             RustominoType::T => Rustomino {
-                rustomino_type: block_type,
+                rtype: block_type,
+                state: RustominoState::Falling { time: 0. },
                 rotation: RustominoRotation::new(T_ROTATIONS),
                 blocks: T_BLOCKS,
                 bounding_box: T_L_J_S_Z_BOUNDING_BOX,
                 translation: O_T_L_J_S_Z_START_TRANSLATION,
             },
             RustominoType::L => Rustomino {
-                rustomino_type: block_type,
+                rtype: block_type,
+                state: RustominoState::Falling { time: 0. },
                 rotation: RustominoRotation::new(L_ROTATIONS),
                 blocks: L_BLOCKS,
                 bounding_box: T_L_J_S_Z_BOUNDING_BOX,
                 translation: O_T_L_J_S_Z_START_TRANSLATION,
             },
             RustominoType::J => Rustomino {
-                rustomino_type: block_type,
+                rtype: block_type,
+                state: RustominoState::Falling { time: 0. },
                 rotation: RustominoRotation::new(J_ROTATIONS),
                 blocks: J_BLOCKS,
                 bounding_box: T_L_J_S_Z_BOUNDING_BOX,
                 translation: O_T_L_J_S_Z_START_TRANSLATION,
             },
             RustominoType::S => Rustomino {
-                rustomino_type: block_type,
+                rtype: block_type,
+                state: RustominoState::Falling { time: 0. },
                 rotation: RustominoRotation::new(S_ROTATIONS),
                 blocks: S_BLOCKS,
                 bounding_box: T_L_J_S_Z_BOUNDING_BOX,
                 translation: O_T_L_J_S_Z_START_TRANSLATION,
             },
             RustominoType::Z => Rustomino {
-                rustomino_type: block_type,
+                rtype: block_type,
+                state: RustominoState::Falling { time: 0. },
                 rotation: RustominoRotation::new(Z_ROTATIONS),
                 blocks: Z_BLOCKS,
                 bounding_box: T_L_J_S_Z_BOUNDING_BOX,
@@ -333,11 +342,10 @@ impl Rustomino {
     }
 
     pub fn reset(self) -> Rustomino {
-        Rustomino::new(self.rustomino_type)
+        Rustomino::new(self.rtype)
     }
 
     pub fn translate(&mut self, delta: IVec2) {
-        log::debug!("translate called: delta {:?}", delta);
         self.translation += delta;
     }
 
@@ -350,7 +358,7 @@ impl Rustomino {
         ]
     }
 
-    pub fn board_slots(&self) -> [IVec2; 4] {
+    pub fn playfield_slots(&self) -> [IVec2; 4] {
         self.translated(IVec2::ZERO)
     }
 
@@ -377,6 +385,11 @@ impl Rustomino {
             (self.blocks[2] + self.translation) + rotation.0[2],
             (self.blocks[3] + self.translation) + rotation.0[3],
         ]
+    }
+
+    pub fn set_state(&mut self, state: RustominoState) {
+        log::trace!("setting rustomino state: {:?}", state);
+        self.state = state;
     }
 }
 
@@ -510,5 +523,47 @@ impl std::ops::Neg for RotationTranslation {
 
     fn neg(self) -> Self {
         Self([-self.0[0], -self.0[1], -self.0[2], -self.0[3]])
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum RustominoState {
+    Falling { time: f64 },
+    Lockdown { time: f64 },
+}
+
+pub struct RustominoBag {
+    bag: Vec<RustominoType>, // contains the next rustomino types, shuffled
+    rng: rand_xoshiro::Xoshiro256PlusPlus,
+}
+
+impl RustominoBag {
+    pub fn new() -> Self {
+        RustominoBag {
+            bag: Vec::new(),
+            rng: rand_xoshiro::Xoshiro256PlusPlus::from_entropy(),
+        }
+    }
+
+    pub fn get_next_rustomino(&mut self) -> Rustomino {
+        // make sure the bag isn't empty
+        self.fill_rustomino_bag();
+
+        let rtype = self.bag.pop().unwrap();
+        log::info!("next rustomino type: {:?}", rtype);
+
+        Rustomino::new(rtype)
+    }
+
+    // add one of each rustomino type to bag
+    // then shuffle the bag
+    fn fill_rustomino_bag(&mut self) {
+        if !self.bag.is_empty() {
+            log::trace!("rustomino bag is not empty: {:?}", self.bag);
+            return;
+        }
+        self.bag.append(&mut RustominoType::iter().collect());
+        self.bag.shuffle(&mut self.rng);
+        log::debug!("filled rustomino bag: {:?}", self.bag);
     }
 }

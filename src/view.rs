@@ -1,27 +1,27 @@
 use macroquad::prelude::*;
 
-use crate::board::{self, RustrisBoard, SlotState};
 use crate::game::{self, RustrisGame};
+use crate::playfield::{self, RustrisPlayfield, SlotState};
 use crate::rustomino::{Rustomino, RustominoType};
-use crate::VIEW_DIMENSIONS;
+use crate::VIEW_WH;
 
 pub(crate) const BLOCK_SIZE: i32 = 30;
 pub(crate) const BLOCK_PADDING: i32 = 1;
 pub(crate) const STAGING_PADDING: i32 = 2;
 pub(crate) const BACKGROUND_COLOR: Color = Color::new(0.0, 0.29, 0.38, 1.0);
 pub(crate) const STAGING_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
-pub(crate) const BOARD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
+pub(crate) const PLAYFIELD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 pub(crate) const PREVIEW_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 pub(crate) const HOLD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.2);
 pub(crate) const GHOST_COLOR: Color = Color::new(0.7, 0.7, 0.7, 1.0);
 pub(crate) const PAUSED_OVERLAY_COLOR: Color = Color::new(0.1, 0.1, 0.1, 0.6);
-pub(crate) const VIEW_SETTINGS: ViewSettings = ViewSettings::new(VIEW_DIMENSIONS);
+pub(crate) const VIEW_SETTINGS: ViewSettings = ViewSettings::new(VIEW_WH);
 pub(crate) const CONTROLS_BACKGROUND_COLOR: Color = Color::new(0.34, 0.09, 0.12, 0.8);
 
 pub struct ViewSettings {
     pub view_w: i32,
     pub view_h: i32,
-    pub board_rect: Rect<f32>,
+    pub playfield_rect: Rect<f32>,
     pub staging_rect: Rect<f32>,
     pub preview_rect: Rect<f32>,
     pub hold_rect: Rect<f32>,
@@ -34,33 +34,35 @@ pub struct ViewSettings {
 
 impl ViewSettings {
     const fn new(view_dimensions: [i32; 2]) -> Self {
-        let board_w = (board::BOARD_SLOTS[0] as i32 * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
-        let board_h =
-            ((board::BOARD_SLOTS[1] as i32 - 2) * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
-        let staging_w = board_w;
+        let playfield_w =
+            (playfield::PLAYFIELD_SLOTS[0] as i32 * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
+        let playfield_h = ((playfield::PLAYFIELD_SLOTS[1] as i32 - 2)
+            * (BLOCK_SIZE + BLOCK_PADDING))
+            + BLOCK_PADDING;
+        let staging_w = playfield_w;
         let staging_h = (2 * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
         let preview_w = (4 * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
         let preview_h = staging_h;
         let hold_w = preview_w;
         let hold_h = staging_h;
 
-        let board_x = view_dimensions[0] / 2 - board_w / 2;
-        let board_y = view_dimensions[1] / 2 - board_h / 2 + staging_h / 2 + 1;
-        let staging_x = board_x;
-        let staging_y = board_y - staging_h - STAGING_PADDING;
-        let preview_x = board_x + board_w + 10;
-        let preview_y = board_y;
-        let hold_x = board_x - preview_w - 10;
-        let hold_y = board_y;
+        let playfield_x = view_dimensions[0] / 2 - playfield_w / 2;
+        let playfield_y = view_dimensions[1] / 2 - playfield_h / 2 + staging_h / 2 + 1;
+        let staging_x = playfield_x;
+        let staging_y = playfield_y - staging_h - STAGING_PADDING;
+        let preview_x = playfield_x + playfield_w + 10;
+        let preview_y = playfield_y;
+        let hold_x = playfield_x - preview_w - 10;
+        let hold_y = playfield_y;
 
         Self {
             view_w: view_dimensions[0],
             view_h: view_dimensions[1],
-            board_rect: Rect::new(
-                board_x as f32,
-                board_y as f32,
-                board_w as f32,
-                board_h as f32,
+            playfield_rect: Rect::new(
+                playfield_x as f32,
+                playfield_y as f32,
+                playfield_w as f32,
+                playfield_h as f32,
             ),
             staging_rect: Rect::new(
                 staging_x as f32,
@@ -75,17 +77,23 @@ impl ViewSettings {
                 preview_h as f32,
             ),
             hold_rect: Rect::new(hold_x as f32, hold_y as f32, hold_w as f32, hold_h as f32),
-            score_label_pos: ivec2(board_x + board_w + 30, board_y + board_h - 30),
-            level_label_pos: ivec2(board_x - 180, board_y + board_h - 30),
-            title_pos: ivec2(board_x - 280, board_y - 50),
-            level_pos: ivec2(board_x - 60, board_y + board_h - 30),
-            score_pos: ivec2(board_x + board_w + 150, board_y + board_h - 30),
+            score_label_pos: ivec2(
+                playfield_x + playfield_w + 30,
+                playfield_y + playfield_h - 30,
+            ),
+            level_label_pos: ivec2(playfield_x - 180, playfield_y + playfield_h - 30),
+            title_pos: ivec2(playfield_x - 280, playfield_y - 50),
+            level_pos: ivec2(playfield_x - 60, playfield_y + playfield_h - 30),
+            score_pos: ivec2(
+                playfield_x + playfield_w + 150,
+                playfield_y + playfield_h - 30,
+            ),
         }
     }
 }
 
 pub fn draw(game: &RustrisGame, font_20pt: &TextParams, font_30pt: &TextParams) {
-    match game.game_state {
+    match game.state {
         game::GameState::Menu => {
             draw_playing_backgound();
             draw_menu(font_30pt);
@@ -93,20 +101,20 @@ pub fn draw(game: &RustrisGame, font_20pt: &TextParams, font_30pt: &TextParams) 
         }
         game::GameState::Playing => {
             draw_playing_backgound();
-            draw_playing(&game.board, &game.next_rustomino, &game.held_rustomino);
-            draw_playing_overlay(font_20pt, game.game_level, game.score);
+            draw_playing(&game.playfield, &game.next_rustomino, &game.held_rustomino);
+            draw_playing_overlay(font_20pt, game.level, game.score);
         }
         game::GameState::Paused => {
             draw_playing_backgound();
-            draw_playing(&game.board, &game.next_rustomino, &game.held_rustomino);
-            draw_playing_overlay(font_20pt, game.game_level, game.score);
+            draw_playing(&game.playfield, &game.next_rustomino, &game.held_rustomino);
+            draw_playing_overlay(font_20pt, game.level, game.score);
             draw_paused(font_30pt);
             draw_help_text(font_30pt, font_20pt);
         }
         game::GameState::GameOver => {
             draw_playing_backgound();
-            draw_playing(&game.board, &game.next_rustomino, &game.held_rustomino);
-            draw_playing_overlay(font_20pt, game.game_level, game.score);
+            draw_playing(&game.playfield, &game.next_rustomino, &game.held_rustomino);
+            draw_playing_overlay(font_20pt, game.level, game.score);
             draw_gameover(font_30pt)
         }
     }
@@ -122,11 +130,11 @@ pub fn draw_playing_backgound() {
     );
 
     draw_rectangle(
-        VIEW_SETTINGS.board_rect.x,
-        VIEW_SETTINGS.board_rect.y,
-        VIEW_SETTINGS.board_rect.w,
-        VIEW_SETTINGS.board_rect.h,
-        BOARD_BACKGROUND_COLOR,
+        VIEW_SETTINGS.playfield_rect.x,
+        VIEW_SETTINGS.playfield_rect.y,
+        VIEW_SETTINGS.playfield_rect.w,
+        VIEW_SETTINGS.playfield_rect.h,
+        PLAYFIELD_BACKGROUND_COLOR,
     );
 
     draw_rectangle(
@@ -147,16 +155,16 @@ pub fn draw_playing_backgound() {
 }
 
 pub fn draw_playing(
-    board: &RustrisBoard,
+    playfield: &RustrisPlayfield,
     next_rustomino: &Option<Rustomino>,
     held_rustomino: &Option<Rustomino>,
 ) {
-    for (y, slots_x) in board.slots.iter().enumerate() {
+    for (y, slots_x) in playfield.slots.iter().enumerate() {
         for (x, slot) in slots_x.iter().enumerate() {
             match slot {
                 SlotState::Locked(rtype) | SlotState::Occupied(rtype) => {
                     // draw the block
-                    let rect = board_block_rect([x as i32, y as i32]);
+                    let rect = playfield_block_rect([x as i32, y as i32]);
                     draw_rectangle(rect.x, rect.y, rect.w, rect.h, rtype.color());
                 }
                 _ => {}
@@ -169,7 +177,7 @@ pub fn draw_playing(
             // display the preview
             // draw the block
             let rect = next_block_rect([slot[0], slot[1]]);
-            draw_rectangle(rect.x, rect.y, rect.w, rect.h, next.rustomino_type.color());
+            draw_rectangle(rect.x, rect.y, rect.w, rect.h, next.rtype.color());
         }
     }
 
@@ -178,14 +186,14 @@ pub fn draw_playing(
             // display the preview
             // draw the block
             let rect = hold_block_rect([slot[0], slot[1]]);
-            draw_rectangle(rect.x, rect.y, rect.w, rect.h, held.rustomino_type.color());
+            draw_rectangle(rect.x, rect.y, rect.w, rect.h, held.rtype.color());
         }
     }
 
-    if let Some(ghost) = &board.ghost_rustomino {
-        for block in ghost.board_slots() {
+    if let Some(ghost) = &playfield.ghost_rustomino {
+        for block in ghost.playfield_slots() {
             // draw the block
-            let rect = board_block_rect([block[0], block[1]]);
+            let rect = playfield_block_rect([block[0], block[1]]);
             draw_rectangle_lines(rect.x, rect.y, rect.w, rect.h, 4., GHOST_COLOR);
         }
     }
@@ -260,7 +268,7 @@ pub fn draw_menu(text_params: &TextParams) {
     );
     draw_text_ex(
         "R",
-        560 as f32,
+        560.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
         TextParams {
             font: text_params.font,
@@ -271,7 +279,7 @@ pub fn draw_menu(text_params: &TextParams) {
     );
     draw_text_ex(
         "u",
-        588 as f32,
+        588.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
         TextParams {
             font: text_params.font,
@@ -282,7 +290,7 @@ pub fn draw_menu(text_params: &TextParams) {
     );
     draw_text_ex(
         "s",
-        612 as f32,
+        612.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
         TextParams {
             font: text_params.font,
@@ -293,7 +301,7 @@ pub fn draw_menu(text_params: &TextParams) {
     );
     draw_text_ex(
         "t",
-        637 as f32,
+        637.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
         TextParams {
             font: text_params.font,
@@ -304,7 +312,7 @@ pub fn draw_menu(text_params: &TextParams) {
     );
     draw_text_ex(
         "r",
-        662 as f32,
+        662.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
         TextParams {
             font: text_params.font,
@@ -315,7 +323,7 @@ pub fn draw_menu(text_params: &TextParams) {
     );
     draw_text_ex(
         "i",
-        686 as f32,
+        686.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
         TextParams {
             font: text_params.font,
@@ -326,7 +334,7 @@ pub fn draw_menu(text_params: &TextParams) {
     );
     draw_text_ex(
         "s",
-        700 as f32,
+        700.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
         TextParams {
             font: text_params.font,
@@ -337,7 +345,7 @@ pub fn draw_menu(text_params: &TextParams) {
     );
     draw_text_ex(
         "!",
-        725 as f32,
+        725.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
         *text_params,
     );
@@ -374,72 +382,66 @@ pub fn draw_gameover(text_params: &TextParams) {
 
 ///
 pub fn draw_help_text(font_30pt: &TextParams, font_20pt: &TextParams) {
-    draw_rectangle(
-        285.,
-        410.,
-        445. as f32,
-        305. as f32,
-        CONTROLS_BACKGROUND_COLOR,
-    );
+    draw_rectangle(285., 410., 445., 305., CONTROLS_BACKGROUND_COLOR);
 
     draw_text_ex(
         "Controls:",
-        305 as f32,
+        305.,
         (VIEW_SETTINGS.view_h / 2 + 65) as f32,
         *font_30pt,
     );
     draw_text_ex(
         "Move Left: Left, A",
-        315 as f32,
+        315.,
         (VIEW_SETTINGS.view_h / 2 + 98) as f32,
         *font_20pt,
     );
 
     draw_text_ex(
         "Move Right: Right, D",
-        315 as f32,
+        315.,
         (VIEW_SETTINGS.view_h / 2 + 128) as f32,
         *font_20pt,
     );
 
     draw_text_ex(
         "Rotate CW: Up, W",
-        315 as f32,
+        315.,
         (VIEW_SETTINGS.view_h / 2 + 157) as f32,
         *font_20pt,
     );
 
     draw_text_ex(
         "Rotate CCW: LCtrl, Z",
-        315 as f32,
+        315.,
         (VIEW_SETTINGS.view_h / 2 + 187) as f32,
         *font_20pt,
     );
 
     draw_text_ex(
         "Soft Drop: Down, S",
-        315 as f32,
+        315.,
         (VIEW_SETTINGS.view_h / 2 + 217) as f32,
         *font_20pt,
     );
 
     draw_text_ex(
         "Hard Drop: Space",
-        315 as f32,
+        315.,
         (VIEW_SETTINGS.view_h / 2 + 247) as f32,
         *font_20pt,
     );
 
     draw_text_ex(
         "Hold: LShift, C",
-        315 as f32,
+        315.,
         (VIEW_SETTINGS.view_h / 2 + 277) as f32,
         *font_20pt,
     );
 
     draw_text_ex(
         "Adjust Music Volume: + -",
-        315 as f32,
+        315.,
         (VIEW_SETTINGS.view_h / 2 + 307) as f32,
         *font_20pt,
     );
@@ -451,7 +453,7 @@ fn next_block_rect(block: [i32; 2]) -> Rect<f32> {
     let x = VIEW_SETTINGS.preview_rect.x
         + (block[0] as f32 * (BLOCK_SIZE + BLOCK_PADDING) as f32)
         + 1.0;
-    // get bottom left of board_rect
+    // get bottom left of playfield_rect
     let y = VIEW_SETTINGS.preview_rect.y + VIEW_SETTINGS.preview_rect.h
         - (block[1] as f32 * (BLOCK_SIZE + BLOCK_PADDING) as f32);
 
@@ -462,20 +464,20 @@ fn hold_block_rect(block: [i32; 2]) -> Rect<f32> {
     // block[x,y] absolute units
     let x =
         VIEW_SETTINGS.hold_rect.x + (block[0] as f32 * (BLOCK_SIZE + BLOCK_PADDING) as f32) + 1.0;
-    // get bottom left of board_rect
+    // get bottom left of playfield_rect
     let y = VIEW_SETTINGS.hold_rect.y + VIEW_SETTINGS.hold_rect.h
         - (block[1] as f32 * (BLOCK_SIZE + BLOCK_PADDING) as f32);
 
     Rect::new(x, y, BLOCK_SIZE as f32, BLOCK_SIZE as f32)
 }
 
-fn board_block_rect(block: [i32; 2]) -> Rect<f32> {
+fn playfield_block_rect(block: [i32; 2]) -> Rect<f32> {
     // block[x,y] absolute units
     let x = VIEW_SETTINGS.staging_rect.x
         + (block[0] as f32 * (BLOCK_SIZE + BLOCK_PADDING) as f32)
         + 1.0;
-    // get bottom left of board_rect
-    let y = VIEW_SETTINGS.board_rect.y + VIEW_SETTINGS.board_rect.h
+    // get bottom left of playfield_rect
+    let y = VIEW_SETTINGS.playfield_rect.y + VIEW_SETTINGS.playfield_rect.h
         - ((block[1] + 1) as f32 * (BLOCK_SIZE + BLOCK_PADDING) as f32)
         - 1.0;
 
