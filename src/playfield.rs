@@ -165,7 +165,6 @@ impl RustrisPlayfield {
         // iterate through the slots
         // skip to the lowest completed line
         let lowest_completed_line = completed_lines[0];
-        let slots_before_clear = self.slots;
         for (y, slots_x) in self
             .slots
             .iter_mut()
@@ -184,20 +183,19 @@ impl RustrisPlayfield {
         // then "move" the states of the slots above cleared lines
         // down by the number of cleared lines
         // start at the lowest completed line
-        for (y, slots_x) in self
-            .slots
-            .iter_mut()
-            .enumerate()
-            .skip(lowest_completed_line)
-        {
-            // can't shift rows that don't exist down
-            if y + num_completed_lines >= PLAYFIELD_SLOTS[1] {
-                break;
-            }
-            for (x, slot) in slots_x.iter_mut().enumerate() {
-                *slot = slots_before_clear[y + num_completed_lines][x];
+        for line in &completed_lines {
+            let slots = self.slots.clone();
+            for (y, slots_x) in self.slots.iter_mut().enumerate().skip(*line) {
+                // can't shift rows that don't exist down
+                if y + 1 >= PLAYFIELD_SLOTS[1] {
+                    break;
+                }
+                for (x, slot) in slots_x.iter_mut().enumerate() {
+                    *slot = slots[y + 1][x];
+                }
             }
         }
+
         log::trace!("clearing lines after: playfield:\n{}", self);
         self.update_ghost_rustomino(false);
         completed_lines
