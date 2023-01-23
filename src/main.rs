@@ -42,7 +42,7 @@ async fn main() {
         .build();
     // initialize the logger
     if simplelog::TermLogger::init(
-        simplelog::LevelFilter::Debug,
+        simplelog::LevelFilter::Info,
         config,
         simplelog::TerminalMode::Mixed,
         simplelog::ColorChoice::Auto,
