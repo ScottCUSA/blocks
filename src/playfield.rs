@@ -183,11 +183,11 @@ impl RustrisPlayfield {
         // then "move" the states of the slots above cleared lines
         // down by the number of cleared lines
         // start at the lowest completed line
-        for line in &completed_lines {
+        for line in completed_lines.iter().rev() {
             let slots = self.slots.clone();
             for (y, slots_x) in self.slots.iter_mut().enumerate().skip(*line) {
-                // can't shift rows that don't exist down
-                if y + 1 >= PLAYFIELD_SLOTS[1] {
+                // can't shift rows above playfield size
+                if y + 1 >= PLAYFIELD_SIZE[1] as usize {
                     break;
                 }
                 for (x, slot) in slots_x.iter_mut().enumerate() {
@@ -420,8 +420,10 @@ fn set_playfield_slot_states(
 // display the playfield's slot states for debugging
 impl Display for RustrisPlayfield {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", "-".repeat(PLAYFIELD_SLOTS[0] * 2))?;
-        for row in self.slots.iter().rev() {
+        for (y, row) in self.slots.iter().rev().enumerate() {
+            if y == 2 {
+                writeln!(f, "{}", "-".repeat(PLAYFIELD_SLOTS[0] * 2))?;
+            }
             for slot in row {
                 write!(f, "{}", slot)?;
             }
