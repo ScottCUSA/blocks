@@ -114,7 +114,6 @@ impl RustrisGame {
             if !self.playfield.play_rustomino(current_rustomino) {
                 // game over if it can't be placed without a collision
                 self.game_over();
-                return;
             }
         }
     }

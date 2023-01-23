@@ -27,17 +27,12 @@ const ROTATE_ACTION_REPEAT_DELAY: f64 = 0.2;
 // volume change amount per key press
 const MUSIC_VOLUME_CHANGE: f32 = 0.025;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum InputState {
+    #[default]
     Up,
     Down(f64),
     Held(f64),
-}
-
-impl Default for InputState {
-    fn default() -> Self {
-        InputState::Up
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, EnumIter)]

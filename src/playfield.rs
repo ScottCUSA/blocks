@@ -85,11 +85,9 @@ impl RustrisPlayfield {
     }
 
     pub fn get_active_state(&self) -> Option<RustominoState> {
-        if let Some(active_rustomino) = self.active_rustomino.as_ref() {
-            Some(active_rustomino.state)
-        } else {
-            None
-        }
+        self.active_rustomino
+            .as_ref()
+            .map(|active_rustomino| active_rustomino.state)
     }
 
     pub fn set_active_state(&mut self, new_state: RustominoState) {
@@ -159,7 +157,6 @@ impl RustrisPlayfield {
         }
 
         log::trace!("clearing lines before: playfield:\n{}", self);
-
         log::info!("clearing completed lines: {:?}", completed_lines);
 
         // iterate through the slots
@@ -184,7 +181,7 @@ impl RustrisPlayfield {
         // down by the number of cleared lines
         // start at the lowest completed line
         for line in completed_lines.iter().rev() {
-            let slots = self.slots.clone();
+            let slots = self.slots;
             for (y, slots_x) in self.slots.iter_mut().enumerate().skip(*line) {
                 // can't shift rows above playfield size
                 if y + 1 >= PLAYFIELD_SIZE[1] as usize {
@@ -425,7 +422,7 @@ impl Display for RustrisPlayfield {
                 writeln!(f, "{}", "-".repeat(PLAYFIELD_SLOTS[0] * 2))?;
             }
             for slot in row {
-                write!(f, "{}", slot)?;
+                write!(f, "{slot}")?;
             }
             writeln!(f)?;
         }

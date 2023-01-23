@@ -31,7 +31,6 @@ fn window_conf() -> Conf {
 
 // https://tetris.wiki/Tetris_Guideline
 // TODO: implement rotation wall kicks
-// TODO: debug repeat collision call wierdness
 // TODO: load icon for rustris window
 // https://docs.rs/macroquad/0.3.25/macroquad/texture/struct.Image.html
 
