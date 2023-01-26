@@ -236,6 +236,140 @@ const Z_ROTATIONS: [[IVec2; 4]; 4] = [
     ],
 ];
 
+const JLSTZ_WALL_KICK_TESTS: [[IVec2; 5]; 8] = [
+    [
+        // N->E (0, 0),(-1, 0),(-1,1),( 0,-2),(-1,-2)
+        ivec2(0, 0),
+        ivec2(-1, 0),
+        ivec2(-1, 1),
+        ivec2(0, -2),
+        ivec2(-1, -2),
+    ],
+    [
+        // E->N (0, 0),(1, 0),(1,-1),( 0,2),(1,2)
+        ivec2(0, 0),
+        ivec2(1, 0),
+        ivec2(1, -1),
+        ivec2(0, 2),
+        ivec2(1, 2),
+    ],
+    [
+        // E->S (0, 0),(1, 0),(1,-1),(0, 2),(1, 2)
+        ivec2(0, 0),
+        ivec2(1, 0),
+        ivec2(1, -1),
+        ivec2(0, 2),
+        ivec2(1, 2),
+    ],
+    [
+        // S->E ( 0, 0),(-1, 0),(-1,1),( 0,-2),(-1,-2)
+        ivec2(0, 0),
+        ivec2(-1, 0),
+        ivec2(-1, 1),
+        ivec2(0, -2),
+        ivec2(-1, -2),
+    ],
+    [
+        // E->W ( 0, 0),(1, 0),(1,1),( 0,-2),(1,-2)
+        ivec2(0, 0),
+        ivec2(1, 0),
+        ivec2(1, 1),
+        ivec2(0, -2),
+        ivec2(1, -2),
+    ],
+    [
+        // W->E ( 0, 0),(-1, 0),(-1,-1),( 0,2),(-1,2)
+        ivec2(0, 0),
+        ivec2(-1, 0),
+        ivec2(-1, -1),
+        ivec2(0, 2),
+        ivec2(-1, 2),
+    ],
+    [
+        // W->N ( 0, 0),(-1, 0),(-1,-1),( 0,2),(-1,2)
+        ivec2(0, 0),
+        ivec2(-1, 0),
+        ivec2(-1, -1),
+        ivec2(0, 2),
+        ivec2(-1, 2),
+    ],
+    [
+        // N->W (0, 0),(1, 0),(1, 1),(0, -2),(1, -2)
+        ivec2(0, 0),
+        ivec2(1, 0),
+        ivec2(1, 1),
+        ivec2(0, -2),
+        ivec2(1, -2),
+    ],
+];
+
+const I_WALL_KICK_TESTS: [[IVec2; 5]; 8] = [
+    [
+        // N->E ( 0, 0),(-2, 0),(1, 0),(-2,-1),(1,2)
+        ivec2(0, 0),
+        ivec2(-2, 0),
+        ivec2(1, 0),
+        ivec2(-2, -1),
+        ivec2(1, 2),
+    ],
+    [
+        // E->N ( 0, 0),(2, 0),(-1, 0),(2,1),(-1,-2)
+        ivec2(0, 0),
+        ivec2(2, 0),
+        ivec2(-1, 0),
+        ivec2(2, 1),
+        ivec2(-1, -2),
+    ],
+    [
+        // E->S ( 0, 0),(-1, 0),(2, 0),(-1,2),(2,-1)
+        ivec2(0, 0),
+        ivec2(-1, 0),
+        ivec2(2, 0),
+        ivec2(-1, 2),
+        ivec2(2, -1),
+    ],
+    [
+        // S->E ( 0, 0),(1, 0),(-2, 0),(1,-2),(-2,1)
+        ivec2(0, 0),
+        ivec2(1, 0),
+        ivec2(-2, 0),
+        ivec2(1, -2),
+        ivec2(-2, 1),
+    ],
+    [
+        // E->W ( 0, 0),(2, 0),(-1, 0),(2,1),(-1,-2)
+        ivec2(0, 0),
+        ivec2(2, 0),
+        ivec2(-1, 0),
+        ivec2(2, 1),
+        ivec2(-1, -2),
+    ],
+    [
+        // W->E ( 0, 0),(-2, 0),(1, 0),(-2,-1),(1,2)
+        ivec2(0, 0),
+        ivec2(-2, 0),
+        ivec2(1, 0),
+        ivec2(-2, -1),
+        ivec2(1, 2),
+    ],
+    [
+        // W->N ( 0, 0),(1, 0),(-2, 0),(1,-2),(-2,1)
+        ivec2(0, 0),
+        ivec2(1, 0),
+        ivec2(-2, 0),
+        ivec2(1, -2),
+        ivec2(-2, 1),
+    ],
+    [
+        // N->W ( 0, 0),(-1, 0),(2, 0),(-1,2),(2,-1)
+        ivec2(0, 0),
+        ivec2(-1, 0),
+        ivec2(2, 0),
+        ivec2(-1, 2),
+        ivec2(2, -1),
+    ],
+];
+
 #[derive(Debug, Clone, Copy, EnumIter, PartialEq, Eq)]
 pub enum RustominoType {
     I,
@@ -349,28 +483,22 @@ impl Rustomino {
         self.translation += delta;
     }
 
-    pub fn translated(&self, delta: IVec2) -> [IVec2; 4] {
-        [
-            (self.blocks[0] + self.translation) + delta,
-            (self.blocks[1] + self.translation) + delta,
-            (self.blocks[2] + self.translation) + delta,
-            (self.blocks[3] + self.translation) + delta,
-        ]
+    pub fn translated(&self, delta: &IVec2) -> [IVec2; 4] {
+        translated(&translated(&self.blocks, &self.translation), &delta)
     }
 
     pub fn playfield_slots(&self) -> [IVec2; 4] {
-        self.translated(IVec2::ZERO)
+        self.translated(&IVec2::ZERO)
     }
 
-    /// .
-    pub fn rotate(&mut self, direction: &RotationDirection) {
-        let translation = self.rotation.get_translation(direction);
+    pub fn rotate(&mut self, direction: &RotationDirection, translation: &IVec2) {
+        let rotation_trans = self.rotation.get_translation(direction);
 
         self.blocks = [
-            self.blocks[0] + translation.0[0],
-            self.blocks[1] + translation.0[1],
-            self.blocks[2] + translation.0[2],
-            self.blocks[3] + translation.0[3],
+            self.blocks[0] + rotation_trans.0[0] + *translation,
+            self.blocks[1] + rotation_trans.0[1] + *translation,
+            self.blocks[2] + rotation_trans.0[2] + *translation,
+            self.blocks[3] + rotation_trans.0[3] + *translation,
         ];
 
         self.rotation.rotate(direction);
@@ -380,17 +508,30 @@ impl Rustomino {
         let rotation = self.rotation.get_translation(direction);
 
         [
-            (self.blocks[0] + self.translation) + rotation.0[0],
-            (self.blocks[1] + self.translation) + rotation.0[1],
-            (self.blocks[2] + self.translation) + rotation.0[2],
-            (self.blocks[3] + self.translation) + rotation.0[3],
+            self.blocks[0] + self.translation + rotation.0[0],
+            self.blocks[1] + self.translation + rotation.0[1],
+            self.blocks[2] + self.translation + rotation.0[2],
+            self.blocks[3] + self.translation + rotation.0[3],
         ]
+    }
+
+    pub fn wall_kick_tests(&self, direction: &RotationDirection) -> [IVec2; 5] {
+        self.rotation.get_wall_kick_tests(self.rtype, direction)
     }
 
     pub fn set_state(&mut self, state: RustominoState) {
         log::trace!("setting rustomino state: {:?}", state);
         self.state = state;
     }
+}
+
+pub fn translated(blocks: &[IVec2; 4], delta: &IVec2) -> [IVec2; 4] {
+    [
+        blocks[0] + *delta,
+        blocks[1] + *delta,
+        blocks[2] + *delta,
+        blocks[3] + *delta,
+    ]
 }
 
 impl Display for Rustomino {
@@ -500,6 +641,55 @@ impl RustominoRotation {
             RustominoDirection::W => match direction {
                 RotationDirection::Cw => self.w2n,
                 RotationDirection::Ccw => -self.s2w,
+            },
+        }
+    }
+
+    fn get_wall_kick_tests(
+        &self,
+        rtype: RustominoType,
+        direction: &RotationDirection,
+    ) -> [IVec2; 5] {
+        match self.direction {
+            RustominoDirection::N => match direction {
+                RotationDirection::Cw => match rtype {
+                    RustominoType::I => I_WALL_KICK_TESTS[0],
+                    _ => JLSTZ_WALL_KICK_TESTS[0],
+                },
+                RotationDirection::Ccw => match rtype {
+                    RustominoType::I => I_WALL_KICK_TESTS[7],
+                    _ => JLSTZ_WALL_KICK_TESTS[7],
+                },
+            },
+            RustominoDirection::E => match direction {
+                RotationDirection::Cw => match rtype {
+                    RustominoType::I => I_WALL_KICK_TESTS[2],
+                    _ => JLSTZ_WALL_KICK_TESTS[2],
+                },
+                RotationDirection::Ccw => match rtype {
+                    RustominoType::I => I_WALL_KICK_TESTS[1],
+                    _ => JLSTZ_WALL_KICK_TESTS[1],
+                },
+            },
+            RustominoDirection::S => match direction {
+                RotationDirection::Cw => match rtype {
+                    RustominoType::I => I_WALL_KICK_TESTS[4],
+                    _ => JLSTZ_WALL_KICK_TESTS[4],
+                },
+                RotationDirection::Ccw => match rtype {
+                    RustominoType::I => I_WALL_KICK_TESTS[3],
+                    _ => JLSTZ_WALL_KICK_TESTS[3],
+                },
+            },
+            RustominoDirection::W => match direction {
+                RotationDirection::Cw => match rtype {
+                    RustominoType::I => I_WALL_KICK_TESTS[6],
+                    _ => JLSTZ_WALL_KICK_TESTS[6],
+                },
+                RotationDirection::Ccw => match rtype {
+                    RustominoType::I => I_WALL_KICK_TESTS[5],
+                    _ => JLSTZ_WALL_KICK_TESTS[5],
+                },
             },
         }
     }
