@@ -2,7 +2,7 @@ use std::{fmt::Display, mem::discriminant};
 
 use macroquad::prelude::*;
 
-use crate::rustomino::{RotationDirection, Rustomino, RustominoState, RustominoType};
+use crate::rustomino::{translated, RotationDirection, Rustomino, RustominoState, RustominoType};
 
 pub(crate) const PLAYFIELD_SLOTS: [usize; 2] = [10, 22];
 pub(crate) const PLAYFIELD_SIZE: [i32; 2] = [10, 20];
@@ -76,7 +76,7 @@ impl RustrisPlayfield {
         // check if moving would cause a collision
         if check_collision(
             &self.slots,
-            rustomino.translated(TranslationDirection::DOWN_TRANSLATION),
+            rustomino.translated(&TranslationDirection::DOWN_TRANSLATION),
         ) {
             return false;
         }
@@ -104,7 +104,7 @@ impl RustrisPlayfield {
             log::trace!(
                 "applying gravity: {:?} to {:?}",
                 current_rustomino,
-                current_rustomino.translated(TranslationDirection::DOWN_TRANSLATION),
+                current_rustomino.translated(&TranslationDirection::DOWN_TRANSLATION),
             );
             translate_rustomino(
                 &mut self.slots,
@@ -201,19 +201,16 @@ impl RustrisPlayfield {
     /// Attempt to rotate the current rustomino
     pub fn rotate_current(&mut self, direction: RotationDirection) -> bool {
         if let Some(current_rustomino) = self.active_rustomino.as_mut() {
-            // get the rustomino blocks if they were rotated
-            let rotated_blocks = current_rustomino.rotated(&direction);
-
-            // check to see if the translation would cause a collision with a locked block
-            if check_collision(&self.slots, rotated_blocks) {
-                log::debug!("rotation collision detected: {:?}", rotated_blocks);
-                return false;
-            }
-
+            // check to see if the block can be rotated with or without a wall kick
+            let Some(wall_kick_translation) = check_rotation(&self.slots, current_rustomino, &direction)  else {
+                 return false;
+            };
+            // actually rotate the current rustomino
             rotate_rustomino(
                 &mut self.slots,
-                SlotState::Occupied(current_rustomino.rtype),
                 current_rustomino,
+                SlotState::Occupied(current_rustomino.rtype),
+                &wall_kick_translation,
                 &direction,
             );
 
@@ -229,7 +226,7 @@ impl RustrisPlayfield {
     pub fn translate_current(&mut self, direction: TranslationDirection) -> bool {
         if let Some(current_rustomino) = self.active_rustomino.as_mut() {
             // check to see if the translation would cause a collision with a locked block
-            let translated_blocks = current_rustomino.translated(direction.get_translation());
+            let translated_blocks = current_rustomino.translated(&direction.get_translation());
             if check_collision(&self.slots, translated_blocks) {
                 log::debug!("cannot translate, collision detected");
                 return false;
@@ -318,7 +315,7 @@ fn get_hard_drop_translation(playfield_slots: &Slots, rustomino: &Rustomino) -> 
     let mut translation = TranslationDirection::DOWN_TRANSLATION;
 
     // if we can't move it down without colliding the delta is 0
-    if check_collision(playfield_slots, rustomino.translated(translation)) {
+    if check_collision(playfield_slots, rustomino.translated(&translation)) {
         log::debug!("hard_drop_translation: cannot move, block on stack");
         return IVec2::ZERO;
     }
@@ -328,7 +325,7 @@ fn get_hard_drop_translation(playfield_slots: &Slots, rustomino: &Rustomino) -> 
     loop {
         let good_translation = translation;
         translation += TranslationDirection::DOWN_TRANSLATION;
-        if check_collision(playfield_slots, rustomino.translated(translation)) {
+        if check_collision(playfield_slots, rustomino.translated(&translation)) {
             log::debug!(
                 "hard_drop_translation: found hard drop translation: {:?}",
                 good_translation
@@ -363,6 +360,19 @@ fn check_collision(playfield_slots: &Slots, block_locations: [IVec2; 4]) -> bool
     false
 }
 
+fn check_rotation(
+    playfield_slots: &Slots,
+    rustomino: &Rustomino,
+    direction: &RotationDirection,
+) -> Option<IVec2> {
+    let wall_kick_tests = rustomino.wall_kick_tests(direction);
+    let rotated_blocks = rustomino.rotated(direction);
+    wall_kick_tests
+        .iter()
+        .find(|x| !check_collision(playfield_slots, translated(&rotated_blocks, x)))
+        .copied()
+}
+
 fn translate_rustomino(
     playfield_slots: &mut Slots,
     new_state: SlotState,
@@ -383,8 +393,9 @@ fn translate_rustomino(
 
 fn rotate_rustomino(
     playfield_slots: &mut Slots,
-    new_state: SlotState,
     rustomino: &mut Rustomino,
+    new_state: SlotState,
+    translation: &IVec2,
     rotation: &RotationDirection,
 ) {
     // clear the current slot states
@@ -394,7 +405,7 @@ fn rotate_rustomino(
         SlotState::Empty,
     );
     // perform the tranlsation
-    rustomino.rotate(rotation);
+    rustomino.rotate(rotation, translation);
     // set the new slot states to occupied
     set_playfield_slot_states(playfield_slots, &rustomino.playfield_slots(), new_state);
 }
