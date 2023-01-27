@@ -151,15 +151,19 @@ impl RustrisGame {
                     time: time + delta_time,
                 });
             }
-            RustominoState::Lockdown { time } if time + delta_time >= LOCKDOWN_MAX_TIME => {
-                // if the current lockdown time has exceed the maximum
-                // lock the block
-                self.lock("lockdown time expired");
-            }
-            RustominoState::Lockdown { time: _ } if self.lockdown_resets >= LOCKDOWN_MAX_RESETS => {
+            RustominoState::Lockdown { time: _ }
+                if self.lockdown_resets >= LOCKDOWN_MAX_RESETS && !self.playfield.can_fall() =>
+            {
                 // if the user has exceeded the maximum number of resets
                 // lock the block
                 self.lock("max lockdown resets reached");
+            }
+            RustominoState::Lockdown { time }
+                if time + delta_time >= LOCKDOWN_MAX_TIME && !self.playfield.can_fall() =>
+            {
+                // if the current lockdown time has exceed the maximum
+                // lock the block
+                self.lock("lockdown time expired");
             }
             RustominoState::Lockdown { time } => {
                 // accumulate lockdown time
@@ -225,19 +229,10 @@ impl RustrisGame {
                 self.lockdown_resets += 1;
                 log::debug!("incrementing lockdown resets: {}", self.lockdown_resets);
             }
-            RustominoState::Lockdown { time: _ }
-                if self.lockdown_resets + 1 >= LOCKDOWN_MAX_RESETS =>
-            {
-                log::debug!(
-                    "maximum lockdown resets reached, locking block: {}",
-                    self.lockdown_resets
-                );
-                self.lock("max lockdown resets reached");
-            }
             RustominoState::Lockdown { time: _ } => {
                 self.lockdown_resets += 1;
                 log::debug!("incrementing lockdown resets: {}", self.lockdown_resets);
-                // if the block can fall again we don't want to lock it
+                // if the block can fall again it needs to continue falling
                 if self.playfield.can_fall() {
                     // if so set the state back to falling
                     log::debug!("block can fall setting rustomino state back to falling");
