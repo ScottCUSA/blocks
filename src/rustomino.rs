@@ -484,7 +484,7 @@ impl Rustomino {
     }
 
     pub fn translated(&self, delta: &IVec2) -> [IVec2; 4] {
-        translated(&translated(&self.blocks, &self.translation), &delta)
+        translated(&translated(&self.blocks, &self.translation), delta)
     }
 
     pub fn playfield_slots(&self) -> [IVec2; 4] {
