@@ -160,35 +160,31 @@ impl RustrisPlayfield {
         log::info!("clearing completed lines: {:?}", completed_lines);
 
         // iterate through the slots
-        // skip to the lowest completed line
-        let lowest_completed_line = completed_lines[0];
-        for (y, slots_x) in self
-            .slots
+        // clearing completed lines
+        self.slots
             .iter_mut()
             .enumerate()
-            .skip(lowest_completed_line)
-        {
-            // clear the completed line
-            if completed_lines.contains(&y) {
+            .filter(|(y, _)| completed_lines.contains(y))
+            .for_each(|(_, slots_x)| {
                 for slot in slots_x.iter_mut() {
                     *slot = SlotState::Empty;
                 }
-            }
-        }
+            });
 
         log::trace!("clearing lines middle: playfield:\n{}", self);
-        // then "move" the states of the slots above cleared lines
-        // down by the number of cleared lines
-        // start at the lowest completed line
+
+        // then "move" the states of the slots above cleared lines down
+        // starts at the highest cleared line, and moves block states down
+        // this can probably be improved
         for line in completed_lines.iter().rev() {
-            let slots = self.slots;
-            for (y, slots_x) in self.slots.iter_mut().enumerate().skip(*line) {
-                // can't shift rows above playfield size
-                if y + 1 >= PLAYFIELD_SIZE[1] as usize {
-                    break;
-                }
-                for (x, slot) in slots_x.iter_mut().enumerate() {
-                    *slot = slots[y + 1][x];
+            for y in *line..self.slots.len() {
+                for x in 0..self.slots[y].len() {
+                    // is this line is the very top row
+                    if y + 1 >= PLAYFIELD_SLOTS[1] {
+                        self.slots[y][x] = SlotState::Empty; // set all slots to empty
+                    } else {
+                        self.slots[y][x] = self.slots[y + 1][x]; // cope from the line above
+                    }
                 }
             }
         }
