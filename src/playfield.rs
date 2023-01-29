@@ -340,6 +340,10 @@ fn check_collision(playfield_slots: &Slots, block_locations: [IVec2; 4]) -> bool
             log::trace!("collided with left/right wall: {:?}", block_locations);
             return true;
         }
+        if location[1] >= PLAYFIELD_SLOTS[1] as i32 {
+            log::trace!("collided with top wall: {:?}", block_locations);
+            return true;
+        }
         // check for bottom wall collision
         if location[1] < 0 {
             log::trace!("collided with bottom wall: {:?}", block_locations);
