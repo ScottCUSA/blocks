@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+#![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
 
 use macroquad::{
     audio::{load_sound, play_sound, PlaySoundParams},
@@ -6,7 +6,6 @@ use macroquad::{
     text::load_ttf_font,
     window::Conf,
 };
-use simplelog::{format_description, ConfigBuilder};
 
 mod controls;
 mod game;
@@ -17,7 +16,6 @@ mod view;
 const VIEW_WH: [i32; 2] = [1024, 768];
 const ASSETS_FOLDER: &str = "assets";
 const MUSIC_VOL: f32 = 0.1;
-// const MINIMUM_FRAME_TIME: f32 = 1. / 60.; // used to limit framerate to 60fps
 
 fn window_conf() -> Conf {
     Conf {
@@ -34,20 +32,11 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf())]
 async fn main() {
-    let config = ConfigBuilder::new()
-        .set_time_format_custom(format_description!("[hour]:[minute]:[second].[subsecond]"))
-        .build();
-    // initialize the logger
-    if simplelog::TermLogger::init(
-        simplelog::LevelFilter::Info,
-        config,
-        simplelog::TerminalMode::Mixed,
-        simplelog::ColorChoice::Auto,
-    )
-    .is_err()
-    {
-        eprintln!("WARNING: unable to initialize logger");
-    }
+    
+    env_logger::builder()
+    .format_timestamp(Some(env_logger::TimestampPrecision::Millis))
+    .init();
+
     log::info!("startup: initializing Rustris;");
     log::info!("loading Resources");
 
@@ -98,25 +87,8 @@ async fn main() {
     );
 
     loop {
-        // attempt to limit framerate to 60fps
-        // let frame_time = get_frame_time();
-        // // log::debug!("frame_time: {}", frame_time);
-        // if frame_time < MINIMUM_FRAME_TIME {
-        //     let time_to_sleep = (MINIMUM_FRAME_TIME - frame_time) * 1000.;
-        //     // log::debug!("sleeping: {}", time_to_sleep);
-        //     std::thread::sleep(std::time::Duration::from_millis(time_to_sleep as u64));
-        // }
 
         clear_background(view::BACKGROUND_COLOR);
-
-        // // draw FPS
-        // draw_text(
-        //     &get_fps().to_string(),
-        //     VIEW_DIMENSIONS[0] as f32 - 50.0,
-        //     50.0,
-        //     30.,
-        //     WHITE,
-        // );
 
         // handle global controls
         controls::handle_global_controls(&background_music, &mut music_volume);
