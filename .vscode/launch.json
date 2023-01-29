@@ -21,7 +21,7 @@
             },
             "args": [],
             "cwd": "${workspaceFolder}",
-            "env": {"RUSTRIS_LOG_LEVEL":"debug"}
+            "env": {"RUST_LOG":"trace"}
         },
         {
             "type": "lldb",
@@ -41,7 +41,7 @@
             },
             "args": [],
             "cwd": "${workspaceFolder}",
-            "env": {"RUSTRIS_LOG_LEVEL":"debug"}
+            "env": {"RUST_LOG":"trace"}
         }
     ]
 }
