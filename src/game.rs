@@ -1,19 +1,19 @@
 use crate::{
-    controls::ControlStates,
     playfield::{RustrisPlayfield, TranslationDirection, PLAYFIELD_SIZE},
     rustomino::{RotationDirection, Rustomino, RustominoBag, RustominoState},
 };
+use macroquad::prelude::*;
 use std::f64::consts::E;
 
-use macroquad::prelude::*;
-
+// GAMEPLAY CONSTANTS
 const GRAVITY_NUMERATOR: f64 = 1.0;
 const GRAVITY_FACTOR: f64 = 0.1; // used to slow or increase gravity factor
-const LINES_PER_LEVEL: usize = 10; // used to increase or decrease how quickly the game progresses
-const LOCKDOWN_MAX_TIME: f64 = 0.5; // lockdown delay is 0.5 seconds
-const LOCKDOWN_MAX_RESETS: u32 = 15; // maximum number of times the lockdown timer can be reset
 const STARTING_LEVEL: usize = 0;
+const LINES_PER_LEVEL: usize = 10; // number of lines that need to be cleared before level advances
+const LOCKDOWN_MAX_TIME: f64 = 0.5; // how long to wait before locking block
+const LOCKDOWN_MAX_RESETS: u32 = 15; // maximum number of times the lockdown timer can be reset
 
+// SCORING CONSTANTS
 const SINGLE_LINE_SCORE: usize = 100;
 const DOUBLE_LINE_SCORE: usize = 300;
 const TRIPLE_LINE_SCORE: usize = 500;
@@ -26,14 +26,6 @@ pub enum GameState {
     GameOver,
 }
 
-/// returns the delay for the level in fractional seconds
-fn gravity_delay(level: usize) -> f64 {
-    let gravity_delay =
-        ((GRAVITY_NUMERATOR / (level as f64 + 0.001)).log(E) * GRAVITY_FACTOR + 0.3).max(0.001);
-    log::info!("new gravity_delay {}", gravity_delay);
-    gravity_delay
-}
-
 pub struct RustrisGame {
     pub playfield: RustrisPlayfield,
     pub next_rustomino: Option<Rustomino>,
@@ -44,8 +36,7 @@ pub struct RustrisGame {
     rustomino_bag: RustominoBag,
     gravity_delay: f64, // time between gravity ticks
     total_lines_cleared: usize,
-    last_update: f64, // when did the last game update occur
-    hold_used: bool,  // if user has held a rustomino, resets on lock
+    hold_used: bool, // if user has held a rustomino, resets on lock
     lockdown_resets: u32,
 }
 
@@ -61,36 +52,9 @@ impl RustrisGame {
             rustomino_bag: RustominoBag::new(),
             gravity_delay: gravity_delay(0),
             total_lines_cleared: 0,
-            last_update: get_time(),
             hold_used: false,
             lockdown_resets: 0,
         }
-    }
-
-    pub fn update(&mut self, controls: &mut ControlStates) {
-        let now = get_time();
-        let delta_time = now - self.last_update;
-
-        // handle the game states
-        match self.state {
-            GameState::Menu => {
-                // handle the user's inputs
-                controls.handle_menu_inputs(self);
-            }
-            GameState::Playing => {
-                self.ready_playfield();
-                controls.handle_playing_inputs(self);
-                controls.handle_held_playing_inputs(self, delta_time);
-                self.playing_update(delta_time);
-            }
-            GameState::Paused => {
-                controls.handle_paused_inputs(self);
-            }
-            GameState::GameOver => {
-                controls.handle_game_over_inputs(self);
-            }
-        }
-        self.last_update = now;
     }
 
     fn ensure_next_rustomino(&mut self) {
@@ -100,7 +64,7 @@ impl RustrisGame {
         }
     }
 
-    fn ready_playfield(&mut self) {
+    pub fn ready_playfield(&mut self) {
         // make sure next_rustomino is available
         self.ensure_next_rustomino();
         // check to see if the playfield is ready for the next rustomino
@@ -118,7 +82,7 @@ impl RustrisGame {
         }
     }
 
-    fn playing_update(&mut self, delta_time: f64) {
+    pub fn playing_update(&mut self, delta_time: f64) {
         let Some(current_state) = self.playfield.get_active_state() else {
             // no active state
             return;
@@ -319,11 +283,6 @@ impl RustrisGame {
         self.hold_used = true;
     }
 
-    fn game_over(&mut self) {
-        log::info!("Game Over! Score: {}", self.score);
-        self.state = GameState::GameOver;
-    }
-
     fn handle_completed_lines(&mut self) {
         let completed_lines = self.playfield.clear_completed_lines();
         if completed_lines.is_empty() {
@@ -373,33 +332,32 @@ impl RustrisGame {
         self.state = GameState::Playing;
     }
 
-    // reset the game state for a new game
-    pub fn play_again(&mut self) {
-        log::info!("Starting new game");
+    fn game_over(&mut self) {
+        log::info!("Game Over! Score: {}", self.score);
+        self.state = GameState::GameOver;
+    }
 
-        // reset
-        self.playfield = RustrisPlayfield::new();
-        self.next_rustomino = None;
-        self.held_rustomino = None;
-        self.state = GameState::Playing;
-        self.level = STARTING_LEVEL;
-        self.score = 0;
-        self.rustomino_bag = RustominoBag::new();
-        self.last_update = get_time();
-        self.gravity_delay = gravity_delay(1);
-        self.total_lines_cleared = 0;
-        self.lockdown_resets = 0;
-        self.hold_used = false;
+    pub fn new_game(self) -> Self {
+        RustrisGame::new(RustrisPlayfield::new())
     }
 }
 
+// checks to see if ALL of the slots in the provided
+// slots array are above the playfield
 fn fully_out_of_bounds(&slots: &[IVec2; 4]) -> bool {
-    // check for out of bounds lockout
-    // if any slot is not out of bounds return false
     for slot in slots {
         if slot[1] < PLAYFIELD_SIZE[1] {
             return false;
         }
     }
     true
+}
+
+/// calculate the gravity delay for the provided level
+/// returns fractional seconds
+fn gravity_delay(level: usize) -> f64 {
+    let gravity_delay =
+        ((GRAVITY_NUMERATOR / (level as f64 + 0.001)).log(E) * GRAVITY_FACTOR + 0.3).max(0.001);
+    log::info!("new gravity_delay {}", gravity_delay);
+    gravity_delay
 }

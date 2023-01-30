@@ -1,22 +1,32 @@
-use macroquad::prelude::*;
-
 use crate::game::{self, RustrisGame};
 use crate::playfield::{self, RustrisPlayfield, SlotState};
 use crate::rustomino::{Rustomino, RustominoType};
-use crate::VIEW_WH;
+use macroquad::prelude::*;
 
-pub(crate) const BLOCK_SIZE: i32 = 30;
-pub(crate) const BLOCK_PADDING: i32 = 1;
-pub(crate) const STAGING_PADDING: i32 = 2;
-pub(crate) const BACKGROUND_COLOR: Color = Color::new(0.0, 0.29, 0.38, 1.0);
-pub(crate) const STAGING_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
-pub(crate) const PLAYFIELD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
-pub(crate) const PREVIEW_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
-pub(crate) const HOLD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.2);
-pub(crate) const GHOST_COLOR: Color = Color::new(0.7, 0.7, 0.7, 1.0);
-pub(crate) const PAUSED_OVERLAY_COLOR: Color = Color::new(0.1, 0.1, 0.1, 0.6);
-pub(crate) const VIEW_SETTINGS: ViewSettings = ViewSettings::new(VIEW_WH);
-pub(crate) const CONTROLS_BACKGROUND_COLOR: Color = Color::new(0.34, 0.09, 0.12, 0.8);
+const BLOCK_SIZE: i32 = 30;
+const BLOCK_PADDING: i32 = 1;
+const STAGING_PADDING: i32 = 2;
+
+pub const BACKGROUND_COLOR: Color = Color::new(0.0, 0.29, 0.38, 1.0);
+const STAGING_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
+const PLAYFIELD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
+const PREVIEW_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
+const HOLD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.2);
+const GHOST_COLOR: Color = Color::new(0.7, 0.7, 0.7, 1.0);
+const PAUSED_OVERLAY_COLOR: Color = Color::new(0.1, 0.1, 0.1, 0.6);
+const VIEW_SETTINGS: ViewSettings = ViewSettings::new(VIEW_WH);
+const CONTROLS_BACKGROUND_COLOR: Color = Color::new(0.34, 0.09, 0.12, 0.8);
+const VIEW_WH: [i32; 2] = [1024, 768];
+
+pub fn window_conf() -> Conf {
+    Conf {
+        window_title: "Rustris".to_owned(),
+        window_width: VIEW_WH[0],
+        window_height: VIEW_WH[1],
+        window_resizable: false,
+        ..Default::default()
+    }
+}
 
 pub struct ViewSettings {
     pub view_w: i32,

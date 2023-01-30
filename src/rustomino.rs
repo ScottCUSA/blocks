@@ -1,6 +1,5 @@
-use macroquad::prelude::*;
-
 use ::rand::{seq::SliceRandom, SeedableRng};
+use macroquad::prelude::*;
 use std::fmt::Display;
 use strum::{EnumIter, IntoEnumIterator};
 

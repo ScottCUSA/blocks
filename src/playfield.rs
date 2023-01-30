@@ -1,8 +1,6 @@
-use std::{fmt::Display, mem::discriminant};
-
-use macroquad::prelude::*;
-
 use crate::rustomino::{translated, RotationDirection, Rustomino, RustominoState, RustominoType};
+use macroquad::prelude::*;
+use std::{fmt::Display, mem::discriminant};
 
 pub(crate) const PLAYFIELD_SLOTS: [usize; 2] = [10, 22];
 pub(crate) const PLAYFIELD_SIZE: [i32; 2] = [10, 20];
@@ -261,7 +259,7 @@ impl RustrisPlayfield {
                 ghost_rustomino.blocks = current_rustomino.blocks;
                 ghost_rustomino.translation = current_rustomino.translation;
 
-                // perform the tranlsation
+                // perform the translation
                 ghost_rustomino.translate(drop_translation);
 
                 log::trace!(
@@ -317,7 +315,7 @@ fn get_hard_drop_translation(playfield_slots: &Slots, rustomino: &Rustomino) -> 
     }
 
     // keep attempting to move the rustomino down until it collides and return
-    // the last non-coliding translation
+    // the last non-colliding translation
     loop {
         let good_translation = translation;
         translation += TranslationDirection::DOWN_TRANSLATION;
@@ -385,7 +383,7 @@ fn translate_rustomino(
         &rustomino.playfield_slots(),
         SlotState::Empty,
     );
-    // perform the tranlsation
+    // perform the translation
     rustomino.translate(translation);
     // set the new slot states to occupied
     set_playfield_slot_states(playfield_slots, &rustomino.playfield_slots(), new_state);
@@ -404,7 +402,7 @@ fn rotate_rustomino(
         &rustomino.playfield_slots(),
         SlotState::Empty,
     );
-    // perform the tranlsation
+    // perform the translation
     rustomino.rotate(rotation, translation);
     // set the new slot states to occupied
     set_playfield_slot_states(playfield_slots, &rustomino.playfield_slots(), new_state);
