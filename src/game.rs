@@ -167,6 +167,7 @@ impl RustrisGame {
         log::trace!("playfield:\n{}", self.playfield);
     }
 
+    // performs a soft drop
     fn soft_drop(&mut self) {
         log::debug!("soft drop called");
         if !self.playfield.translate_active(TranslationDirection::Down) {
@@ -539,15 +540,8 @@ fn handle_playing_inputs(control_states: &mut ControlStates, game: &mut RustrisG
                     .input_states
                     .entry(input.clone())
                     .and_modify(|e| *e = InputState::Down(0.0));
-
                 // call game function for this input
                 control_handler(input, game)();
-
-                // for these controls clear all inputs and stop processing controls
-                if *input == Controls::Hold || *input == Controls::HardDrop {
-                    control_states.clear_inputs();
-                    return;
-                }
                 // ignore other input bindings for this control
                 break;
             } else if is_key_released(*key) {
@@ -576,12 +570,13 @@ fn handle_held_playing_inputs(
             .entry(control.clone()) // modify in place
             .and_modify(|e| match e {
                 InputState::Down(down_time) => {
-                    // if the down time is longer than the action delay for this input
-                    // change it to held
+                    // check to see if the key is repeatable
+                    // and if the down time is longer than the action delay for this input
                     if let Some(action_delay) = control.action_delay() {
                         *down_time += delta_time;
                         if *down_time >= action_delay {
-                            *e = InputState::Held(0.0);
+                            *e = InputState::Held(0.);
+                            control_handler(&control, game)();
                         }
                     }
                 }
@@ -592,18 +587,21 @@ fn handle_held_playing_inputs(
                 _ => (),
             });
         if let Some(state) = control_states.input_states.get_mut(&control) {
-            // if this state input is in a held state
+            // if this input is in a held state
             if let InputState::Held(held_time) = state {
-                // check to see if the key has been held longer than the repeat delay for
-                // the input
+                // check if held was just set
+                if *held_time == 0. {
+                    // call the game control handler function
+                    control_handler(&control, game)();
+                }
+                // check to see if the key is repeatable
+                // and if the key has been held longer than the repeat delay for the input
                 if let Some(action_repeat_delay) = control.action_repeat_delay() {
                     if *held_time >= action_repeat_delay {
-                        // if it is then call the input function
-                        *state = InputState::Held(0.0);
-                        // call game function for repeatable inputs
-                        if control.repeatable() {
-                            control_handler(&control, game)();
-                        }
+                        // reset the held state time
+                        *state = InputState::Held(0.);
+                        // call the game control handler function
+                        control_handler(&control, game)();
                     }
                 }
             }

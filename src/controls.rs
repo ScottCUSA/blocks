@@ -10,19 +10,12 @@ const ROTATE_CCW_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::LeftControl), Some(
 const SOFT_DROP_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Down), Some(KeyCode::S)];
 const HARD_DROP_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Space), None];
 const HOLD_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::LeftShift), Some(KeyCode::C)];
-const REPEATABLE_CONTROLS: [Controls; 5] = [
-    Controls::Left,
-    Controls::Right,
-    Controls::RotateCW,
-    Controls::RotateCCW,
-    Controls::SoftDrop,
-];
 
 // input repeat delays
-const TRANSLATE_ACTION_DELAY: f64 = 0.14;
-const TRANSLATE_ACTION_REPEAT_DELAY: f64 = 0.030;
-const ROTATE_ACTION_DELAY: f64 = 0.14;
-const ROTATE_ACTION_REPEAT_DELAY: f64 = 0.2;
+const TRANSLATE_ACTION_DELAY: f64 = 0.3;
+const TRANSLATE_ACTION_REPEAT_DELAY: f64 = 0.025;
+const SOFT_DROP_ACTION_DELAY: f64 = 0.2;
+const SOFT_DROP_ACTION_REPEAT_DELAY: f64 = 0.03;
 
 // TODO: implement saving and loading inputs from file
 
@@ -48,20 +41,15 @@ pub enum Controls {
 impl Controls {
     pub fn action_delay(&self) -> Option<f64> {
         match self {
-            Controls::Left | Controls::Right | Controls::SoftDrop => Some(TRANSLATE_ACTION_DELAY),
-            Controls::RotateCW | Controls::RotateCCW => Some(ROTATE_ACTION_DELAY),
+            Controls::Left | Controls::Right => Some(TRANSLATE_ACTION_DELAY),
+            Controls::SoftDrop => Some(SOFT_DROP_ACTION_DELAY),
             _ => None,
         }
     }
-    pub fn repeatable(&self) -> bool {
-        REPEATABLE_CONTROLS.contains(self)
-    }
     pub fn action_repeat_delay(&self) -> Option<f64> {
         match self {
-            Controls::Left | Controls::Right | Controls::SoftDrop => {
-                Some(TRANSLATE_ACTION_REPEAT_DELAY)
-            }
-            Controls::RotateCW | Controls::RotateCCW => Some(ROTATE_ACTION_REPEAT_DELAY),
+            Controls::Left | Controls::Right => Some(TRANSLATE_ACTION_REPEAT_DELAY),
+            Controls::SoftDrop => Some(SOFT_DROP_ACTION_REPEAT_DELAY),
             _ => None,
         }
     }
