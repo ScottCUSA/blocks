@@ -1,11 +1,6 @@
 use ::rand::{seq::SliceRandom, SeedableRng};
 use macroquad::prelude::*;
-use std::fmt::Display;
 use strum::{EnumIter, IntoEnumIterator};
-
-const I_BOUNDING_BOX: IVec2 = ivec2(4, 4);
-const O_BOUNDING_BOX: IVec2 = ivec2(4, 3);
-const T_L_J_S_Z_BOUNDING_BOX: IVec2 = ivec2(3, 3);
 
 const I_START_TRANSLATION: IVec2 = ivec2(3, 18);
 const O_T_L_J_S_Z_START_TRANSLATION: IVec2 = ivec2(3, 19);
@@ -369,6 +364,129 @@ const I_WALL_KICK_TESTS: [[IVec2; 5]; 8] = [
     ],
 ];
 
+#[derive(Debug, Clone)]
+pub struct Rustomino {
+    pub rtype: RustominoType,
+    pub state: RustominoState,
+    pub rotation: RustominoRotation,
+    pub blocks: [IVec2; 4],
+    pub translation: IVec2,
+}
+
+impl Rustomino {
+    pub fn new(block_type: RustominoType) -> Rustomino {
+        match block_type {
+            RustominoType::I => Rustomino {
+                rtype: block_type,
+                state: RustominoState::Falling { time: 0. },
+                rotation: RustominoRotation::new(I_ROTATIONS),
+                blocks: I_BLOCKS,
+                translation: I_START_TRANSLATION,
+            },
+            RustominoType::O => Rustomino {
+                rtype: block_type,
+                state: RustominoState::Falling { time: 0. },
+                rotation: RustominoRotation::new(O_ROTATIONS),
+                blocks: O_BLOCKS,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
+            },
+            RustominoType::T => Rustomino {
+                rtype: block_type,
+                state: RustominoState::Falling { time: 0. },
+                rotation: RustominoRotation::new(T_ROTATIONS),
+                blocks: T_BLOCKS,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
+            },
+            RustominoType::L => Rustomino {
+                rtype: block_type,
+                state: RustominoState::Falling { time: 0. },
+                rotation: RustominoRotation::new(L_ROTATIONS),
+                blocks: L_BLOCKS,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
+            },
+            RustominoType::J => Rustomino {
+                rtype: block_type,
+                state: RustominoState::Falling { time: 0. },
+                rotation: RustominoRotation::new(J_ROTATIONS),
+                blocks: J_BLOCKS,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
+            },
+            RustominoType::S => Rustomino {
+                rtype: block_type,
+                state: RustominoState::Falling { time: 0. },
+                rotation: RustominoRotation::new(S_ROTATIONS),
+                blocks: S_BLOCKS,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
+            },
+            RustominoType::Z => Rustomino {
+                rtype: block_type,
+                state: RustominoState::Falling { time: 0. },
+                rotation: RustominoRotation::new(Z_ROTATIONS),
+                blocks: Z_BLOCKS,
+                translation: O_T_L_J_S_Z_START_TRANSLATION,
+            },
+        }
+    }
+
+    pub fn reset(self) -> Rustomino {
+        Rustomino::new(self.rtype)
+    }
+
+    pub fn translate(&mut self, delta: IVec2) {
+        self.translation += delta;
+    }
+
+    pub fn translated(&self, delta: &IVec2) -> [IVec2; 4] {
+        translated(&translated(&self.blocks, &self.translation), delta)
+    }
+
+    pub fn playfield_slots(&self) -> [IVec2; 4] {
+        self.translated(&IVec2::ZERO)
+    }
+
+    pub fn rotate(&mut self, rotation: &Rotation, translation: &IVec2) {
+        let rotation_trans = self.rotation.get_rotation_trans(rotation);
+
+        self.blocks = [
+            self.blocks[0] + rotation_trans[0] + *translation,
+            self.blocks[1] + rotation_trans[1] + *translation,
+            self.blocks[2] + rotation_trans[2] + *translation,
+            self.blocks[3] + rotation_trans[3] + *translation,
+        ];
+
+        self.rotation.rotate(rotation);
+    }
+
+    pub fn rotated(&self, rotation: &Rotation) -> [IVec2; 4] {
+        let rotation = self.rotation.get_rotation_trans(rotation);
+
+        [
+            self.blocks[0] + self.translation + rotation[0],
+            self.blocks[1] + self.translation + rotation[1],
+            self.blocks[2] + self.translation + rotation[2],
+            self.blocks[3] + self.translation + rotation[3],
+        ]
+    }
+
+    pub fn wall_kick_tests(&self, rotation: &Rotation) -> [IVec2; 5] {
+        self.rotation.get_wall_kick_tests(self.rtype, rotation)
+    }
+
+    pub fn set_state(&mut self, state: RustominoState) {
+        log::trace!("setting rustomino state: {:?}", state);
+        self.state = state;
+    }
+}
+
+pub fn translated(blocks: &[IVec2; 4], delta: &IVec2) -> [IVec2; 4] {
+    [
+        blocks[0] + *delta,
+        blocks[1] + *delta,
+        blocks[2] + *delta,
+        blocks[3] + *delta,
+    ]
+}
+
 #[derive(Debug, Clone, Copy, EnumIter, PartialEq, Eq)]
 pub enum RustominoType {
     I,
@@ -402,290 +520,128 @@ impl RustominoType {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Rustomino {
-    pub rtype: RustominoType,
-    pub state: RustominoState,
-    pub rotation: RustominoRotation,
-    pub blocks: [IVec2; 4],
-    pub translation: IVec2,
-    bounding_box: IVec2,
-}
-
-impl Rustomino {
-    pub fn new(block_type: RustominoType) -> Rustomino {
-        match block_type {
-            RustominoType::I => Rustomino {
-                rtype: block_type,
-                state: RustominoState::Falling { time: 0. },
-                rotation: RustominoRotation::new(I_ROTATIONS),
-                blocks: I_BLOCKS,
-                translation: I_START_TRANSLATION,
-                bounding_box: I_BOUNDING_BOX,
-            },
-            RustominoType::O => Rustomino {
-                rtype: block_type,
-                state: RustominoState::Falling { time: 0. },
-                rotation: RustominoRotation::new(O_ROTATIONS),
-                blocks: O_BLOCKS,
-                bounding_box: O_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_START_TRANSLATION,
-            },
-            RustominoType::T => Rustomino {
-                rtype: block_type,
-                state: RustominoState::Falling { time: 0. },
-                rotation: RustominoRotation::new(T_ROTATIONS),
-                blocks: T_BLOCKS,
-                bounding_box: T_L_J_S_Z_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_START_TRANSLATION,
-            },
-            RustominoType::L => Rustomino {
-                rtype: block_type,
-                state: RustominoState::Falling { time: 0. },
-                rotation: RustominoRotation::new(L_ROTATIONS),
-                blocks: L_BLOCKS,
-                bounding_box: T_L_J_S_Z_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_START_TRANSLATION,
-            },
-            RustominoType::J => Rustomino {
-                rtype: block_type,
-                state: RustominoState::Falling { time: 0. },
-                rotation: RustominoRotation::new(J_ROTATIONS),
-                blocks: J_BLOCKS,
-                bounding_box: T_L_J_S_Z_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_START_TRANSLATION,
-            },
-            RustominoType::S => Rustomino {
-                rtype: block_type,
-                state: RustominoState::Falling { time: 0. },
-                rotation: RustominoRotation::new(S_ROTATIONS),
-                blocks: S_BLOCKS,
-                bounding_box: T_L_J_S_Z_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_START_TRANSLATION,
-            },
-            RustominoType::Z => Rustomino {
-                rtype: block_type,
-                state: RustominoState::Falling { time: 0. },
-                rotation: RustominoRotation::new(Z_ROTATIONS),
-                blocks: Z_BLOCKS,
-                bounding_box: T_L_J_S_Z_BOUNDING_BOX,
-                translation: O_T_L_J_S_Z_START_TRANSLATION,
-            },
-        }
-    }
-
-    pub fn reset(self) -> Rustomino {
-        Rustomino::new(self.rtype)
-    }
-
-    pub fn translate(&mut self, delta: IVec2) {
-        self.translation += delta;
-    }
-
-    pub fn translated(&self, delta: &IVec2) -> [IVec2; 4] {
-        translated(&translated(&self.blocks, &self.translation), delta)
-    }
-
-    pub fn playfield_slots(&self) -> [IVec2; 4] {
-        self.translated(&IVec2::ZERO)
-    }
-
-    pub fn rotate(&mut self, direction: &RotationDirection, translation: &IVec2) {
-        let rotation_trans = self.rotation.get_translation(direction);
-
-        self.blocks = [
-            self.blocks[0] + rotation_trans.0[0] + *translation,
-            self.blocks[1] + rotation_trans.0[1] + *translation,
-            self.blocks[2] + rotation_trans.0[2] + *translation,
-            self.blocks[3] + rotation_trans.0[3] + *translation,
-        ];
-
-        self.rotation.rotate(direction);
-    }
-
-    pub fn rotated(&self, direction: &RotationDirection) -> [IVec2; 4] {
-        let rotation = self.rotation.get_translation(direction);
-
-        [
-            self.blocks[0] + self.translation + rotation.0[0],
-            self.blocks[1] + self.translation + rotation.0[1],
-            self.blocks[2] + self.translation + rotation.0[2],
-            self.blocks[3] + self.translation + rotation.0[3],
-        ]
-    }
-
-    pub fn wall_kick_tests(&self, direction: &RotationDirection) -> [IVec2; 5] {
-        self.rotation.get_wall_kick_tests(self.rtype, direction)
-    }
-
-    pub fn set_state(&mut self, state: RustominoState) {
-        log::trace!("setting rustomino state: {:?}", state);
-        self.state = state;
-    }
-}
-
-pub fn translated(blocks: &[IVec2; 4], delta: &IVec2) -> [IVec2; 4] {
-    [
-        blocks[0] + *delta,
-        blocks[1] + *delta,
-        blocks[2] + *delta,
-        blocks[3] + *delta,
-    ]
-}
-
-impl Display for Rustomino {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, " ")?;
-        write!(f, "{}", "-".repeat((self.bounding_box[0] * 2 - 1) as usize))?;
-        writeln!(f, " ")?;
-        for line in (0..self.bounding_box[1]).rev() {
-            write!(f, "|")?;
-            'row: for row in 0..self.bounding_box[0] {
-                for block in self.blocks {
-                    if block[0] == row && block[1] == line {
-                        if row != (self.bounding_box[1] - 1) {
-                            write!(f, "# ")?;
-                        } else {
-                            write!(f, "#")?;
-                        }
-                        continue 'row;
-                    }
-                }
-                if row != (self.bounding_box[1] - 1) {
-                    write!(f, "  ")?;
-                } else {
-                    write!(f, " ")?;
-                }
-            }
-            writeln!(f, "|")?;
-        }
-        write!(f, " ")?;
-        write!(f, "{}", "-".repeat((self.bounding_box[0] * 2 - 1) as usize))?;
-        write!(f, " ")?;
-        Ok(())
-    }
+#[derive(Debug, Clone, Copy)]
+pub enum RustominoState {
+    Falling { time: f64 },
+    Lockdown { time: f64 },
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum RustominoDirection {
+pub enum Direction {
     N,
     E,
     S,
     W,
 }
 
-impl RustominoDirection {
-    fn rotate(&self, direction: &RotationDirection) -> RustominoDirection {
+impl Direction {
+    fn rotate(&self, rotation: &Rotation) -> Direction {
         match self {
-            RustominoDirection::N => match direction {
-                RotationDirection::Cw => RustominoDirection::E,
-                RotationDirection::Ccw => RustominoDirection::W,
+            Direction::N => match rotation {
+                Rotation::Cw => Direction::E,
+                Rotation::Ccw => Direction::W,
             },
-            RustominoDirection::E => match direction {
-                RotationDirection::Cw => RustominoDirection::S,
-                RotationDirection::Ccw => RustominoDirection::N,
+            Direction::E => match rotation {
+                Rotation::Cw => Direction::S,
+                Rotation::Ccw => Direction::N,
             },
-            RustominoDirection::S => match direction {
-                RotationDirection::Cw => RustominoDirection::W,
-                RotationDirection::Ccw => RustominoDirection::E,
+            Direction::S => match rotation {
+                Rotation::Cw => Direction::W,
+                Rotation::Ccw => Direction::E,
             },
-            RustominoDirection::W => match direction {
-                RotationDirection::Cw => RustominoDirection::N,
-                RotationDirection::Ccw => RustominoDirection::S,
+            Direction::W => match rotation {
+                Rotation::Cw => Direction::N,
+                Rotation::Ccw => Direction::S,
             },
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum RotationDirection {
+pub enum Rotation {
     Cw,
     Ccw,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct RustominoRotation {
-    direction: RustominoDirection,
-    n2e: RotationTranslation,
-    e2s: RotationTranslation,
-    s2w: RotationTranslation,
-    w2n: RotationTranslation,
+    direction: Direction,
+    n2e_trans: [IVec2; 4],
+    e2s_trans: [IVec2; 4],
+    s2w_trans: [IVec2; 4],
+    w2n_trans: [IVec2; 4],
 }
 
 impl RustominoRotation {
     fn new(values: [[IVec2; 4]; 4]) -> Self {
         Self {
-            direction: RustominoDirection::N,
-            n2e: RotationTranslation::new(values[0]),
-            e2s: RotationTranslation::new(values[1]),
-            s2w: RotationTranslation::new(values[2]),
-            w2n: RotationTranslation::new(values[3]),
+            direction: Direction::N,
+            n2e_trans: values[0],
+            e2s_trans: values[1],
+            s2w_trans: values[2],
+            w2n_trans: values[3],
         }
     }
 
-    fn get_translation(&self, direction: &RotationDirection) -> RotationTranslation {
+    fn get_rotation_trans(&self, rotation: &Rotation) -> [IVec2; 4] {
         match self.direction {
-            RustominoDirection::N => match direction {
-                RotationDirection::Cw => self.n2e,
-                RotationDirection::Ccw => -self.w2n,
+            Direction::N => match rotation {
+                Rotation::Cw => self.n2e_trans,
+                Rotation::Ccw => neg_trans(self.w2n_trans),
             },
-            RustominoDirection::E => match direction {
-                RotationDirection::Cw => self.e2s,
-                RotationDirection::Ccw => -self.n2e,
+            Direction::E => match rotation {
+                Rotation::Cw => self.e2s_trans,
+                Rotation::Ccw => neg_trans(self.n2e_trans),
             },
-            RustominoDirection::S => match direction {
-                RotationDirection::Cw => self.s2w,
-                RotationDirection::Ccw => -self.e2s,
+            Direction::S => match rotation {
+                Rotation::Cw => self.s2w_trans,
+                Rotation::Ccw => neg_trans(self.e2s_trans),
             },
-            RustominoDirection::W => match direction {
-                RotationDirection::Cw => self.w2n,
-                RotationDirection::Ccw => -self.s2w,
+            Direction::W => match rotation {
+                Rotation::Cw => self.w2n_trans,
+                Rotation::Ccw => neg_trans(self.s2w_trans),
             },
         }
     }
 
-    fn get_wall_kick_tests(
-        &self,
-        rtype: RustominoType,
-        direction: &RotationDirection,
-    ) -> [IVec2; 5] {
+    fn get_wall_kick_tests(&self, rtype: RustominoType, rotation: &Rotation) -> [IVec2; 5] {
         match self.direction {
-            RustominoDirection::N => match direction {
-                RotationDirection::Cw => match rtype {
+            Direction::N => match rotation {
+                Rotation::Cw => match rtype {
                     RustominoType::I => I_WALL_KICK_TESTS[0],
                     _ => JLSTZ_WALL_KICK_TESTS[0],
                 },
-                RotationDirection::Ccw => match rtype {
+                Rotation::Ccw => match rtype {
                     RustominoType::I => I_WALL_KICK_TESTS[7],
                     _ => JLSTZ_WALL_KICK_TESTS[7],
                 },
             },
-            RustominoDirection::E => match direction {
-                RotationDirection::Cw => match rtype {
+            Direction::E => match rotation {
+                Rotation::Cw => match rtype {
                     RustominoType::I => I_WALL_KICK_TESTS[2],
                     _ => JLSTZ_WALL_KICK_TESTS[2],
                 },
-                RotationDirection::Ccw => match rtype {
+                Rotation::Ccw => match rtype {
                     RustominoType::I => I_WALL_KICK_TESTS[1],
                     _ => JLSTZ_WALL_KICK_TESTS[1],
                 },
             },
-            RustominoDirection::S => match direction {
-                RotationDirection::Cw => match rtype {
+            Direction::S => match rotation {
+                Rotation::Cw => match rtype {
                     RustominoType::I => I_WALL_KICK_TESTS[4],
                     _ => JLSTZ_WALL_KICK_TESTS[4],
                 },
-                RotationDirection::Ccw => match rtype {
+                Rotation::Ccw => match rtype {
                     RustominoType::I => I_WALL_KICK_TESTS[3],
                     _ => JLSTZ_WALL_KICK_TESTS[3],
                 },
             },
-            RustominoDirection::W => match direction {
-                RotationDirection::Cw => match rtype {
+            Direction::W => match rotation {
+                Rotation::Cw => match rtype {
                     RustominoType::I => I_WALL_KICK_TESTS[6],
                     _ => JLSTZ_WALL_KICK_TESTS[6],
                 },
-                RotationDirection::Ccw => match rtype {
+                Rotation::Ccw => match rtype {
                     RustominoType::I => I_WALL_KICK_TESTS[5],
                     _ => JLSTZ_WALL_KICK_TESTS[5],
                 },
@@ -693,32 +649,19 @@ impl RustominoRotation {
         }
     }
 
-    fn rotate(&mut self, direction: &RotationDirection) {
-        self.direction = self.direction.rotate(direction)
+    fn rotate(&mut self, rotation: &Rotation) {
+        self.direction = self.direction.rotate(rotation)
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct RotationTranslation([IVec2; 4]);
-
-impl RotationTranslation {
-    fn new(values: [IVec2; 4]) -> Self {
-        RotationTranslation(values)
-    }
-}
-
-impl std::ops::Neg for RotationTranslation {
-    type Output = Self;
-
-    fn neg(self) -> Self {
-        Self([-self.0[0], -self.0[1], -self.0[2], -self.0[3]])
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum RustominoState {
-    Falling { time: f64 },
-    Lockdown { time: f64 },
+#[inline(always)]
+fn neg_trans(block_trans: [IVec2; 4]) -> [IVec2; 4] {
+    [
+        -block_trans[0],
+        -block_trans[1],
+        -block_trans[2],
+        -block_trans[3],
+    ]
 }
 
 pub struct RustominoBag {

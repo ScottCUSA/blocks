@@ -1,7 +1,6 @@
 #![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
 use view::window_conf;
 
-mod controller;
 mod controls;
 mod game;
 mod playfield;
@@ -17,5 +16,5 @@ async fn main() {
         .format_timestamp(Some(env_logger::TimestampPrecision::Millis))
         .init();
 
-    controller::run().await
+    game::run().await
 }
