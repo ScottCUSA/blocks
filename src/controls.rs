@@ -1,12 +1,6 @@
+use macroquad::prelude::*;
 use std::collections::HashMap;
-
-use macroquad::{
-    audio::{set_sound_volume, Sound},
-    prelude::*,
-};
 use strum::{EnumIter, IntoEnumIterator};
-
-use crate::{game::RustrisGame, playfield::TranslationDirection, rustomino::RotationDirection};
 
 // default control settings
 const LEFT_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Left), Some(KeyCode::A)];
@@ -18,14 +12,12 @@ const HARD_DROP_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Space), None];
 const HOLD_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::LeftShift), Some(KeyCode::C)];
 
 // input repeat delays
-const TRANSLATE_ACTION_DELAY: f64 = 0.14;
-const TRANSLATE_ACTION_REPEAT_DELAY: f64 = 0.030;
+const TRANSLATE_ACTION_DELAY: f64 = 0.3;
+const TRANSLATE_ACTION_REPEAT_DELAY: f64 = 0.025;
+const SOFT_DROP_ACTION_DELAY: f64 = 0.2;
+const SOFT_DROP_ACTION_REPEAT_DELAY: f64 = 0.03;
 
-const ROTATE_ACTION_DELAY: f64 = 0.14;
-const ROTATE_ACTION_REPEAT_DELAY: f64 = 0.2;
-
-// volume change amount per key press
-const MUSIC_VOLUME_CHANGE: f32 = 0.025;
+// TODO: implement saving and loading inputs from file
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum InputState {
@@ -47,23 +39,17 @@ pub enum Controls {
 }
 
 impl Controls {
-    pub fn action_delay_for_input(&self) -> Option<f64> {
+    pub fn action_delay(&self) -> Option<f64> {
         match self {
-            Controls::Left => Some(TRANSLATE_ACTION_DELAY),
-            Controls::Right => Some(TRANSLATE_ACTION_DELAY),
-            Controls::SoftDrop => Some(TRANSLATE_ACTION_DELAY),
-            Controls::RotateCW => Some(ROTATE_ACTION_DELAY),
-            Controls::RotateCCW => Some(ROTATE_ACTION_DELAY),
+            Controls::Left | Controls::Right => Some(TRANSLATE_ACTION_DELAY),
+            Controls::SoftDrop => Some(SOFT_DROP_ACTION_DELAY),
             _ => None,
         }
     }
-    pub fn action_repeat_delay_for_input(&self) -> Option<f64> {
+    pub fn action_repeat_delay(&self) -> Option<f64> {
         match self {
-            Controls::Left => Some(TRANSLATE_ACTION_REPEAT_DELAY),
-            Controls::Right => Some(TRANSLATE_ACTION_REPEAT_DELAY),
-            Controls::SoftDrop => Some(TRANSLATE_ACTION_REPEAT_DELAY),
-            Controls::RotateCW => Some(ROTATE_ACTION_REPEAT_DELAY),
-            Controls::RotateCCW => Some(ROTATE_ACTION_REPEAT_DELAY),
+            Controls::Left | Controls::Right => Some(TRANSLATE_ACTION_REPEAT_DELAY),
+            Controls::SoftDrop => Some(SOFT_DROP_ACTION_REPEAT_DELAY),
             _ => None,
         }
     }
@@ -143,135 +129,5 @@ impl ControlStates {
                 .entry(input.clone())
                 .and_modify(|e| *e = InputState::Up);
         }
-    }
-
-    pub fn handle_held_playing_inputs(&mut self, game: &mut RustrisGame, delta_time: f64) {
-        // check each input
-        for input in Controls::iter() {
-            self.input_states
-                .entry(input.clone()) // modify in place
-                .and_modify(|e| match e {
-                    InputState::Down(down_time) => {
-                        // if the down time is longer than the action delay for this input
-                        // change it to held
-                        if let Some(action_delay) = input.action_delay_for_input() {
-                            *down_time += delta_time;
-                            if *down_time >= action_delay {
-                                *e = InputState::Held(0.0);
-                            }
-                        }
-                    }
-                    // if the input state is held, add delta time to the held time
-                    InputState::Held(held_time) => {
-                        *held_time += delta_time;
-                    }
-                    _ => (),
-                });
-            if let Some(state) = self.input_states.get_mut(&input) {
-                // if this state input is in a held state
-                if let InputState::Held(held_time) = state {
-                    // check to see if the key has been held longer than the repeat delay for
-                    // the input
-                    if let Some(action_repeat_delay) = input.action_repeat_delay_for_input() {
-                        if *held_time >= action_repeat_delay {
-                            // if it is then call the input function
-                            *state = InputState::Held(0.0);
-                            match input {
-                                Controls::Left => game.translate(TranslationDirection::Left),
-                                Controls::Right => game.translate(TranslationDirection::Right),
-                                Controls::RotateCW => game.rotate(RotationDirection::Cw),
-                                Controls::RotateCCW => game.rotate(RotationDirection::Ccw),
-                                Controls::SoftDrop => game.soft_drop(),
-                                _ => (),
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    pub fn handle_playing_inputs(&mut self, game: &mut RustrisGame) {
-        // if the escape key is pressed while playing the game is
-        // immediately paused
-        if is_key_pressed(KeyCode::Escape) {
-            self.clear_inputs();
-            game.pause();
-            return;
-        }
-
-        // iterate through all of the inputs, checking to see if the configured keys
-        // were pressed this frame
-        for (input, keys) in &self.input_map.clone() {
-            for key in keys.iter().flatten() {
-                if is_key_pressed(*key) {
-                    self.input_states
-                        .entry(input.clone())
-                        .and_modify(|e| *e = InputState::Down(0.0));
-                    match input {
-                        Controls::Left => game.translate(TranslationDirection::Left),
-                        Controls::Right => game.translate(TranslationDirection::Right),
-                        Controls::RotateCW => game.rotate(RotationDirection::Cw),
-                        Controls::RotateCCW => game.rotate(RotationDirection::Ccw),
-                        Controls::SoftDrop => game.soft_drop(),
-                        Controls::HardDrop => {
-                            self.clear_inputs();
-                            game.hard_drop();
-                            return;
-                        }
-                        Controls::Hold => {
-                            self.clear_inputs();
-                            game.hold();
-                            return;
-                        }
-                    }
-                    // ignore other key bindings for this
-                    // input if one was pressed this frame
-                    break;
-                } else if is_key_released(*key) {
-                    self.input_states
-                        .entry(input.clone())
-                        .and_modify(|e| *e = InputState::Up);
-                }
-            }
-        }
-    }
-
-    pub fn handle_paused_inputs(&mut self, game: &mut RustrisGame) {
-        if is_key_pressed(KeyCode::Escape) {
-            self.clear_inputs();
-            game.resume();
-        }
-    }
-
-    pub fn handle_game_over_inputs(&mut self, game: &mut RustrisGame) {
-        if is_key_pressed(KeyCode::Enter) {
-            self.clear_inputs();
-            game.play_again();
-        }
-    }
-
-    pub fn handle_menu_inputs(&mut self, game: &mut RustrisGame) {
-        if is_key_pressed(KeyCode::Enter) {
-            self.clear_inputs();
-            game.resume();
-        }
-    }
-}
-
-pub fn handle_global_controls(background_music: &Sound, music_volume: &mut f32) {
-    // allow control of the game volume
-    if is_key_pressed(KeyCode::Minus) || is_key_pressed(KeyCode::KpSubtract) {
-        *music_volume -= MUSIC_VOLUME_CHANGE;
-        *music_volume = music_volume.clamp(0.0, 1.0);
-        set_sound_volume(*background_music, *music_volume);
-        log::debug!("volume decrease {}", music_volume);
-    }
-
-    if is_key_pressed(KeyCode::Equal) || is_key_pressed(KeyCode::KpAdd) {
-        *music_volume += MUSIC_VOLUME_CHANGE;
-        *music_volume = music_volume.clamp(0.0, 1.0);
-        set_sound_volume(*background_music, *music_volume);
-        log::debug!("volume increase {}", music_volume);
     }
 }
