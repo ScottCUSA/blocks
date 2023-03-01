@@ -1,15 +1,16 @@
 use crate::{
-    controls::{self, ControlStates, Controls, InputState},
+    controls::{
+        self, handle_global_inputs, handle_held_playing_inputs, handle_playing_inputs, Control,
+    },
     playfield::{RustrisPlayfield, TranslationDirection, PLAYFIELD_SIZE},
     rustomino::{Rotation, Rustomino, RustominoBag, RustominoState},
     view,
 };
 use macroquad::{
-    audio::{load_sound, play_sound, set_sound_volume, PlaySoundParams, Sound},
+    audio::{load_sound, play_sound, PlaySoundParams},
     prelude::*,
 };
 use std::f64::consts::E;
-use strum::IntoEnumIterator;
 
 // GAMEPLAY CONSTANTS
 const GRAVITY_NUMERATOR: f64 = 1.0;
@@ -27,8 +28,7 @@ const RUSTRIS_SCORE: usize = 800;
 
 // ASSET CONSTANTS
 const ASSETS_FOLDER: &str = "assets";
-const MUSIC_VOL: f32 = 0.1;
-const MUSIC_VOLUME_CHANGE: f32 = 0.025;
+const MUSIC_VOL: f32 = 0.05;
 
 pub enum GameState {
     Menu,
@@ -501,110 +501,17 @@ pub async fn run() {
 
 // returns a closure which handles the provided
 // control for the game
-fn control_handler<'a>(control: &'a Controls, game: &'a mut RustrisGame) -> Box<dyn FnMut() + 'a> {
+pub fn control_handler<'a>(
+    control: &'a Control,
+    game: &'a mut RustrisGame,
+) -> Box<dyn FnMut() + 'a> {
     match *control {
-        Controls::Left => Box::new(|| game.translate(TranslationDirection::Left)),
-        Controls::Right => Box::new(|| game.translate(TranslationDirection::Right)),
-        Controls::RotateCW => Box::new(|| game.rotate(Rotation::Cw)),
-        Controls::RotateCCW => Box::new(|| game.rotate(Rotation::Ccw)),
-        Controls::SoftDrop => Box::new(|| game.soft_drop()),
-        Controls::HardDrop => Box::new(|| game.hard_drop()),
-        Controls::Hold => Box::new(|| game.hold()),
-    }
-}
-
-fn handle_global_inputs(background_music: &Sound, music_volume: &mut f32) {
-    // volume down
-    if is_key_pressed(KeyCode::Minus) || is_key_pressed(KeyCode::KpSubtract) {
-        *music_volume -= MUSIC_VOLUME_CHANGE;
-        *music_volume = music_volume.clamp(0.0, 1.0);
-        set_sound_volume(*background_music, *music_volume);
-        log::debug!("volume decrease {}", music_volume);
-    }
-    // volume up
-    if is_key_pressed(KeyCode::Equal) || is_key_pressed(KeyCode::KpAdd) {
-        *music_volume += MUSIC_VOLUME_CHANGE;
-        *music_volume = music_volume.clamp(0.0, 1.0);
-        set_sound_volume(*background_music, *music_volume);
-        log::debug!("volume increase {}", music_volume);
-    }
-}
-
-fn handle_playing_inputs(control_states: &mut ControlStates, game: &mut RustrisGame) {
-    // iterate through the controls
-    for (input, keys) in &control_states.input_map.clone() {
-        // iterate through the configured keys for the control
-        for key in keys.iter().flatten() {
-            if is_key_pressed(*key) {
-                control_states
-                    .input_states
-                    .entry(input.clone())
-                    .and_modify(|e| *e = InputState::Down(0.0));
-                // call game function for this input
-                control_handler(input, game)();
-                // ignore other input bindings for this control
-                break;
-            } else if is_key_released(*key) {
-                control_states
-                    .input_states
-                    .entry(input.clone())
-                    .and_modify(|e| *e = InputState::Up);
-            }
-        }
-    }
-}
-
-// Some of the games controls allow repeating their actions
-// when the user holds their inputs
-// This handles updating the state of these inputs
-// as well as calling game functions when appropriate
-fn handle_held_playing_inputs(
-    control_states: &mut ControlStates,
-    game: &mut RustrisGame,
-    delta_time: f64,
-) {
-    // iterate through the controls
-    for control in Controls::iter() {
-        control_states
-            .input_states
-            .entry(control.clone()) // modify in place
-            .and_modify(|e| match e {
-                InputState::Down(down_time) => {
-                    // check to see if the key is repeatable
-                    // and if the down time is longer than the action delay for this input
-                    if let Some(action_delay) = control.action_delay() {
-                        *down_time += delta_time;
-                        if *down_time >= action_delay {
-                            *e = InputState::Held(0.);
-                            control_handler(&control, game)();
-                        }
-                    }
-                }
-                // if the input state is held, add delta time to the held time
-                InputState::Held(held_time) => {
-                    *held_time += delta_time;
-                }
-                _ => (),
-            });
-        if let Some(state) = control_states.input_states.get_mut(&control) {
-            // if this input is in a held state
-            if let InputState::Held(held_time) = state {
-                // check if held was just set
-                if *held_time == 0. {
-                    // call the game control handler function
-                    control_handler(&control, game)();
-                }
-                // check to see if the key is repeatable
-                // and if the key has been held longer than the repeat delay for the input
-                if let Some(action_repeat_delay) = control.action_repeat_delay() {
-                    if *held_time >= action_repeat_delay {
-                        // reset the held state time
-                        *state = InputState::Held(0.);
-                        // call the game control handler function
-                        control_handler(&control, game)();
-                    }
-                }
-            }
-        }
+        Control::Left => Box::new(|| game.translate(TranslationDirection::Left)),
+        Control::Right => Box::new(|| game.translate(TranslationDirection::Right)),
+        Control::RotateCW => Box::new(|| game.rotate(Rotation::Cw)),
+        Control::RotateCCW => Box::new(|| game.rotate(Rotation::Ccw)),
+        Control::SoftDrop => Box::new(|| game.soft_drop()),
+        Control::HardDrop => Box::new(|| game.hard_drop()),
+        Control::Hold => Box::new(|| game.hold()),
     }
 }
