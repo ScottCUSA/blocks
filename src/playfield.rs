@@ -1,5 +1,6 @@
+use ggez::glam::IVec2;
+
 use crate::rustomino::{translated, Rotation, Rustomino, RustominoState, RustominoType};
-use macroquad::prelude::*;
 use std::{fmt::Display, mem::discriminant};
 
 pub const PLAYFIELD_SLOTS: [usize; 2] = [10, 22];

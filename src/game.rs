@@ -1,3 +1,10 @@
+use ggez::{
+    event::EventHandler,
+    glam::IVec2,
+    graphics::{self, Color},
+    GameError,
+};
+
 use crate::{
     controls::{
         self, handle_global_inputs, handle_held_playing_inputs, handle_playing_inputs, Control,
@@ -6,10 +13,7 @@ use crate::{
     rustomino::{Rotation, Rustomino, RustominoBag, RustominoState},
     view,
 };
-use macroquad::{
-    audio::{load_sound, play_sound, PlaySoundParams},
-    prelude::*,
-};
+
 use std::f64::consts::E;
 
 // GAMEPLAY CONSTANTS
@@ -52,7 +56,7 @@ pub struct RustrisGame {
 }
 
 impl RustrisGame {
-    fn new(playfield: RustrisPlayfield) -> Self {
+    pub fn new(playfield: RustrisPlayfield) -> Self {
         RustrisGame {
             playfield,
             next_rustomino: None,
@@ -355,6 +359,18 @@ impl RustrisGame {
     }
 }
 
+impl EventHandler for RustrisGame {
+    fn update(&mut self, _ctx: &mut ggez::Context) -> Result<(), GameError> {
+        Ok(())
+    }
+
+    fn draw(&mut self, ctx: &mut ggez::Context) -> Result<(), GameError> {
+        let mut canvas = graphics::Canvas::from_frame(ctx, Color::WHITE);
+        // Draw code here...
+        canvas.finish(ctx)
+    }
+}
+
 fn score_cleared_lines(num_lines: usize, level: usize) -> usize {
     // Single line 100xlevel
     // Double line 300xlevel
@@ -392,112 +408,112 @@ fn gravity_delay(level: usize) -> f64 {
     gravity_delay
 }
 
-// run the game
-pub async fn run() {
-    log::info!("startup: initializing Rustris;");
+// // run the game
+// pub async fn run() {
+//     log::info!("startup: initializing Rustris;");
 
-    // initialize the game and control states
-    let mut game = RustrisGame::new(RustrisPlayfield::new());
-    let mut controls = controls::ControlStates::default();
+//     // initialize the game and control states
+//     let mut game = RustrisGame::new(RustrisPlayfield::new());
+//     let mut controls = controls::ControlStates::default();
 
-    log::info!("loading Resources");
-    // find our assets path
-    let assets_path = find_folder::Search::ParentsThenKids(2, 2)
-        .for_folder(ASSETS_FOLDER)
-        .expect("unable to find assets folder");
+//     log::info!("loading Resources");
+//     // find our assets path
+//     let assets_path = find_folder::Search::ParentsThenKids(2, 2)
+//         .for_folder(ASSETS_FOLDER)
+//         .expect("unable to find assets folder");
 
-    // load the font
-    let font_path = assets_path.join("04b30.ttf");
-    log::info!("loading font: {:?}", font_path);
-    let font = load_ttf_font(&font_path.to_string_lossy())
-        .await
-        .expect("unable to load font");
+//     // load the font
+//     let font_path = assets_path.join("04b30.ttf");
+//     log::info!("loading font: {:?}", font_path);
+//     let font = load_ttf_font(&font_path.to_string_lossy())
+//         .await
+//         .expect("unable to load font");
 
-    // configure UI fonts
-    let font_20pt = TextParams {
-        font,
-        font_size: 20,
-        ..Default::default()
-    };
-    let font_30pt = TextParams {
-        font,
-        font_size: 30,
-        ..Default::default()
-    };
+//     // configure UI fonts
+//     let font_20pt = TextParams {
+//         font,
+//         font_size: 20,
+//         ..Default::default()
+//     };
+//     let font_30pt = TextParams {
+//         font,
+//         font_size: 30,
+//         ..Default::default()
+//     };
 
-    // load the background music
-    let background_path = assets_path.join("background.ogg");
-    log::info!("loading background music: {:?}", background_path);
-    let background_music = load_sound(&background_path.to_string_lossy())
-        .await
-        .expect("unable to load background music");
+//     // load the background music
+//     let background_path = assets_path.join("background.ogg");
+//     log::info!("loading background music: {:?}", background_path);
+//     let background_music = load_sound(&background_path.to_string_lossy())
+//         .await
+//         .expect("unable to load background music");
 
-    // play background music
-    let mut music_volume = MUSIC_VOL;
-    log::info!("playing background music at volume: {music_volume}");
-    play_sound(
-        background_music,
-        PlaySoundParams {
-            looped: true,
-            volume: music_volume,
-        },
-    );
+//     // play background music
+//     let mut music_volume = MUSIC_VOL;
+//     log::info!("playing background music at volume: {music_volume}");
+//     play_sound(
+//         background_music,
+//         PlaySoundParams {
+//             looped: true,
+//             volume: music_volume,
+//         },
+//     );
 
-    let mut last_update = get_time();
+//     let mut last_update = get_time();
 
-    loop {
-        clear_background(view::BACKGROUND_COLOR);
+//     loop {
+//         clear_background(view::BACKGROUND_COLOR);
 
-        // handle global controls
-        handle_global_inputs(&background_music, &mut music_volume);
+//         // handle global controls
+//         handle_global_inputs(&background_music, &mut music_volume);
 
-        let now = get_time();
-        let delta_time = now - last_update;
+//         let now = get_time();
+//         let delta_time = now - last_update;
 
-        // handle the game states
-        match game.state {
-            GameState::Menu => {
-                // handle the user's inputs
-                if is_key_pressed(KeyCode::Enter) {
-                    controls.clear_inputs();
-                    game.resume();
-                }
-            }
-            GameState::Playing => {
-                // pause the game immediately
-                // clear all other inputs and continue
-                if is_key_pressed(KeyCode::Escape) {
-                    game.pause();
-                    controls.clear_inputs();
-                } else {
-                    game.ready_playfield();
-                    handle_playing_inputs(&mut controls, &mut game);
-                    handle_held_playing_inputs(&mut controls, &mut game, delta_time);
-                    game.playing_update(delta_time);
-                }
-            }
-            GameState::Paused => {
-                if is_key_pressed(KeyCode::Escape) {
-                    controls.clear_inputs();
-                    game.resume();
-                }
-            }
-            GameState::GameOver => {
-                if is_key_pressed(KeyCode::Enter) {
-                    controls.clear_inputs();
-                    game = game.new_game();
-                }
-            }
-        }
+//         // handle the game states
+//         match game.state {
+//             GameState::Menu => {
+//                 // handle the user's inputs
+//                 if is_key_pressed(KeyCode::Enter) {
+//                     controls.clear_inputs();
+//                     game.resume();
+//                 }
+//             }
+//             GameState::Playing => {
+//                 // pause the game immediately
+//                 // clear all other inputs and continue
+//                 if is_key_pressed(KeyCode::Escape) {
+//                     game.pause();
+//                     controls.clear_inputs();
+//                 } else {
+//                     game.ready_playfield();
+//                     handle_playing_inputs(&mut controls, &mut game);
+//                     handle_held_playing_inputs(&mut controls, &mut game, delta_time);
+//                     game.playing_update(delta_time);
+//                 }
+//             }
+//             GameState::Paused => {
+//                 if is_key_pressed(KeyCode::Escape) {
+//                     controls.clear_inputs();
+//                     game.resume();
+//                 }
+//             }
+//             GameState::GameOver => {
+//                 if is_key_pressed(KeyCode::Enter) {
+//                     controls.clear_inputs();
+//                     game = game.new_game();
+//                 }
+//             }
+//         }
 
-        // draw the menus, game, overlays, etc.
-        view::draw(&game, &font_20pt, &font_30pt);
+//         // draw the menus, game, overlays, etc.
+//         view::draw(&game, &font_20pt, &font_30pt);
 
-        last_update = get_time();
+//         last_update = get_time();
 
-        next_frame().await;
-    }
-}
+//         next_frame().await;
+//     }
+// }
 
 // returns a closure which handles the provided
 // control for the game
