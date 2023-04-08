@@ -1,8 +1,6 @@
-use ggez::input::keyboard::KeyCode;
+use ggez::input::keyboard::{KeyCode, KeyInput};
 use std::collections::HashMap;
 use strum::{EnumIter, IntoEnumIterator};
-
-use crate::game::{control_handler, RustrisGame};
 
 // default control settings
 const LEFT_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Left), Some(KeyCode::A)];
@@ -79,18 +77,19 @@ impl ControlInputs {
     }
 }
 
-pub struct ControlStates {
-    pub input_map: HashMap<Control, ControlInputs>,
-    pub input_states: HashMap<Control, InputState>,
+#[derive(Clone)]
+pub struct GameControls {
+    pub inputs_map: HashMap<Control, ControlInputs>,
+    pub states_map: HashMap<Control, InputState>,
 }
 
-impl Default for ControlStates {
+impl Default for GameControls {
     fn default() -> Self {
         Self {
-            input_map: Control::iter()
+            inputs_map: Control::iter()
                 .map(|i| (i, ControlInputs::new(i.default_keys())))
                 .collect(),
-            input_states: {
+            states_map: {
                 Control::iter()
                     .map(|e| (e, InputState::default()))
                     .collect::<HashMap<Control, InputState>>()
@@ -99,112 +98,29 @@ impl Default for ControlStates {
     }
 }
 
-impl ControlStates {
+impl GameControls {
     pub fn clear_inputs(&mut self) {
         for input in Control::iter() {
-            self.input_states
+            self.states_map
                 .entry(input)
                 .and_modify(|e| *e = InputState::Up);
         }
     }
 }
 
-pub fn handle_playing_inputs(control_states: &mut ControlStates, game: &mut RustrisGame) {
-    // // iterate through the controls
-    // for (control, inputs) in &control_states.input_map {
-    //     if let Some(input) = inputs.0 {
-    //         if is_key_pressed(input) {
-    //             control_states
-    //                 .input_states
-    //                 .entry(*control)
-    //                 .and_modify(|e| *e = InputState::Down(0.0));
-    //             // call the game function for this input
-    //             control_handler(control, game)();
-    //             // ignore the other potetntial input binding for this control
-    //             continue;
-    //         }
-    //     }
-    //     if let Some(input) = inputs.1 {
-    //         if is_key_pressed(input) {
-    //             control_states
-    //                 .input_states
-    //                 .entry(*control)
-    //                 .and_modify(|e| *e = InputState::Down(0.0));
-    //             // call the game function for this input
-    //             control_handler(control, game)();
-    //         }
-    //     }
-    // }
-}
-
-// Some of the games controls allow repeating their actions
-// when the user holds their inputs
-// This handles updating the state of these inputs
-// as well as calling game functions when appropriate
-pub fn handle_held_playing_inputs(
-    control_states: &mut ControlStates,
-    game: &mut RustrisGame,
-    delta_time: f64,
-) {
-    // // iterate through the controls
-    // for control in Control::iter() {
-    //     control_states
-    //         .input_states
-    //         .entry(control) // modify in place
-    //         .and_modify(|e| match e {
-    //             InputState::Down(down_time) => {
-    //                 // check to see if the key is repeatable
-    //                 // and if the down time is longer than the action delay for this input
-    //                 if let Some(action_delay) = control.action_delay() {
-    //                     *down_time += delta_time;
-    //                     if *down_time >= action_delay {
-    //                         *e = InputState::Held(0.);
-    //                         control_handler(&control, game)();
-    //                     }
-    //                 }
-    //             }
-    //             // if the input state is held, add delta time to the held time
-    //             InputState::Held(held_time) => {
-    //                 *held_time += delta_time;
-    //             }
-    //             _ => (),
-    //         });
-    //     if let Some(state) = control_states.input_states.get_mut(&control) {
-    //         // if this input is in a held state
-    //         if let InputState::Held(held_time) = state {
-    //             // check if held was just set
-    //             if *held_time == 0. {
-    //                 // call the game control handler function
-    //                 control_handler(&control, game)();
-    //             }
-    //             // check to see if the key is repeatable
-    //             // and if the key has been held longer than the repeat delay for the input
-    //             if let Some(action_repeat_delay) = control.action_repeat_delay() {
-    //                 if *held_time >= action_repeat_delay {
-    //                     // reset the held state time
-    //                     *state = InputState::Held(0.);
-    //                     // call the game control handler function
-    //                     control_handler(&control, game)();
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-}
-
-pub fn handle_global_inputs(music_volume: &mut f32) {
-    // // volume down
-    // if is_key_pressed(KeyCode::Minus) || is_key_pressed(KeyCode::KpSubtract) {
-    //     *music_volume -= MUSIC_VOLUME_CHANGE;
-    //     *music_volume = music_volume.clamp(0.0, 1.0);
-    //     set_sound_volume(*background_music, *music_volume);
-    //     log::debug!("volume decrease {}", music_volume);
-    // }
-    // // volume up
-    // if is_key_pressed(KeyCode::Equal) || is_key_pressed(KeyCode::KpAdd) {
-    //     *music_volume += MUSIC_VOLUME_CHANGE;
-    //     *music_volume = music_volume.clamp(0.0, 1.0);
-    //     set_sound_volume(*background_music, *music_volume);
-    //     log::debug!("volume increase {}", music_volume);
-    // }
+pub fn handle_global_inputs(input: &KeyInput, music_volume: &mut f32) {
+    // volume down
+    if input.keycode == Some(KeyCode::Minus) || input.keycode == Some(KeyCode::NumpadSubtract) {
+        *music_volume -= MUSIC_VOLUME_CHANGE;
+        *music_volume = music_volume.clamp(0.0, 1.0);
+        // set_sound_volume(*background_music, *music_volume);
+        log::debug!("volume decrease {}", music_volume);
+    }
+    // volume up
+    if input.keycode == Some(KeyCode::Equals) || input.keycode == Some(KeyCode::NumpadAdd) {
+        *music_volume += MUSIC_VOLUME_CHANGE;
+        *music_volume = music_volume.clamp(0.0, 1.0);
+        // set_sound_volume(*background_music, *music_volume);
+        log::debug!("volume increase {}", music_volume);
+    }
 }
