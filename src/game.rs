@@ -360,16 +360,16 @@ fn score_cleared_lines(num_lines: usize, level: usize) -> usize {
     // Double line 300xlevel
     // Triple line 500xlevel
     // Rustris (4 lines) 800xlevel
-    let score = match num_lines {
-        1 => SINGLE_LINE_SCORE,
-        2 => DOUBLE_LINE_SCORE,
-        3 => TRIPLE_LINE_SCORE,
-        4 => RUSTRIS_SCORE,
-        _ => {
-            panic!("impossible number of lines cleared")
+    (level + 1)
+        * match num_lines {
+            1 => SINGLE_LINE_SCORE,
+            2 => DOUBLE_LINE_SCORE,
+            3 => TRIPLE_LINE_SCORE,
+            4 => RUSTRIS_SCORE,
+            _ => {
+                panic!("impossible number of lines cleared")
+            }
         }
-    } * (level + 1);
-    score
 }
 
 // checks to see if ALL of the slots in the provided
