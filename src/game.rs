@@ -409,21 +409,7 @@ pub async fn run() {
     // load the font
     let font_path = assets_path.join("04b30.ttf");
     log::info!("loading font: {:?}", font_path);
-    let font = load_ttf_font(&font_path.to_string_lossy())
-        .await
-        .expect("unable to load font");
-
-    // configure UI fonts
-    let font_20pt = TextParams {
-        font,
-        font_size: 20,
-        ..Default::default()
-    };
-    let font_30pt = TextParams {
-        font,
-        font_size: 30,
-        ..Default::default()
-    };
+    let font = load_ttf_font(&font_path.to_string_lossy()).await.ok();
 
     // load the background music
     let background_path = assets_path.join("background.ogg");
@@ -436,7 +422,7 @@ pub async fn run() {
     let mut music_volume = MUSIC_VOL;
     log::info!("playing background music at volume: {music_volume}");
     play_sound(
-        background_music,
+        &background_music,
         PlaySoundParams {
             looped: true,
             volume: music_volume,
@@ -491,7 +477,7 @@ pub async fn run() {
         }
 
         // draw the menus, game, overlays, etc.
-        view::draw(&game, &font_20pt, &font_30pt);
+        view::draw(&game, font.as_ref());
 
         last_update = get_time();
 
@@ -518,14 +504,14 @@ fn handle_global_inputs(background_music: &Sound, music_volume: &mut f32) {
     if is_key_pressed(KeyCode::Minus) || is_key_pressed(KeyCode::KpSubtract) {
         *music_volume -= MUSIC_VOLUME_CHANGE;
         *music_volume = music_volume.clamp(0.0, 1.0);
-        set_sound_volume(*background_music, *music_volume);
+        set_sound_volume(background_music, *music_volume);
         log::debug!("volume decrease {}", music_volume);
     }
     // volume up
     if is_key_pressed(KeyCode::Equal) || is_key_pressed(KeyCode::KpAdd) {
         *music_volume += MUSIC_VOLUME_CHANGE;
         *music_volume = music_volume.clamp(0.0, 1.0);
-        set_sound_volume(*background_music, *music_volume);
+        set_sound_volume(background_music, *music_volume);
         log::debug!("volume increase {}", music_volume);
     }
 }

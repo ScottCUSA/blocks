@@ -16,14 +16,14 @@ const GHOST_COLOR: Color = Color::new(0.7, 0.7, 0.7, 1.0);
 const PAUSED_OVERLAY_COLOR: Color = Color::new(0.1, 0.1, 0.1, 0.6);
 const VIEW_SETTINGS: ViewSettings = ViewSettings::new(VIEW_WH);
 const CONTROLS_BACKGROUND_COLOR: Color = Color::new(0.34, 0.09, 0.12, 0.8);
-const VIEW_WH: [i32; 2] = [1024, 768];
+pub const VIEW_WH: [i32; 2] = [1024, 768];
 
 pub fn window_conf() -> Conf {
     Conf {
         window_title: "Rustris".to_owned(),
         window_width: VIEW_WH[0],
         window_height: VIEW_WH[1],
-        window_resizable: false,
+        window_resizable: true,
         ..Default::default()
     }
 }
@@ -102,30 +102,30 @@ impl ViewSettings {
     }
 }
 
-pub fn draw(game: &RustrisGame, font_20pt: &TextParams, font_30pt: &TextParams) {
+pub fn draw(game: &RustrisGame, font: Option<&Font>) {
     match game.state {
         game::GameState::Menu => {
             draw_playing_backgound();
-            draw_menu(font_30pt);
-            draw_help_text(font_30pt, font_20pt);
+            draw_menu(font);
+            draw_help_text(font);
         }
         game::GameState::Playing => {
             draw_playing_backgound();
             draw_playing(&game.playfield, &game.next_rustomino, &game.held_rustomino);
-            draw_playing_overlay(font_20pt, game.level, game.score);
+            draw_playing_overlay(font, game.level, game.score);
         }
         game::GameState::Paused => {
             draw_playing_backgound();
             draw_playing(&game.playfield, &game.next_rustomino, &game.held_rustomino);
-            draw_playing_overlay(font_20pt, game.level, game.score);
-            draw_paused(font_30pt);
-            draw_help_text(font_30pt, font_20pt);
+            draw_playing_overlay(font, game.level, game.score);
+            draw_paused(font);
+            draw_help_text(font);
         }
         game::GameState::GameOver => {
             draw_playing_backgound();
             draw_playing(&game.playfield, &game.next_rustomino, &game.held_rustomino);
-            draw_playing_overlay(font_20pt, game.level, game.score);
-            draw_gameover(font_30pt)
+            draw_playing_overlay(font, game.level, game.score);
+            draw_gameover(font)
         }
     }
 }
@@ -209,44 +209,64 @@ pub fn draw_playing(
     }
 }
 
-pub fn draw_playing_overlay(text_params: &TextParams, game_level: usize, score: usize) {
+pub fn draw_playing_overlay(font: Option<&Font>, game_level: usize, score: usize) {
     draw_text_ex(
         "Rustris",
         VIEW_SETTINGS.title_pos.x as f32,
         VIEW_SETTINGS.title_pos.y as f32,
-        *text_params,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 
     draw_text_ex(
         "Level:",
         VIEW_SETTINGS.level_label_pos.x as f32,
         VIEW_SETTINGS.level_label_pos.y as f32,
-        *text_params,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 
     draw_text_ex(
         &game_level.to_string(),
         VIEW_SETTINGS.level_pos.x as f32,
         VIEW_SETTINGS.level_pos.y as f32,
-        *text_params,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 
     draw_text_ex(
         "Score:",
         VIEW_SETTINGS.score_label_pos.x as f32,
         VIEW_SETTINGS.score_label_pos.y as f32,
-        *text_params,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 
     draw_text_ex(
         &score.to_string(),
         VIEW_SETTINGS.score_pos.x as f32,
         VIEW_SETTINGS.score_pos.y as f32,
-        *text_params,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 }
 
-pub fn draw_paused(text_params: &TextParams) {
+pub fn draw_paused(font: Option<&Font>) {
     draw_rectangle(
         0.,
         0.,
@@ -258,11 +278,15 @@ pub fn draw_paused(text_params: &TextParams) {
         "Paused",
         (VIEW_SETTINGS.view_w / 2 - 75) as f32,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
-        *text_params,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 }
 
-pub fn draw_menu(text_params: &TextParams) {
+pub fn draw_menu(font: Option<&Font>) {
     draw_rectangle(
         0.,
         0.,
@@ -274,14 +298,18 @@ pub fn draw_menu(text_params: &TextParams) {
         "Welcome to",
         (VIEW_SETTINGS.view_w / 2 - 230) as f32,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
-        *text_params,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
     draw_text_ex(
         "R",
         560.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
         TextParams {
-            font: text_params.font,
+            font,
             font_size: 30,
             color: RustominoType::I.color(),
             ..Default::default()
@@ -292,7 +320,7 @@ pub fn draw_menu(text_params: &TextParams) {
         588.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
         TextParams {
-            font: text_params.font,
+            font,
             font_size: 30,
             color: RustominoType::O.color(),
             ..Default::default()
@@ -303,7 +331,7 @@ pub fn draw_menu(text_params: &TextParams) {
         612.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
         TextParams {
-            font: text_params.font,
+            font,
             font_size: 30,
             color: RustominoType::T.color(),
             ..Default::default()
@@ -314,7 +342,7 @@ pub fn draw_menu(text_params: &TextParams) {
         637.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
         TextParams {
-            font: text_params.font,
+            font,
             font_size: 30,
             color: RustominoType::L.color(),
             ..Default::default()
@@ -325,7 +353,7 @@ pub fn draw_menu(text_params: &TextParams) {
         662.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
         TextParams {
-            font: text_params.font,
+            font,
             font_size: 30,
             color: RustominoType::S.color(),
             ..Default::default()
@@ -336,7 +364,7 @@ pub fn draw_menu(text_params: &TextParams) {
         686.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
         TextParams {
-            font: text_params.font,
+            font,
             font_size: 30,
             color: RustominoType::J.color(),
             ..Default::default()
@@ -347,7 +375,7 @@ pub fn draw_menu(text_params: &TextParams) {
         700.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
         TextParams {
-            font: text_params.font,
+            font,
             font_size: 30,
             color: RustominoType::Z.color(),
             ..Default::default()
@@ -357,18 +385,26 @@ pub fn draw_menu(text_params: &TextParams) {
         "!",
         725.,
         (VIEW_SETTINGS.view_h / 2 - 90) as f32,
-        *text_params,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 
     draw_text_ex(
         "Press Enter To Start",
         (VIEW_SETTINGS.view_w / 2 - 253) as f32,
         (VIEW_SETTINGS.view_h / 2 - 30) as f32,
-        *text_params,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 }
 
-pub fn draw_gameover(text_params: &TextParams) {
+pub fn draw_gameover(font: Option<&Font>) {
     draw_rectangle(
         0.,
         0.,
@@ -380,80 +416,124 @@ pub fn draw_gameover(text_params: &TextParams) {
         "Game Over!",
         (VIEW_SETTINGS.view_w / 2 - 122) as f32,
         (VIEW_SETTINGS.view_h / 2 - 30) as f32,
-        *text_params,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
     draw_text_ex(
         "Press Enter To Play Again",
         (VIEW_SETTINGS.view_w / 2 - 310) as f32,
         (VIEW_SETTINGS.view_h / 2 + 30) as f32,
-        *text_params,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 }
 
 ///
-pub fn draw_help_text(font_30pt: &TextParams, font_20pt: &TextParams) {
+pub fn draw_help_text(font: Option<&Font>) {
     draw_rectangle(285., 410., 445., 305., CONTROLS_BACKGROUND_COLOR);
 
     draw_text_ex(
         "Controls:",
         305.,
         (VIEW_SETTINGS.view_h / 2 + 65) as f32,
-        *font_30pt,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
     draw_text_ex(
         "Move Left: Left, A",
         315.,
         (VIEW_SETTINGS.view_h / 2 + 98) as f32,
-        *font_20pt,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 
     draw_text_ex(
         "Move Right: Right, D",
         315.,
         (VIEW_SETTINGS.view_h / 2 + 128) as f32,
-        *font_20pt,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 
     draw_text_ex(
         "Rotate CW: Up, W",
         315.,
         (VIEW_SETTINGS.view_h / 2 + 157) as f32,
-        *font_20pt,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 
     draw_text_ex(
         "Rotate CCW: LCtrl, Z",
         315.,
         (VIEW_SETTINGS.view_h / 2 + 187) as f32,
-        *font_20pt,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 
     draw_text_ex(
         "Soft Drop: Down, S",
         315.,
         (VIEW_SETTINGS.view_h / 2 + 217) as f32,
-        *font_20pt,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 
     draw_text_ex(
         "Hard Drop: Space",
         315.,
         (VIEW_SETTINGS.view_h / 2 + 247) as f32,
-        *font_20pt,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 
     draw_text_ex(
         "Hold: LShift, C",
         315.,
         (VIEW_SETTINGS.view_h / 2 + 277) as f32,
-        *font_20pt,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
 
     draw_text_ex(
         "Adjust Music Volume: + -",
         315.,
         (VIEW_SETTINGS.view_h / 2 + 307) as f32,
-        *font_20pt,
+        TextParams {
+            font,
+            font_size: 20,
+            ..Default::default()
+        },
     );
     // Hold: LShift, C Music Volume: + -
 }

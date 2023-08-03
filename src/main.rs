@@ -16,5 +16,8 @@ async fn main() {
         .format_timestamp(Some(env_logger::TimestampPrecision::Millis))
         .init();
 
+    // macroquad isn't scaling the window at startup
+    // correctly, this fixes this it at runtime
+    macroquad::window::request_new_screen_size(view::VIEW_WH[0] as f32, view::VIEW_WH[1] as f32);
     game::run().await
 }
