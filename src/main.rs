@@ -1,11 +1,12 @@
 #![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
-use view::window_conf;
+use draw::window_conf;
 
 mod controls;
+mod draw;
 mod game;
 mod playfield;
 mod rustomino;
-mod view;
+mod util;
 
 // TODO: load icon for rustris window
 // https://docs.rs/macroquad/0.3.25/macroquad/texture/struct.Image.html
@@ -18,6 +19,6 @@ async fn main() {
 
     // macroquad isn't scaling the window at startup
     // correctly, this fixes this it at runtime
-    macroquad::window::request_new_screen_size(view::VIEW_WH[0] as f32, view::VIEW_WH[1] as f32);
+    macroquad::window::request_new_screen_size(draw::VIEW_WH[0] as f32, draw::VIEW_WH[1] as f32);
     game::run().await
 }

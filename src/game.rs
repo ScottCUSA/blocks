@@ -1,8 +1,9 @@
 use crate::{
     controls::{self, ControlStates, Controls, InputState},
+    draw,
     playfield::{RustrisPlayfield, TranslationDirection, PLAYFIELD_SIZE},
     rustomino::{Rotation, Rustomino, RustominoBag, RustominoState},
-    view,
+    util::variants_equal,
 };
 use macroquad::{
     audio::{load_sound, play_sound, set_sound_volume, PlaySoundParams, Sound},
@@ -16,8 +17,8 @@ const GRAVITY_NUMERATOR: f64 = 1.0;
 const GRAVITY_FACTOR: f64 = 0.1; // used to slow or increase gravity factor
 const STARTING_LEVEL: usize = 0;
 const LINES_PER_LEVEL: usize = 10; // number of lines that need to be cleared before level advances
-const LOCKDOWN_MAX_TIME: f64 = 0.5; // how long to wait before locking block
-const LOCKDOWN_MAX_RESETS: u32 = 15; // maximum number of times the lockdown timer can be reset
+const LOCKDOWN_DELAY: f64 = 0.5; // how long to wait before locking block (Tetris Guideline)
+const LOCKDOWN_MAX_RESETS: u32 = 15; // maximum number of times the lockdown timer can be reset (Tetris Guideline)
 
 // SCORING CONSTANTS
 const SINGLE_LINE_SCORE: usize = 100;
@@ -82,17 +83,8 @@ impl RustrisGame {
                     self.playfield
                         .set_active_state(RustominoState::Falling { time: 0. });
                 } else {
-                    // the block can't move down so it's state becomes "Lockdown"
-                    // If this block has been in Lockdown state before
-                    if self.lockdown_resets > 0 {
-                        // hitting the deck again causes a lockdown reset
-                        self.lockdown_resets += 1;
-                        log::debug!("incrementing lockdown resets: {}", self.lockdown_resets);
-                    }
-                    log::debug!("setting active rustomino state to lockdown");
-
-                    self.playfield
-                        .set_active_state(RustominoState::Lockdown { time: 0. });
+                    // if the block can't fall, set it's state to lockdown
+                    self.set_lockdown();
                 }
             }
             RustominoState::Falling { time } => {
@@ -110,7 +102,7 @@ impl RustrisGame {
                 self.lock();
             }
             RustominoState::Lockdown { time }
-                if time + delta_time >= LOCKDOWN_MAX_TIME && !self.playfield.active_can_fall() =>
+                if time + delta_time >= LOCKDOWN_DELAY && !self.playfield.active_can_fall() =>
             {
                 // if the current lockdown time has exceed the maximum
                 // lock the block
@@ -126,23 +118,48 @@ impl RustrisGame {
         }
     }
 
-    fn ensure_next_rustomino(&mut self) {
-        // make sure next_rustomino is available
-        if self.next_rustomino.is_none() {
-            self.next_rustomino = Some(self.rustomino_bag.get_next_rustomino());
+    fn set_lockdown(&mut self) {
+        // check if this block has been in Lockdown state before
+        if self.lockdown_resets > 0 {
+            // hitting the deck again causes a lockdown reset
+            self.lockdown_resets += 1;
+            log::debug!("incrementing lockdown resets: {}", self.lockdown_resets);
+        }
+        log::debug!("setting active rustomino state to lockdown");
+        self.playfield
+            .set_active_state(RustominoState::Lockdown { time: 0. });
+    }
+
+    fn get_next_rustomino(&mut self) -> Rustomino {
+        // get the current next_rustomino
+        // by replaceing it's value with one from the bag
+        let next_rustomino = self
+            .next_rustomino
+            .replace(self.rustomino_bag.get_rustomino());
+        // check there was a rustomino
+        match next_rustomino {
+            // return it if there was
+            Some(rustomino) => rustomino,
+            None => {
+                // take the next rustomino
+                let Some(rustomino) = self.next_rustomino
+                    .replace(self.rustomino_bag.get_rustomino())
+                else {
+                    unreachable!("rustomino bag is empty");
+                };
+                rustomino
+            }
         }
     }
 
     fn ready_playfield(&mut self) {
-        // make sure next_rustomino is available
-        self.ensure_next_rustomino();
         // check to see if the playfield is ready for the next rustomino
         if self.playfield.ready_for_next() {
             log::debug!("playfield is ready for next rustomino");
+
             // take the next rustomino
-            let active_rustomino = self.next_rustomino.take().unwrap();
-            // this makes sure next_rustomino is set
-            self.ensure_next_rustomino();
+            let active_rustomino = self.get_next_rustomino();
+
             // add the next rustomino to the playfield
             if !self.playfield.set_active(active_rustomino) {
                 // game over if it can't be placed without a collision
@@ -170,9 +187,17 @@ impl RustrisGame {
     // performs a soft drop
     fn soft_drop(&mut self) {
         log::debug!("soft drop called");
+        // attempt to translate the block down
         if !self.playfield.translate_active(TranslationDirection::Down) {
-            log::info!("soft drop called when block is on stack");
-            self.lock();
+            // per the teris guide we shouldn't lock a block with soft drop
+            let Some(state) = self.playfield.get_active_state() else {
+                panic!("soft_drop called when there isn't an active state!");
+            };
+            // check if the block state is already in lockdown
+            if !variants_equal(&state, &RustominoState::Lockdown { time: 0.0 }) {
+                self.set_lockdown();
+            }
+            // else do nothing
         }
         log::trace!("playfield:\n{}", self.playfield);
     }
@@ -192,32 +217,24 @@ impl RustrisGame {
     // The player can't use the hold action again until the active rustomino is locked
     fn hold(&mut self) {
         // check to see if the player has used the hold action
-        // and they haven't yet locked the rustomino they took
+        // and they haven't yet locked the previous block they took from hold
         if self.hold_used {
             return;
         }
 
         // check to see if there is a held rustomino
-        let rustomino = if self.held_rustomino.is_some() {
-            // take the held_rustomino
-            self.held_rustomino.take().unwrap()
-        } else {
-            // if not we take the next rustomino
-            self.next_rustomino
-                .take()
-                .unwrap_or(self.rustomino_bag.get_next_rustomino())
+        let next_rustomino = match self.held_rustomino.take() {
+            Some(rustomino) => rustomino,      // use the held rustomino
+            None => self.get_next_rustomino(), // use the next rustomino
         };
-
-        // if we used next_rustomino we need to replace it
-        self.ensure_next_rustomino();
 
         // take active_rustomino and make it the hold_rustomino
         self.held_rustomino = self.playfield.take_active();
 
         // trigger game over in the unusual circumstance
         // a collision with a locked block occurs
-        // when the hold piece is added to the board
-        if !self.playfield.set_active(rustomino.reset()) {
+        // when the next rustomino is added to the board
+        if !self.playfield.set_active(next_rustomino.reset()) {
             log::info!("couldn't add held piece to board, collided with lock block");
             self.game_over();
         }
@@ -432,8 +449,6 @@ pub async fn run() {
     let mut last_update = get_time();
 
     loop {
-        clear_background(view::BACKGROUND_COLOR);
-
         // handle global controls
         handle_global_inputs(&background_music, &mut music_volume);
 
@@ -477,7 +492,7 @@ pub async fn run() {
         }
 
         // draw the menus, game, overlays, etc.
-        view::draw(&game, font.as_ref());
+        draw::draw(&game, font.as_ref());
 
         last_update = get_time();
 

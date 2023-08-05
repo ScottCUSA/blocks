@@ -1,7 +1,9 @@
-use crate::rustomino::{translated, Rotation, Rustomino, RustominoState, RustominoType};
+use crate::{
+    rustomino::{translated, Rotation, Rustomino, RustominoState, RustominoType},
+    util::variants_equal,
+};
 use macroquad::prelude::*;
-use std::{fmt::Display, mem::discriminant};
-
+use std::fmt::Display;
 pub const PLAYFIELD_SLOTS: [usize; 2] = [10, 22];
 pub const PLAYFIELD_SIZE: [i32; 2] = [10, 20];
 
@@ -254,7 +256,7 @@ impl RustrisPlayfield {
         'outer: for (i, line) in self.slots.iter().enumerate() {
             for slot in line {
                 // compare variant ignoring the value
-                if discriminant(slot) != discriminant(&SlotState::Locked(RustominoType::I)) {
+                if !variants_equal(slot, &SlotState::Locked(RustominoType::I)) {
                     continue 'outer;
                 }
             }
@@ -284,9 +286,10 @@ impl RustrisPlayfield {
         if let Some(ghost_rustomino) = self.ghost_rustomino.as_mut() {
             if translating {
                 for slot in ghost_rustomino.playfield_slots() {
-                    if discriminant(&self.slots[slot[1] as usize][slot[0] as usize])
-                        != discriminant(&SlotState::Occupied(RustominoType::I))
-                    {
+                    if !variants_equal(
+                        &self.slots[slot[1] as usize][slot[0] as usize],
+                        &SlotState::Occupied(RustominoType::I),
+                    ) {
                         self.slots[slot[1] as usize][slot[0] as usize] = SlotState::Empty;
                     }
                 }
@@ -305,9 +308,10 @@ impl RustrisPlayfield {
 
             // set the new slot states to occupied
             for slot in ghost_rustomino.playfield_slots() {
-                if discriminant(&self.slots[slot[1] as usize][slot[0] as usize])
-                    != discriminant(&SlotState::Occupied(RustominoType::I))
-                {
+                if !variants_equal(
+                    &self.slots[slot[1] as usize][slot[0] as usize],
+                    &SlotState::Occupied(RustominoType::I),
+                ) {
                     self.slots[slot[1] as usize][slot[0] as usize] =
                         SlotState::Ghost(ghost_rustomino.rtype);
                 }
@@ -359,9 +363,10 @@ fn check_collision(playfield_slots: &PlayfieldSlots, block_locations: [IVec2; 4]
             return true;
         }
         // slots[y][x] compare variant ignoring value
-        if discriminant(&playfield_slots[location[1] as usize][location[0] as usize])
-            == discriminant(&SlotState::Locked(RustominoType::I))
-        {
+        if variants_equal(
+            &playfield_slots[location[1] as usize][location[0] as usize],
+            &SlotState::Locked(RustominoType::I),
+        ) {
             log::trace!("collided with locked block: {:?}", block_locations);
             return true;
         }
