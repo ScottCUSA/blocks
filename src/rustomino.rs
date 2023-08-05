@@ -677,11 +677,11 @@ impl RustominoBag {
         }
     }
 
-    pub fn get_next_rustomino(&mut self) -> Rustomino {
+    pub fn get_rustomino(&mut self) -> Rustomino {
         // make sure the bag isn't empty
         self.fill_rustomino_bag();
 
-        let rtype = self.bag.pop().unwrap();
+        let rtype = self.bag.pop().expect("rustomino bag is empty");
         log::info!("next rustomino type: {:?}", rtype);
 
         Rustomino::new(rtype)
@@ -691,7 +691,6 @@ impl RustominoBag {
     // then shuffle the bag
     fn fill_rustomino_bag(&mut self) {
         if !self.bag.is_empty() {
-            log::trace!("rustomino bag is not empty: {:?}", self.bag);
             return;
         }
         self.bag.append(&mut RustominoType::iter().collect());

@@ -103,6 +103,7 @@ impl ViewSettings {
 }
 
 pub fn draw(game: &RustrisGame, font: Option<&Font>) {
+    clear_background(BACKGROUND_COLOR);
     match game.state {
         game::GameState::Menu => {
             draw_playing_backgound();
