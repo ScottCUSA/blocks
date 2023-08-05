@@ -4,11 +4,11 @@ use std::{env, path};
 use ggez::{conf, event, ContextBuilder};
 
 mod controls;
-
+mod draw;
 mod game;
 mod playfield;
 mod rustomino;
-mod view;
+mod util;
 
 const ASSETS_FOLDER: &str = "resources";
 

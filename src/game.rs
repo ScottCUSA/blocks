@@ -11,9 +11,9 @@ use strum::IntoEnumIterator;
 
 use crate::{
     controls::{self, Control, GameControls},
+    draw::{self, BACKGROUND_COLOR},
     playfield::{RustrisPlayfield, TranslationDirection, PLAYFIELD_SIZE},
     rustomino::{Rotation, Rustomino, RustominoBag, RustominoState},
-    view::{self, BACKGROUND_COLOR},
 };
 
 use std::f64::consts::E;
@@ -559,7 +559,7 @@ impl EventHandler for RustrisGame {
         let mut canvas = graphics::Canvas::from_frame(ctx, BACKGROUND_COLOR);
 
         // Draw code here...
-        view::draw(self, ctx, &mut canvas)?;
+        draw::draw(self, ctx, &mut canvas)?;
 
         // println!("{:?}", view::VIEW_SETTINGS);
 
