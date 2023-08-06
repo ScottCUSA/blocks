@@ -1,8 +1,8 @@
 use ggez::{
-    audio,
+    audio::{self, SoundSource},
     event::EventHandler,
     glam::IVec2,
-    graphics::{self, Color},
+    graphics::{self},
     input::keyboard::KeyCode,
     input::keyboard::KeyInput,
     Context, GameResult,
@@ -12,8 +12,10 @@ use strum::IntoEnumIterator;
 use crate::{
     controls::{self, Control, GameControls},
     draw::{self, BACKGROUND_COLOR},
+    menus::{self, MenuState},
     playfield::{RustrisPlayfield, TranslationDirection, PLAYFIELD_SIZE},
     rustomino::{Rotation, Rustomino, RustominoBag, RustominoState},
+    util::variants_equal,
 };
 
 use std::f64::consts::E;
@@ -21,21 +23,23 @@ use std::f64::consts::E;
 // GAMEPLAY CONSTANTS
 const GRAVITY_NUMERATOR: f64 = 1.0;
 const GRAVITY_FACTOR: f64 = 0.1; // used to slow or increase gravity factor
-const STARTING_LEVEL: usize = 0;
+const STARTING_LEVEL: usize = 20;
 const LINES_PER_LEVEL: usize = 10; // number of lines that need to be cleared before level advances
-const LOCKDOWN_MAX_TIME: f64 = 0.5; // how long to wait before locking block
-const LOCKDOWN_MAX_RESETS: u32 = 15; // maximum number of times the lockdown timer can be reset
+const LOCKDOWN_DELAY: f64 = 0.5; // how long to wait before locking block (Tetris Guideline)
+const LOCKDOWN_MAX_RESETS: u32 = 15; // maximum number of times the lockdown timer can be reset (Tetris Guideline)
 
 // SCORING CONSTANTS
 const SINGLE_LINE_SCORE: usize = 100;
-const DOUBLE_LINE_SCORE: usize = 300;
 const TRIPLE_LINE_SCORE: usize = 500;
+const DOUBLE_LINE_SCORE: usize = 300;
 const RUSTRIS_SCORE: usize = 800;
 
 // ASSET CONSTANTS
 const ASSETS_FOLDER: &str = "assets";
-const MUSIC_VOL: f32 = 0.05;
+const MUSIC_VOL: f32 = 0.25;
+const MUSIC_VOLUME_CHANGE: f32 = 0.025;
 
+#[derive(Debug, PartialEq)]
 pub enum GameState {
     Menu,
     Playing,
@@ -51,7 +55,9 @@ pub struct Assets {
 impl Assets {
     fn new(ctx: &mut Context) -> GameResult<Self> {
         // load background music
-        let music_1 = audio::Source::new(ctx, "/music_1.ogg")?;
+        let mut music_1 = audio::Source::new(ctx, "/music_1.ogg")?;
+        music_1.set_volume(MUSIC_VOL);
+        music_1.set_repeat(true);
 
         // load game sound effects
         let game_over = audio::Source::new(ctx, "/game_over.ogg")?;
@@ -60,15 +66,19 @@ impl Assets {
     }
 }
 
-pub struct RustrisGame {
+pub struct RustrisState {
     pub playfield: RustrisPlayfield,
     pub next_rustomino: Option<Rustomino>,
     pub held_rustomino: Option<Rustomino>,
+    pub previous_state: GameState,
     pub state: GameState,
     pub level: usize,
     pub score: usize,
     pub assets: Assets,
     pub controls: Option<GameControls>,
+    menu_state: menus::MenuState,
+    paused_state: menus::PausedState,
+    view_settings: draw::ViewSettings,
     rustomino_bag: RustominoBag,
     gravity_delay: f64, // time between gravity ticks
     total_lines_cleared: usize,
@@ -77,27 +87,38 @@ pub struct RustrisGame {
     music_volume: f32,
 }
 
-impl RustrisGame {
+impl RustrisState {
     pub fn new(ctx: &mut Context) -> GameResult<Self> {
+        log::info!("Loading game resources");
         // load font
         ctx.gfx
             .add_font("04b30", graphics::FontData::from_path(ctx, "/04b30.ttf")?);
 
-        let assets = Assets::new(ctx)?;
+        // load game resources
+        let mut assets = Assets::new(ctx)?;
+        assets.music_1.play_detached(ctx)?;
+
         let control_state = Some(GameControls::default());
         let playfield = RustrisPlayfield::new();
 
-        let s = RustrisGame {
+        // get the window size
+        let (width, height) = ctx.gfx.drawable_size();
+
+        let s = RustrisState {
             playfield,
             next_rustomino: None,
             held_rustomino: None,
+            previous_state: GameState::Menu,
             state: GameState::Menu, // Start the game at the menu screen
             level: STARTING_LEVEL,
             assets,
             controls: control_state,
+            menu_state: menus::MenuState::new(),
+            paused_state: menus::PausedState::new(),
+            view_settings: draw::ViewSettings::new(width, height),
             score: 0,
             rustomino_bag: RustominoBag::new(),
-            gravity_delay: gravity_delay(0),
+            gravity_delay: gravity_delay(STARTING_LEVEL),
             total_lines_cleared: 0,
             hold_used: false,
             lockdown_resets: 0,
@@ -121,17 +142,8 @@ impl RustrisGame {
                     self.playfield
                         .set_active_state(RustominoState::Falling { time: 0. });
                 } else {
-                    // the block can't move down so it's state becomes "Lockdown"
-                    // If this block has been in Lockdown state before
-                    if self.lockdown_resets > 0 {
-                        // hitting the deck again causes a lockdown reset
-                        self.lockdown_resets += 1;
-                        log::debug!("incrementing lockdown resets: {}", self.lockdown_resets);
-                    }
-                    log::debug!("setting active rustomino state to lockdown");
-
-                    self.playfield
-                        .set_active_state(RustominoState::Lockdown { time: 0. });
+                    // if the block can't fall, set it's state to lockdown
+                    self.set_lockdown();
                 }
             }
             RustominoState::Falling { time } => {
@@ -139,17 +151,22 @@ impl RustrisGame {
                     time: time + delta_time,
                 });
             }
-            RustominoState::Lockdown { time: _ }
+            RustominoState::Lockdown { time }
                 if self.lockdown_resets >= LOCKDOWN_MAX_RESETS
                     && !self.playfield.active_can_fall() =>
             {
+                // accumulate lockdown time
+                self.playfield.set_active_state(RustominoState::Lockdown {
+                    time: time + delta_time,
+                });
+
                 // if the user has exceeded the maximum number of resets
                 // lock the block
                 log::info!("maximum lockdown resets exceeded");
                 self.lock();
             }
             RustominoState::Lockdown { time }
-                if time + delta_time >= LOCKDOWN_MAX_TIME && !self.playfield.active_can_fall() =>
+                if time + delta_time >= LOCKDOWN_DELAY && !self.playfield.active_can_fall() =>
             {
                 // if the current lockdown time has exceed the maximum
                 // lock the block
@@ -165,29 +182,60 @@ impl RustrisGame {
         }
     }
 
-    fn ensure_next_rustomino(&mut self) {
-        // make sure next_rustomino is available
-        if self.next_rustomino.is_none() {
-            self.next_rustomino = Some(self.rustomino_bag.get_next_rustomino());
+    fn set_lockdown(&mut self) {
+        // check if this block has been in Lockdown state before
+        if self.lockdown_resets > 0 {
+            // hitting the deck again causes a lockdown reset
+            self.lockdown_resets += 1;
+            log::debug!("incrementing lockdown resets: {}", self.lockdown_resets);
+        }
+        log::info!("setting active rustomino state to lockdown");
+        self.playfield
+            .set_active_state(RustominoState::Lockdown { time: 0. });
+    }
+
+    fn get_next_rustomino(&mut self) -> Rustomino {
+        // get the current next_rustomino
+        // by replaceing it's value with one from the bag
+        let next_rustomino = self
+            .next_rustomino
+            .replace(self.rustomino_bag.get_rustomino());
+        // check there was a rustomino
+        match next_rustomino {
+            // return it if there was
+            Some(rustomino) => rustomino,
+            None => {
+                // take the next rustomino
+                let Some(rustomino) = self.next_rustomino
+                    .replace(self.rustomino_bag.get_rustomino())
+                else {
+                    unreachable!("rustomino bag is empty");
+                };
+                rustomino
+            }
         }
     }
 
-    fn ready_playfield(&mut self) {
-        // make sure next_rustomino is available
-        self.ensure_next_rustomino();
+    fn ready_playfield(&mut self) -> bool {
         // check to see if the playfield is ready for the next rustomino
-        if self.playfield.ready_for_next() {
-            log::debug!("playfield is ready for next rustomino");
-            // take the next rustomino
-            let active_rustomino = self.next_rustomino.take().unwrap();
-            // this makes sure next_rustomino is set
-            self.ensure_next_rustomino();
-            // add the next rustomino to the playfield
-            if !self.playfield.set_active(active_rustomino) {
-                // game over if it can't be placed without a collision
-                self.game_over();
-            }
+        if !self.playfield.ready_for_next() {
+            return true;
         }
+
+        log::debug!("playfield is ready for next rustomino");
+
+        // get the next rustomino
+        let active_rustomino = self.get_next_rustomino();
+
+        // add the next rustomino to the playfield
+        if !self.playfield.set_active(active_rustomino) {
+            log::info!("couldn't add next piece to board, collided with locked block");
+            // game over if it can't be placed without a collision
+            self.game_over();
+            return false;
+        }
+
+        true
     }
 
     fn translate(&mut self, direction: TranslationDirection) {
@@ -208,10 +256,18 @@ impl RustrisGame {
 
     // performs a soft drop
     fn soft_drop(&mut self) {
-        log::info!("soft drop called");
+        log::debug!("soft drop called");
+        // attempt to translate the block down
         if !self.playfield.translate_active(TranslationDirection::Down) {
-            log::info!("soft drop called when block is on stack");
-            self.lock();
+            // per the teris guide we shouldn't lock a block with soft drop
+            let Some(state) = self.playfield.get_active_state() else {
+                panic!("soft_drop called when there isn't an active state!");
+            };
+            // check if the block state is already in lockdown
+            if !variants_equal(&state, &RustominoState::Lockdown { time: 0.0 }) {
+                self.set_lockdown();
+            }
+            // else do nothing
         }
         log::trace!("playfield:\n{}", self.playfield);
     }
@@ -231,32 +287,24 @@ impl RustrisGame {
     // The player can't use the hold action again until the active rustomino is locked
     fn hold(&mut self) {
         // check to see if the player has used the hold action
-        // and they haven't yet locked the rustomino they took
+        // and they haven't yet locked the previous block they took from hold
         if self.hold_used {
             return;
         }
 
         // check to see if there is a held rustomino
-        let rustomino = if self.held_rustomino.is_some() {
-            // take the held_rustomino
-            self.held_rustomino.take().unwrap()
-        } else {
-            // if not we take the next rustomino
-            self.next_rustomino
-                .take()
-                .unwrap_or(self.rustomino_bag.get_next_rustomino())
+        let next_rustomino = match self.held_rustomino.take() {
+            Some(rustomino) => rustomino,      // use the held rustomino
+            None => self.get_next_rustomino(), // use the next rustomino
         };
-
-        // if we used next_rustomino we need to replace it
-        self.ensure_next_rustomino();
 
         // take active_rustomino and make it the hold_rustomino
         self.held_rustomino = self.playfield.take_active();
 
         // trigger game over in the unusual circumstance
         // a collision with a locked block occurs
-        // when the hold piece is added to the board
-        if !self.playfield.set_active(rustomino.reset()) {
+        // when the next rustomino is added to the board
+        if !self.playfield.set_active(next_rustomino.reset()) {
             log::info!("couldn't add held piece to board, collided with lock block");
             self.game_over();
         }
@@ -287,10 +335,9 @@ impl RustrisGame {
         self.held_rustomino = None;
         self.state = GameState::Menu; // Start the game at the menu screen
         self.level = STARTING_LEVEL;
-        self.controls.as_mut().unwrap().clear_inputs();
         self.score = 0;
         self.rustomino_bag = RustominoBag::new();
-        self.gravity_delay = gravity_delay(0);
+        self.gravity_delay = gravity_delay(STARTING_LEVEL);
         self.total_lines_cleared = 0;
         self.hold_used = false;
         self.lockdown_resets = 0;
@@ -306,20 +353,17 @@ impl RustrisGame {
 
     fn lock(&mut self) {
         let Some(rustomino) = &self.playfield.active_rustomino else {
+            log::warn!("no active rustomino");
             return;
         };
 
-        log::trace!("locking block: playfield:\n{}", self.playfield);
-        log::trace!(
-            "type: {:?} blocks: {:?}",
-            rustomino.rtype,
-            rustomino.playfield_slots()
-        );
+        log::info!("locking block type: {:?}", rustomino.rtype);
+        log::debug!("blocks: {:?}", rustomino.playfield_slots());
 
         // if the block we've been asked to lock is fully
         // out of bounds the game is over
         if fully_out_of_bounds(&rustomino.playfield_slots()) {
-            log::debug!("block we are locking is fully out of playfield");
+            log::info!("block we are locking is fully out of playfield");
             self.game_over();
             return;
         }
@@ -339,12 +383,6 @@ impl RustrisGame {
         };
         // this is handled differently depending on the active rustomino's state
         match active_state {
-            /*
-            if the active rustomino is in a Falling state
-            we only want to increment the lockdown counter
-            if the current block is on the stack (can't fall)
-            and the block has previously been in locked down (lockdown_resets > 0)
-            */
             RustominoState::Falling { time: _ }
                 if !self.playfield.active_can_fall() && self.lockdown_resets > 0 =>
             {
@@ -418,137 +456,45 @@ impl RustrisGame {
     }
     // returns a closure which handles the provided
     // control for the game
-    pub fn control_handler(&mut self, control: &Control) -> fn(&mut RustrisGame) {
+    pub fn control_handler(&mut self, control: &Control) -> fn(&mut RustrisState) {
         match control {
-            Control::Left => RustrisGame::translate_left,
-            Control::Right => RustrisGame::translate_right,
-            Control::RotateCW => RustrisGame::rotate_cw,
-            Control::RotateCCW => RustrisGame::rotate_ccw,
-            Control::SoftDrop => RustrisGame::soft_drop,
-            Control::HardDrop => RustrisGame::hard_drop,
-            Control::Hold => RustrisGame::hold,
+            Control::Left => RustrisState::translate_left,
+            Control::Right => RustrisState::translate_right,
+            Control::RotateCW => RustrisState::rotate_cw,
+            Control::RotateCCW => RustrisState::rotate_ccw,
+            Control::SoftDrop => RustrisState::soft_drop,
+            Control::HardDrop => RustrisState::hard_drop,
+            Control::Hold => RustrisState::hold,
         }
-    }
-    pub fn handle_key_down(&mut self, input: &KeyInput) {
-        let Some(mut control_state) = self.controls.take() else {
-            return
-        };
-        // iterate through the controls
-        for (control, control_inputs) in &control_state.inputs_map {
-            if input.keycode == control_inputs.0 || input.keycode == control_inputs.1 {
-                // control_state
-                //     .states_map
-                //     .entry(*control)
-                //     .and_modify(|e| *e = InputState::Down(0.0));
-                if let Some(input_state) = control_state.states_map.get_mut(control) {
-                    if *input_state == controls::InputState::Up {
-                        *input_state = controls::InputState::Down(0.0);
-                        // call the game function for this input
-                        self.control_handler(control)(self);
-                    }
-                }
-            }
-        }
-        self.controls = Some(control_state);
-    }
-
-    pub fn handle_key_up(&mut self, input: &KeyInput) {
-        let Some(mut control_state) = self.controls.take() else {
-            return
-        };
-        // iterate through the controls
-        for (control, control_inputs) in &control_state.inputs_map {
-            // if the input matches one of a controls inputs set the input state to Up
-            if input.keycode == control_inputs.0 || input.keycode == control_inputs.1 {
-                control_state
-                    .states_map
-                    .entry(*control)
-                    .and_modify(|e| *e = controls::InputState::Up);
-            }
-        }
-        self.controls = Some(control_state);
-    }
-
-    // Some of the games controls allow repeating their actions
-    // when the user holds their inputs
-    // This handles updating the state of these inputs
-    // as well as calling game functions when appropriate
-    pub fn handle_held_inputs(&mut self, delta_time: f64) {
-        let Some(mut control_state) = self.controls.take() else {
-            return
-        };
-        // iterate through the controls
-        for control in Control::iter() {
-            control_state
-                .states_map
-                .entry(control) // modify in place
-                .and_modify(|e| match e {
-                    controls::InputState::Down(down_time) => {
-                        // check to see if the key is repeatable
-                        // and if the down time is longer than the action delay for this input
-                        if let Some(action_delay) = control.action_delay() {
-                            *down_time += delta_time;
-                            if *down_time >= action_delay {
-                                *e = controls::InputState::Held(0.);
-                                self.control_handler(&control)(self);
-                            }
-                        }
-                    }
-                    // if the input state is held, add delta time to the held time
-                    controls::InputState::Held(held_time) => {
-                        *held_time += delta_time;
-                    }
-                    _ => (),
-                });
-            if let Some(state) = control_state.states_map.get_mut(&control) {
-                // if this input is in a held state
-                if let controls::InputState::Held(held_time) = state {
-                    // check if held was just set
-                    if *held_time == 0. {
-                        // call the game control handler function
-                        self.control_handler(&control)(self);
-                    }
-                    // check to see if the key is repeatable
-                    // and if the key has been held longer than the repeat delay for the input
-                    if let Some(action_repeat_delay) = control.action_repeat_delay() {
-                        if *held_time >= action_repeat_delay {
-                            // reset the held state time
-                            *state = controls::InputState::Held(0.);
-                            // call the game control handler function
-                            self.control_handler(&control)(self);
-                        }
-                    }
-                }
-            }
-        }
-        self.controls = Some(control_state);
     }
 }
 
-impl EventHandler for RustrisGame {
+impl EventHandler for RustrisState {
     fn update(&mut self, ctx: &mut ggez::Context) -> GameResult {
         const DESIRED_FPS: u32 = 60;
 
         // limit game to 60fps
         while ctx.time.check_update_time(DESIRED_FPS) {
-            let delta_time = ctx.time.delta().as_secs_f64();
-
+            let delta_time = 1.0 / (DESIRED_FPS as f64);
             // handle the game states
             match self.state {
-                GameState::Menu => {}
-                GameState::Playing => {
-                    // pause the game immediately
-                    // clear all other inputs and continue
-                    // if is_key_pressed(KeyCode::Escape) {
-                    //     game.pause();
-                    //     controls.clear_inputs();
-                    // } else {
-                    self.ready_playfield();
-                    self.handle_held_inputs(delta_time);
-                    self.playing_update(delta_time);
-                    // }
+                GameState::Menu => {
+                    self.previous_state = GameState::Menu;
                 }
-                GameState::Paused => {}
+                GameState::Playing => {
+                    if self.ready_playfield() {
+                        self.playing_update(delta_time);
+                    }
+                    self.previous_state = GameState::Playing;
+                }
+                GameState::Paused => {
+                    self.previous_state = GameState::Paused;
+                }
+                GameState::GameOver if self.previous_state != self.state => {
+                    // play game over sound
+                    self.assets.game_over.play(ctx)?;
+                    self.previous_state = GameState::GameOver;
+                }
                 GameState::GameOver => {}
             }
         }
@@ -557,11 +503,63 @@ impl EventHandler for RustrisGame {
 
     fn draw(&mut self, ctx: &mut ggez::Context) -> GameResult {
         let mut canvas = graphics::Canvas::from_frame(ctx, BACKGROUND_COLOR);
+        // handle the game states
 
-        // Draw code here...
-        draw::draw(self, ctx, &mut canvas)?;
-
-        // println!("{:?}", view::VIEW_SETTINGS);
+        match self.state {
+            GameState::Menu => {
+                draw::draw_menu(ctx, &mut canvas, &self.menu_state, &self.view_settings)?;
+            }
+            GameState::Playing => {
+                draw::draw_playing(
+                    ctx,
+                    &mut canvas,
+                    &self.playfield,
+                    &self.next_rustomino,
+                    &self.held_rustomino,
+                    &self.view_settings,
+                )?;
+                draw::draw_playing_overlay(
+                    ctx,
+                    &mut canvas,
+                    self.level,
+                    self.score,
+                    &self.view_settings,
+                )?;
+            }
+            GameState::Paused => {
+                draw::draw_playing(
+                    ctx,
+                    &mut canvas,
+                    &self.playfield,
+                    &self.next_rustomino,
+                    &self.held_rustomino,
+                    &self.view_settings,
+                )?;
+                draw::draw_paused(ctx, &mut canvas, &self.paused_state, &self.view_settings)?;
+                // draw::draw_playing_overlay(game.level, game.score);
+                // draw::draw_paused();
+                // draw::draw_help_text();
+            }
+            GameState::GameOver => {
+                draw::draw_playing_backgound(ctx, &mut canvas, &self.view_settings)?;
+                draw::draw_playing(
+                    ctx,
+                    &mut canvas,
+                    &self.playfield,
+                    &self.next_rustomino,
+                    &self.held_rustomino,
+                    &self.view_settings,
+                )?;
+                draw::draw_playing_overlay(
+                    ctx,
+                    &mut canvas,
+                    self.level,
+                    self.score,
+                    &self.view_settings,
+                )?;
+                draw::draw_gameover(ctx, &mut canvas, &self.view_settings.view_rect)?;
+            }
+        }
 
         canvas.finish(ctx)?;
 
@@ -581,7 +579,6 @@ impl EventHandler for RustrisGame {
             GameState::Menu => {
                 // handle the user's inputs
                 if input.keycode == Some(KeyCode::Return) && !repeated {
-                    self.controls.as_mut().unwrap().clear_inputs();
                     self.resume();
                 }
             }
@@ -590,44 +587,41 @@ impl EventHandler for RustrisGame {
                 // clear all other inputs and continue
                 if input.keycode == Some(KeyCode::Escape) {
                     self.pause();
-                    self.controls.as_mut().unwrap().clear_inputs();
-                } else {
-                    self.handle_key_down(&input);
                 }
             }
             GameState::Paused => {
                 if input.keycode == Some(KeyCode::Escape) && !repeated {
-                    self.controls.as_mut().unwrap().clear_inputs();
                     self.resume();
                 }
             }
             GameState::GameOver => {
                 if input.keycode == Some(KeyCode::Return) && !repeated {
-                    self.controls.as_mut().unwrap().clear_inputs();
                     self.new_game();
                 }
             }
         }
-        controls::handle_global_inputs(&input, &mut self.music_volume);
+        handle_global_inputs(&input, &mut self.music_volume);
         Ok(())
     }
 
     fn key_up_event(&mut self, _ctx: &mut Context, input: KeyInput) -> GameResult {
-        match self.state {
-            GameState::Menu => {}
-            GameState::Playing => {
-                // pause the game immediately
-                // clear all other inputs and continue
-                if input.keycode == Some(KeyCode::Escape) {
-                    self.pause();
-                    self.controls.as_mut().unwrap().clear_inputs();
-                } else {
-                    self.handle_key_up(&input);
-                }
-            }
-            GameState::Paused => {}
-            GameState::GameOver => {}
-        }
+        // match self.state {
+        //     GameState::Menu => {}
+        //     GameState::Playing => {
+        //         // pause the game immediately
+        //         // clear all other inputs and continue
+        //         if input.keycode == Some(KeyCode::Escape) {
+        //             self.pause();
+        //         }
+        //     }
+        //     GameState::Paused => {}
+        //     GameState::GameOver => {}
+        // }
+        Ok(())
+    }
+
+    fn resize_event(&mut self, _ctx: &mut Context, width: f32, height: f32) -> GameResult {
+        self.view_settings = draw::ViewSettings::new(width, height);
         Ok(())
     }
 }
@@ -667,109 +661,31 @@ fn gravity_delay(level: usize) -> f64 {
     gravity_delay
 }
 
-// // run the game
-// pub async fn run() {
-//     log::info!("startup: initializing Rustris;");
+// returns a closure which handles the provided
+// control for the game
+fn control_handler<'a>(control: &'a Control, game: &'a mut RustrisState) -> Box<dyn FnMut() + 'a> {
+    match *control {
+        Control::Left => Box::new(|| game.translate(TranslationDirection::Left)),
+        Control::Right => Box::new(|| game.translate(TranslationDirection::Right)),
+        Control::RotateCW => Box::new(|| game.rotate(Rotation::Cw)),
+        Control::RotateCCW => Box::new(|| game.rotate(Rotation::Ccw)),
+        Control::SoftDrop => Box::new(|| game.soft_drop()),
+        Control::HardDrop => Box::new(|| game.hard_drop()),
+        Control::Hold => Box::new(|| game.hold()),
+    }
+}
 
-//     // initialize the game and control states
-//     let mut game = RustrisGame::new(RustrisPlayfield::new());
-//     let mut controls = controls::ControlStates::default();
-
-//     log::info!("loading Resources");
-//     // find our assets path
-//     let assets_path = find_folder::Search::ParentsThenKids(2, 2)
-//         .for_folder(ASSETS_FOLDER)
-//         .expect("unable to find assets folder");
-
-//     // load the font
-//     let font_path = assets_path.join("04b30.ttf");
-//     log::info!("loading font: {:?}", font_path);
-//     let font = load_ttf_font(&font_path.to_string_lossy())
-//         .await
-//         .expect("unable to load font");
-
-//     // configure UI fonts
-//     let font_20pt = TextParams {
-//         font,
-//         font_size: 20,
-//         ..Default::default()
-//     };
-//     let font_30pt = TextParams {
-//         font,
-//         font_size: 30,
-//         ..Default::default()
-//     };
-
-//     // load the background music
-//     let background_path = assets_path.join("background.ogg");
-//     log::info!("loading background music: {:?}", background_path);
-//     let background_music = load_sound(&background_path.to_string_lossy())
-//         .await
-//         .expect("unable to load background music");
-
-//     // play background music
-//     let mut music_volume = MUSIC_VOL;
-//     log::info!("playing background music at volume: {music_volume}");
-//     play_sound(
-//         background_music,
-//         PlaySoundParams {
-//             looped: true,
-//             volume: music_volume,
-//         },
-//     );
-
-//     let mut last_update = get_time();
-
-//     loop {
-//         clear_background(view::BACKGROUND_COLOR);
-
-//         // handle global controls
-//         handle_global_inputs(&background_music, &mut music_volume);
-
-//         let now = get_time();
-//         let delta_time = now - last_update;
-
-//         // handle the game states
-//         match game.state {
-//             GameState::Menu => {
-//                 // handle the user's inputs
-//                 if is_key_pressed(KeyCode::Enter) {
-//                     controls.clear_inputs();
-//                     game.resume();
-//                 }
-//             }
-//             GameState::Playing => {
-//                 // pause the game immediately
-//                 // clear all other inputs and continue
-//                 if is_key_pressed(KeyCode::Escape) {
-//                     game.pause();
-//                     controls.clear_inputs();
-//                 } else {
-//                     game.ready_playfield();
-//                     handle_playing_inputs(&mut controls, &mut game);
-//                     handle_held_playing_inputs(&mut controls, &mut game, delta_time);
-//                     game.playing_update(delta_time);
-//                 }
-//             }
-//             GameState::Paused => {
-//                 if is_key_pressed(KeyCode::Escape) {
-//                     controls.clear_inputs();
-//                     game.resume();
-//                 }
-//             }
-//             GameState::GameOver => {
-//                 if is_key_pressed(KeyCode::Enter) {
-//                     controls.clear_inputs();
-//                     game = game.new_game();
-//                 }
-//             }
-//         }
-
-//         // draw the menus, game, overlays, etc.
-//         view::draw(&game, &font_20pt, &font_30pt);
-
-//         last_update = get_time();
-
-//         next_frame().await;
-//     }
-// }
+pub fn handle_global_inputs(input: &KeyInput, music_volume: &mut f32) {
+    // volume down
+    if input.keycode == Some(KeyCode::Minus) || input.keycode == Some(KeyCode::NumpadSubtract) {
+        *music_volume -= MUSIC_VOLUME_CHANGE;
+        *music_volume = music_volume.clamp(0.0, 1.0);
+        log::debug!("volume decrease {}", music_volume);
+    }
+    // volume up
+    if input.keycode == Some(KeyCode::Equals) || input.keycode == Some(KeyCode::NumpadAdd) {
+        *music_volume += MUSIC_VOLUME_CHANGE;
+        *music_volume = music_volume.clamp(0.0, 1.0);
+        log::debug!("volume increase {}", music_volume);
+    }
+}

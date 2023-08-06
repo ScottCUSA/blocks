@@ -170,7 +170,7 @@ impl RustrisPlayfield {
     pub fn lock_active(&mut self) {
         // get the active rustomino
         if let Some(active_rustomino) = self.active_rustomino.as_mut() {
-            log::info!("locking rustomino");
+            log::info!("locking rustomino: {:?}", active_rustomino.rtype);
             log::trace!("rustomino: {:?}", active_rustomino);
 
             set_playfield_slot_states(
@@ -406,7 +406,7 @@ fn set_playfield_slot_states(
     block_slots: &[IVec2; 4],
     new_state: SlotState,
 ) {
-    log::trace!(
+    log::info!(
         "set_slot_state called block_slots: {:?} to state: {:?}",
         block_slots,
         new_state
