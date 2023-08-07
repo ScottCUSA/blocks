@@ -4,9 +4,10 @@ use ggez::{Context, GameResult};
 use once_cell::sync::Lazy;
 
 use crate::game::{self, RustrisState};
-use crate::menus;
+use crate::menus::{self, Menu};
 use crate::playfield::{self, RustrisPlayfield, SlotState};
 use crate::rustomino::{Rustomino, RustominoType};
+use crate::util;
 
 const BLOCK_SIZE: f32 = 30.;
 const BLOCK_PADDING: f32 = 1.;
@@ -95,6 +96,7 @@ pub fn draw_playing_backgound(
     canvas: &mut Canvas,
     view_settings: &ViewSettings,
 ) -> GameResult {
+    // draw the staging background
     let staging_rect = graphics::Mesh::new_rectangle(
         ctx,
         DrawMode::fill(),
@@ -103,6 +105,7 @@ pub fn draw_playing_backgound(
     )?;
     canvas.draw(&staging_rect, graphics::DrawParam::default());
 
+    // draw the playfield background
     let playfield_rect = graphics::Mesh::new_rectangle(
         ctx,
         DrawMode::fill(),
@@ -111,6 +114,7 @@ pub fn draw_playing_backgound(
     )?;
     canvas.draw(&playfield_rect, graphics::DrawParam::default());
 
+    // draw the preview background
     let preview_rect = graphics::Mesh::new_rectangle(
         ctx,
         DrawMode::fill(),
@@ -119,6 +123,7 @@ pub fn draw_playing_backgound(
     )?;
     canvas.draw(&preview_rect, graphics::DrawParam::default());
 
+    // draw the hold background
     let hold_rect = graphics::Mesh::new_rectangle(
         ctx,
         DrawMode::fill(),
@@ -136,6 +141,7 @@ fn draw_playfield(
     playfield: &RustrisPlayfield,
     staging_rect: &Rect,
     playfield_rect: &Rect,
+    game_over: bool,
 ) -> GameResult {
     // create a mesh we'll reuse for each block
     let block_mesh = graphics::Mesh::new_rectangle(
@@ -154,7 +160,12 @@ fn draw_playfield(
                     // draw the block
                     let rect =
                         playfield_block_rect([x as i32, y as i32], staging_rect, playfield_rect);
-                    canvas.draw(&block_mesh, draw_param.dest_rect(rect).color(rtype.color()));
+                    let color = if game_over {
+                        util::rgb_to_grayscale(rtype.color())
+                    } else {
+                        rtype.color()
+                    };
+                    canvas.draw(&block_mesh, draw_param.dest_rect(rect).color(color));
                 }
                 _ => {}
             }
@@ -184,6 +195,7 @@ fn draw_hold(
     canvas: &mut Canvas,
     hold_rustomino: &Option<Rustomino>,
     hold_rect: &Rect,
+    game_over: bool,
 ) -> GameResult {
     // create a mesh we'll reuse for each block
     let mesh = graphics::Mesh::new_rectangle(
@@ -197,7 +209,12 @@ fn draw_hold(
     if let Some(next) = hold_rustomino {
         for block in next.blocks {
             let rect = hold_block_rect([block[0], block[1]], hold_rect);
-            canvas.draw(&mesh, draw_param.dest_rect(rect).color(next.rtype.color()));
+            let color = if game_over {
+                util::rgb_to_grayscale(next.rtype.color())
+            } else {
+                next.rtype.color()
+            };
+            canvas.draw(&mesh, draw_param.dest_rect(rect).color(color));
         }
     }
     Ok(())
@@ -208,6 +225,7 @@ fn draw_next(
     canvas: &mut Canvas,
     next_rustomino: &Option<Rustomino>,
     next_rect: &Rect,
+    game_over: bool,
 ) -> GameResult {
     // create a mesh we'll reuse for each block
     let mesh = graphics::Mesh::new_rectangle(
@@ -221,7 +239,12 @@ fn draw_next(
     if let Some(next) = next_rustomino {
         for block in next.blocks {
             let rect = next_block_rect([block[0], block[1]], next_rect);
-            canvas.draw(&mesh, draw_param.dest_rect(rect).color(next.rtype.color()));
+            let color = if game_over {
+                util::rgb_to_grayscale(next.rtype.color())
+            } else {
+                next.rtype.color()
+            };
+            canvas.draw(&mesh, draw_param.dest_rect(rect).color(color));
         }
     }
     Ok(())
@@ -234,6 +257,7 @@ pub fn draw_playing(
     next_rustomino: &Option<Rustomino>,
     hold_rustomino: &Option<Rustomino>,
     view_settings: &ViewSettings,
+    game_over: bool,
 ) -> GameResult {
     draw_playing_backgound(ctx, canvas, view_settings)?;
     draw_playfield(
@@ -242,35 +266,23 @@ pub fn draw_playing(
         playfield,
         &view_settings.staging_rect,
         &view_settings.playfield_rect,
+        game_over,
     )?;
-    draw_hold(ctx, canvas, hold_rustomino, &view_settings.hold_rect)?;
-    draw_next(ctx, canvas, next_rustomino, &view_settings.preview_rect)?;
+    draw_hold(
+        ctx,
+        canvas,
+        hold_rustomino,
+        &view_settings.hold_rect,
+        game_over,
+    )?;
+    draw_next(
+        ctx,
+        canvas,
+        next_rustomino,
+        &view_settings.preview_rect,
+        game_over,
+    )?;
 
-    //     if let Some(next) = next_rustomino {
-    //         for slot in next.blocks {
-    //             // display the preview
-    //             // draw the block
-    //             let rect = next_block_rect([slot[0], slot[1]]);
-    //             draw_rectangle(rect.x, rect.y, rect.w, rect.h, next.rtype.color());
-    //         }
-    //     }
-
-    //     if let Some(held) = held_rustomino {
-    //         for slot in held.blocks {
-    //             // display the preview
-    //             // draw the block
-    //             let rect = hold_block_rect([slot[0], slot[1]]);
-    //             draw_rectangle(rect.x, rect.y, rect.w, rect.h, held.rtype.color());
-    //         }
-    //     }
-
-    //     if let Some(ghost) = &playfield.ghost_rustomino {
-    //         for block in ghost.playfield_slots() {
-    //             // draw the block
-    //             let rect = playfield_block_rect([block[0], block[1]]);
-    //             draw_rectangle_lines(rect.x, rect.y, rect.w, rect.h, 4., GHOST_COLOR);
-    //         }
-    //     }
     Ok(())
 }
 
@@ -334,48 +346,49 @@ pub fn draw_menu_background(
     Ok(())
 }
 
-fn draw_menu_text(
+fn draw_menu_text<T: Menu>(
     ctx: &mut Context,
     canvas: &mut Canvas,
-    menu_state: &menus::MenuState,
+    menu_state: &T,
     view_settings: &ViewSettings,
+    title: &str,
 ) -> GameResult {
     let time = ctx.time.time_since_start().as_secs_f32();
-    let sin_wobble = f32::sin(time * 2.0);
-    let fast_wobble = f32::sin(time * 6.0);
+
+    let slow_wobble = util::slow_wobble(time);
+    let fast_wobble = util::fast_wobble(time);
 
     let title_scale = graphics::PxScale::from(100.0);
     let font_scale = graphics::PxScale::from(50.0);
 
-    let mut title = graphics::Text::new("Rustris!");
+    let mut title = graphics::Text::new(title);
 
     let scaled_title = title.set_font("04b30").set_scale(title_scale);
 
     let title_glyph_pos = scaled_title.glyph_positions(ctx)?;
     let title_width = title_glyph_pos.last().unwrap().x - title_glyph_pos.first().unwrap().x
         + title_scale.x / 2.0;
-    let title_x_pos = view_settings.view_rect.w / 2.0 - title_width / 2.0;
-    let title_y_pos = view_settings.view_rect.h / 5.0 - title_scale.y / 2.0 + (sin_wobble * 10.0);
+    let title_x = view_settings.view_rect.w / 2.0 - title_width / 2.0;
+    let title_y = view_settings.view_rect.h / 4.0 - title_scale.y / 2.0 + (slow_wobble * 10.0);
 
     let title_draw_param = graphics::DrawParam::default()
-        .dest([title_x_pos, title_y_pos])
+        .dest([title_x, title_y])
         .color(Color::new(1., 1., 1., 1.));
 
     // draw rustris title
     canvas.draw(scaled_title, title_draw_param);
 
-    for (i, menu_item) in menu_state.menu.iter().enumerate() {
-        let mut menu_item = menu_item.clone();
-        let scaled_menu_item_text = menu_item.set_font("04b30").set_scale(font_scale);
-        let menu_item_glyph_pos = scaled_menu_item_text.glyph_positions(ctx)?;
-        let menu_item_width = menu_item_glyph_pos.last().unwrap().x
-            - menu_item_glyph_pos.first().unwrap().x
-            + font_scale.x / 2.0;
+    for (i, item) in menu_state.items().iter().enumerate() {
+        let mut item = item.clone();
+        let scaled_text = item.set_font("04b30").set_scale(font_scale);
+        let glyph_pos = scaled_text.glyph_positions(ctx)?;
+        let item_width =
+            glyph_pos.last().unwrap().x - glyph_pos.first().unwrap().x + font_scale.x / 2.0;
         let menu_item_height = font_scale.y;
-        let x_pos = if menu_state.selected == i {
-            view_settings.view_rect.w / 2.0 - menu_item_width / 2.0 + fast_wobble * 5.0
+        let x_pos = if menu_state.selected() == i {
+            view_settings.view_rect.w / 2.0 - item_width / 2.0 + fast_wobble * 5.0
         } else {
-            view_settings.view_rect.w / 2.0 - menu_item_width / 2.0
+            view_settings.view_rect.w / 2.0 - item_width / 2.0
         };
         let menu_item_draw_param = graphics::DrawParam::default()
             .dest([
@@ -383,7 +396,7 @@ fn draw_menu_text(
                 view_settings.view_rect.h / 1.9 + (menu_item_height * (i as f32)),
             ])
             .color(Color::new(1., 1., 1., 1.));
-        canvas.draw(scaled_menu_item_text, menu_item_draw_param);
+        canvas.draw(scaled_text, menu_item_draw_param);
     }
 
     Ok(())
@@ -397,7 +410,8 @@ pub fn draw_menu(
 ) -> GameResult {
     // draw the menu background
     draw_menu_background(ctx, canvas, view_settings)?;
-    draw_menu_text(ctx, canvas, menu_state, view_settings)?;
+    draw_menu_text(ctx, canvas, menu_state, view_settings, "Rustris!")?;
+    // draw_main_menu_text(ctx, canvas, menu_state, view_settings)?;
     Ok(())
 }
 
@@ -405,6 +419,26 @@ pub fn draw_gameover(ctx: &mut Context, canvas: &mut Canvas, view_rect: &Rect) -
     let gameover_overlay =
         graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), *view_rect, PAUSED_OVERLAY_COLOR)?;
     canvas.draw(&gameover_overlay, graphics::DrawParam::default());
+
+    let slow_wobble = util::slow_wobble(ctx.time.time_since_start().as_secs_f32());
+
+    let mut scaled_text = graphics::Text::new("Game Over!");
+    let scaled_text = scaled_text
+        .set_font("04b30")
+        .set_scale(graphics::PxScale::from(50.0));
+    let glyph_pos = scaled_text.glyph_positions(ctx)?;
+    let text_width = glyph_pos.last().unwrap().x - glyph_pos.first().unwrap().x + 25.0;
+    canvas.draw(
+        graphics::Text::new("Game Over!")
+            .set_font("04b30")
+            .set_scale(graphics::PxScale::from(50.0)),
+        graphics::DrawParam::default()
+            .dest([
+                view_rect.w / 2.0 - text_width / 2.0,
+                view_rect.h / 2.0 - 25.0 - slow_wobble * 10.0,
+            ])
+            .color(Color::new(1., 1., 1., 1.)),
+    );
     Ok(())
 }
 
@@ -492,7 +526,8 @@ pub fn draw_paused(
 ) -> GameResult {
     // draw the menu background
     draw_paused_background(ctx, canvas, view_settings)?;
-    draw_paused_text(ctx, canvas, paused_state, view_settings)?;
+    draw_menu_text(ctx, canvas, paused_state, view_settings, "Paused!")?;
+    // draw_paused_text(ctx, canvas, paused_state, view_settings)?;
     Ok(())
 }
 
@@ -509,61 +544,6 @@ pub fn draw_paused_background(
         PAUSED_OVERLAY_COLOR,
     )?;
     canvas.draw(&menu_overlay, graphics::DrawParam::default());
-    Ok(())
-}
-
-fn draw_paused_text(
-    ctx: &mut Context,
-    canvas: &mut Canvas,
-    paused_state: &menus::PausedState,
-    view_settings: &ViewSettings,
-) -> GameResult {
-    let time = ctx.time.time_since_start().as_secs_f32();
-    let sin_wobble = f32::sin(time * 2.0);
-    let fast_wobble = f32::sin(time * 6.0);
-
-    let title_scale = graphics::PxScale::from(100.0);
-    let font_scale = graphics::PxScale::from(50.0);
-
-    let mut title = graphics::Text::new("Paused!");
-
-    let scaled_title = title.set_font("04b30").set_scale(title_scale);
-
-    let title_glyph_pos = scaled_title.glyph_positions(ctx)?;
-    let title_width = title_glyph_pos.last().unwrap().x - title_glyph_pos.first().unwrap().x
-        + title_scale.x / 2.0;
-    let title_x_pos = view_settings.view_rect.w / 2.0 - title_width / 2.0;
-    let title_y_pos = view_settings.view_rect.h / 5.0 - title_scale.y / 2.0 + (sin_wobble * 10.0);
-
-    let title_draw_param = graphics::DrawParam::default()
-        .dest([title_x_pos, title_y_pos])
-        .color(Color::new(1., 1., 1., 1.));
-
-    // draw rustris title
-    canvas.draw(scaled_title, title_draw_param);
-
-    for (i, menu_item) in paused_state.menu.iter().enumerate() {
-        let mut menu_item = menu_item.clone();
-        let scaled_menu_item_text = menu_item.set_font("04b30").set_scale(font_scale);
-        let menu_item_glyph_pos = scaled_menu_item_text.glyph_positions(ctx)?;
-        let menu_item_width = menu_item_glyph_pos.last().unwrap().x
-            - menu_item_glyph_pos.first().unwrap().x
-            + font_scale.x / 2.0;
-        let menu_item_height = font_scale.y;
-        let x_pos = if paused_state.selected == i {
-            view_settings.view_rect.w / 2.0 - menu_item_width / 2.0 + fast_wobble * 5.0
-        } else {
-            view_settings.view_rect.w / 2.0 - menu_item_width / 2.0
-        };
-        let menu_item_draw_param = graphics::DrawParam::default()
-            .dest([
-                x_pos,
-                view_settings.view_rect.h / 1.9 + (menu_item_height * (i as f32)),
-            ])
-            .color(Color::new(1., 1., 1., 1.));
-        canvas.draw(scaled_menu_item_text, menu_item_draw_param);
-    }
-
     Ok(())
 }
 

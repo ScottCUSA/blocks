@@ -7,12 +7,11 @@ use ggez::{
     input::keyboard::KeyInput,
     Context, GameResult,
 };
-use strum::IntoEnumIterator;
 
 use crate::{
     controls::{self, Control, GameControls},
     draw::{self, BACKGROUND_COLOR},
-    menus::{self, MenuState},
+    menus::{self, Menu},
     playfield::{RustrisPlayfield, TranslationDirection, PLAYFIELD_SIZE},
     rustomino::{Rotation, Rustomino, RustominoBag, RustominoState},
     util::variants_equal,
@@ -35,16 +34,17 @@ const DOUBLE_LINE_SCORE: usize = 300;
 const RUSTRIS_SCORE: usize = 800;
 
 // ASSET CONSTANTS
-const ASSETS_FOLDER: &str = "assets";
-const MUSIC_VOL: f32 = 0.25;
-const MUSIC_VOLUME_CHANGE: f32 = 0.025;
+const MUSIC_VOL: f32 = 0.0;
+const MUSIC_VOLUME_CHANGE: f32 = 0.005;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum GameState {
     Menu,
     Playing,
     Paused,
     GameOver,
+    Options,
+    Quit,
 }
 
 pub struct Assets {
@@ -467,6 +467,30 @@ impl RustrisState {
             Control::Hold => RustrisState::hold,
         }
     }
+
+    fn menu_item_selected(&mut self) {
+        if self.menu_state.selected() == 0 {
+            self.resume();
+        } else if self.menu_state.selected() == 1 {
+            // self.state = GameState::Options;
+        } else if self.menu_state.selected() == 2 {
+            self.state = GameState::Quit;
+        }
+        self.menu_state.reset_selection();
+    }
+
+    fn paused_item_selected(&mut self) {
+        if self.paused_state.selected() == 0 {
+            self.resume();
+        } else if self.paused_state.selected() == 1 {
+            // self.state = GameState::Options;
+        } else if self.paused_state.selected() == 2 {
+            self.new_game();
+        } else if self.paused_state.selected() == 3 {
+            self.state = GameState::Quit;
+        }
+        self.paused_state.reset_selection();
+    }
 }
 
 impl EventHandler for RustrisState {
@@ -496,7 +520,10 @@ impl EventHandler for RustrisState {
                     self.previous_state = GameState::GameOver;
                 }
                 GameState::GameOver => {}
+                GameState::Options => {}
+                GameState::Quit => ctx.request_quit(),
             }
+            self.previous_state = self.state;
         }
         Ok(())
     }
@@ -517,6 +544,7 @@ impl EventHandler for RustrisState {
                     &self.next_rustomino,
                     &self.held_rustomino,
                     &self.view_settings,
+                    false,
                 )?;
                 draw::draw_playing_overlay(
                     ctx,
@@ -534,6 +562,7 @@ impl EventHandler for RustrisState {
                     &self.next_rustomino,
                     &self.held_rustomino,
                     &self.view_settings,
+                    false,
                 )?;
                 draw::draw_paused(ctx, &mut canvas, &self.paused_state, &self.view_settings)?;
                 // draw::draw_playing_overlay(game.level, game.score);
@@ -549,6 +578,7 @@ impl EventHandler for RustrisState {
                     &self.next_rustomino,
                     &self.held_rustomino,
                     &self.view_settings,
+                    true,
                 )?;
                 draw::draw_playing_overlay(
                     ctx,
@@ -559,6 +589,8 @@ impl EventHandler for RustrisState {
                 )?;
                 draw::draw_gameover(ctx, &mut canvas, &self.view_settings.view_rect)?;
             }
+            GameState::Options => todo!(),
+            GameState::Quit => {}
         }
 
         canvas.finish(ctx)?;
@@ -569,17 +601,21 @@ impl EventHandler for RustrisState {
 
     // Handle key events.  These just map keyboard events
     // and alter our input state appropriately.
-    fn key_down_event(
-        &mut self,
-        _ctx: &mut Context,
-        input: KeyInput,
-        repeated: bool,
-    ) -> GameResult {
+    fn key_down_event(&mut self, ctx: &mut Context, input: KeyInput, repeated: bool) -> GameResult {
         match self.state {
             GameState::Menu => {
                 // handle the user's inputs
                 if input.keycode == Some(KeyCode::Return) && !repeated {
-                    self.resume();
+                    self.menu_item_selected();
+                }
+                if input.keycode == Some(KeyCode::Escape) && !repeated {
+                    self.state = GameState::Quit;
+                }
+                if input.keycode == Some(KeyCode::Up) && !repeated {
+                    self.menu_state.previous();
+                }
+                if input.keycode == Some(KeyCode::Down) && !repeated {
+                    self.menu_state.next();
                 }
             }
             GameState::Playing => {
@@ -591,37 +627,52 @@ impl EventHandler for RustrisState {
             }
             GameState::Paused => {
                 if input.keycode == Some(KeyCode::Escape) && !repeated {
+                    self.paused_state.reset_selection();
                     self.resume();
+                }
+                if input.keycode == Some(KeyCode::Return)
+                    || input.keycode == Some(KeyCode::NumpadEnter) && !repeated
+                {
+                    self.paused_item_selected();
+                }
+                if input.keycode == Some(KeyCode::Up) && !repeated {
+                    self.paused_state.previous();
+                }
+                if input.keycode == Some(KeyCode::Down) && !repeated {
+                    self.paused_state.next();
                 }
             }
             GameState::GameOver => {
-                if input.keycode == Some(KeyCode::Return) && !repeated {
-                    self.new_game();
-                }
+                self.new_game();
             }
+            GameState::Options => todo!(),
+            GameState::Quit => {}
         }
         handle_global_inputs(&input, &mut self.music_volume);
         Ok(())
     }
 
     fn key_up_event(&mut self, _ctx: &mut Context, input: KeyInput) -> GameResult {
-        // match self.state {
-        //     GameState::Menu => {}
-        //     GameState::Playing => {
-        //         // pause the game immediately
-        //         // clear all other inputs and continue
-        //         if input.keycode == Some(KeyCode::Escape) {
-        //             self.pause();
-        //         }
-        //     }
-        //     GameState::Paused => {}
-        //     GameState::GameOver => {}
-        // }
+        match self.state {
+            GameState::Menu => {}
+            GameState::Playing => {}
+            GameState::Paused => {}
+            GameState::GameOver => {}
+            GameState::Options => {}
+            GameState::Quit => {}
+        }
         Ok(())
     }
 
     fn resize_event(&mut self, _ctx: &mut Context, width: f32, height: f32) -> GameResult {
         self.view_settings = draw::ViewSettings::new(width, height);
+        Ok(())
+    }
+
+    fn focus_event(&mut self, _ctx: &mut Context, gained: bool) -> Result<(), ggez::GameError> {
+        if !gained && self.state == GameState::Playing {
+            self.pause();
+        }
         Ok(())
     }
 }
