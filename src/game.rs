@@ -39,7 +39,7 @@ const MUSIC_VOL: f32 = 0.0;
 const MUSIC_VOLUME_CHANGE: f32 = 0.005;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub(crate) enum GameState {
+pub enum GameState {
     Menu,
     Playing,
     Paused,
@@ -48,9 +48,9 @@ pub(crate) enum GameState {
     Quit,
 }
 
-pub(crate) struct Assets {
-    pub(crate) music_1: audio::Source,
-    pub(crate) game_over: audio::Source,
+pub struct Assets {
+    pub music_1: audio::Source,
+    pub game_over: audio::Source,
 }
 
 impl Assets {
@@ -67,16 +67,16 @@ impl Assets {
     }
 }
 
-pub(crate) struct RustrisState {
-    pub(crate) playfield: RustrisPlayfield,
-    pub(crate) next_rustomino: Option<Rustomino>,
-    pub(crate) held_rustomino: Option<Rustomino>,
-    pub(crate) previous_state: GameState,
-    pub(crate) state: GameState,
-    pub(crate) level: usize,
-    pub(crate) score: usize,
-    pub(crate) assets: Assets,
-    pub(crate) controls: GameControls,
+pub struct RustrisState {
+    pub playfield: RustrisPlayfield,
+    pub next_rustomino: Option<Rustomino>,
+    pub held_rustomino: Option<Rustomino>,
+    pub previous_state: GameState,
+    pub state: GameState,
+    pub level: usize,
+    pub score: usize,
+    pub assets: Assets,
+    pub controls: GameControls,
     menu_state: menus::MenuState,
     paused_state: menus::PausedState,
     view_settings: draw::ViewSettings,
@@ -89,7 +89,7 @@ pub(crate) struct RustrisState {
 }
 
 impl RustrisState {
-    pub(crate) fn new(ctx: &mut Context) -> GameResult<Self> {
+    pub fn new(ctx: &mut Context) -> GameResult<Self> {
         log::info!("Loading game resources");
         // load font
         ctx.gfx
@@ -451,7 +451,7 @@ impl RustrisState {
     }
     // returns a closure which handles the provided
     // control for the game
-    pub(crate) fn control_handler(&mut self, control: Control) -> fn(&mut RustrisState) {
+    pub fn control_handler(&mut self, control: Control) -> fn(&mut RustrisState) {
         match control {
             Control::Left => RustrisState::translate_left,
             Control::Right => RustrisState::translate_right,
@@ -770,7 +770,7 @@ fn gravity_delay(level: usize) -> f64 {
     gravity_delay
 }
 
-pub(crate) fn handle_global_inputs(input: &KeyInput, music_volume: &mut f32) {
+pub fn handle_global_inputs(input: &KeyInput, music_volume: &mut f32) {
     // volume down
     if input.keycode == Some(KeyCode::Minus) || input.keycode == Some(KeyCode::NumpadSubtract) {
         *music_volume -= MUSIC_VOLUME_CHANGE;

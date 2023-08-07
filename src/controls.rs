@@ -119,7 +119,7 @@ impl Default for GameControls {
 }
 
 impl GameControls {
-    pub(crate) fn clear_inputs(&mut self) {
+    pub fn clear_inputs(&mut self) {
         for input in Control::iter() {
             self.input_states
                 .entry(input)
@@ -127,7 +127,7 @@ impl GameControls {
         }
     }
 
-    pub(crate) fn set_pressed(&mut self, keycode: Option<KeyCode>) {
+    pub fn set_pressed(&mut self, keycode: Option<KeyCode>) {
         for (key, input) in self.key_map.iter() {
             if keycode == Some(*key) {
                 self.input_states
@@ -137,7 +137,7 @@ impl GameControls {
         }
     }
 
-    pub(crate) fn set_released(&mut self, keycode: Option<KeyCode>) {
+    pub fn set_released(&mut self, keycode: Option<KeyCode>) {
         for (key, input) in self.key_map.iter() {
             if keycode == Some(*key) {
                 self.input_states

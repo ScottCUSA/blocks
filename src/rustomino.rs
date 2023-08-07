@@ -400,16 +400,16 @@ const I_WALL_KICK_TESTS: [[IVec2; 5]; 8] = [
 ];
 
 #[derive(Debug, Clone)]
-pub(crate) struct Rustomino {
-    pub(crate) rtype: RustominoType,
-    pub(crate) state: RustominoState,
-    pub(crate) rotation: RustominoRotation,
-    pub(crate) blocks: [IVec2; 4],
-    pub(crate) translation: IVec2,
+pub struct Rustomino {
+    pub rtype: RustominoType,
+    pub state: RustominoState,
+    pub rotation: RustominoRotation,
+    pub blocks: [IVec2; 4],
+    pub translation: IVec2,
 }
 
 impl Rustomino {
-    pub(crate) fn new(block_type: RustominoType) -> Rustomino {
+    pub fn new(block_type: RustominoType) -> Rustomino {
         match block_type {
             RustominoType::I => Rustomino {
                 rtype: block_type,
@@ -463,23 +463,23 @@ impl Rustomino {
         }
     }
 
-    pub(crate) fn reset(self) -> Rustomino {
+    pub fn reset(self) -> Rustomino {
         Rustomino::new(self.rtype)
     }
 
-    pub(crate) fn translate(&mut self, delta: IVec2) {
+    pub fn translate(&mut self, delta: IVec2) {
         self.translation += delta;
     }
 
-    pub(crate) fn translated(&self, delta: &IVec2) -> [IVec2; 4] {
+    pub fn translated(&self, delta: &IVec2) -> [IVec2; 4] {
         translated(&translated(&self.blocks, &self.translation), delta)
     }
 
-    pub(crate) fn playfield_slots(&self) -> [IVec2; 4] {
+    pub fn playfield_slots(&self) -> [IVec2; 4] {
         self.translated(&IVec2::ZERO)
     }
 
-    pub(crate) fn rotate(&mut self, rotation: &Rotation, translation: &IVec2) {
+    pub fn rotate(&mut self, rotation: &Rotation, translation: &IVec2) {
         let rotation_trans = self.rotation.get_rotation_trans(rotation);
 
         self.blocks = [
@@ -492,7 +492,7 @@ impl Rustomino {
         self.rotation.rotate(rotation);
     }
 
-    pub(crate) fn rotated(&self, rotation: &Rotation) -> [IVec2; 4] {
+    pub fn rotated(&self, rotation: &Rotation) -> [IVec2; 4] {
         let rotation = self.rotation.get_rotation_trans(rotation);
 
         [
@@ -503,17 +503,17 @@ impl Rustomino {
         ]
     }
 
-    pub(crate) fn wall_kick_tests(&self, rotation: &Rotation) -> [IVec2; 5] {
+    pub fn wall_kick_tests(&self, rotation: &Rotation) -> [IVec2; 5] {
         self.rotation.get_wall_kick_tests(self.rtype, rotation)
     }
 
-    pub(crate) fn set_state(&mut self, state: RustominoState) {
+    pub fn set_state(&mut self, state: RustominoState) {
         log::trace!("setting rustomino state: {:?}", state);
         self.state = state;
     }
 }
 
-pub(crate) fn translated(blocks: &[IVec2; 4], delta: &IVec2) -> [IVec2; 4] {
+pub fn translated(blocks: &[IVec2; 4], delta: &IVec2) -> [IVec2; 4] {
     [
         blocks[0] + *delta,
         blocks[1] + *delta,
@@ -523,7 +523,7 @@ pub(crate) fn translated(blocks: &[IVec2; 4], delta: &IVec2) -> [IVec2; 4] {
 }
 
 #[derive(Debug, Clone, Copy, EnumIter, PartialEq, Eq)]
-pub(crate) enum RustominoType {
+pub enum RustominoType {
     I,
     O,
     T,
@@ -542,7 +542,7 @@ impl RustominoType {
     const GREEN: Color = Color::new(0.4, 0.99, 0.0, 1.0);
     const RED: Color = Color::new(1.0, 0.06, 0.24, 1.0);
 
-    pub(crate) fn color(&self) -> Color {
+    pub fn color(&self) -> Color {
         match self {
             RustominoType::I => RustominoType::CYAN,
             RustominoType::O => RustominoType::YELLOW,
@@ -556,13 +556,13 @@ impl RustominoType {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum RustominoState {
+pub enum RustominoState {
     Falling { time: f64 },
     Lockdown { time: f64 },
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum Direction {
+pub enum Direction {
     N,
     E,
     S,
@@ -593,13 +593,13 @@ impl Direction {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum Rotation {
+pub enum Rotation {
     Cw,
     Ccw,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct RustominoRotation {
+pub struct RustominoRotation {
     direction: Direction,
     n2e_trans: [IVec2; 4],
     e2s_trans: [IVec2; 4],
@@ -699,20 +699,20 @@ fn neg_trans(block_trans: [IVec2; 4]) -> [IVec2; 4] {
     ]
 }
 
-pub(crate) struct RustominoBag {
+pub struct RustominoBag {
     bag: Vec<RustominoType>, // contains the next rustomino types, shuffled
     rng: rand_xoshiro::Xoshiro256PlusPlus,
 }
 
 impl RustominoBag {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         RustominoBag {
             bag: Vec::new(),
             rng: rand_xoshiro::Xoshiro256PlusPlus::from_entropy(),
         }
     }
 
-    pub(crate) fn get_rustomino(&mut self) -> Rustomino {
+    pub fn get_rustomino(&mut self) -> Rustomino {
         // make sure the bag isn't empty
         self.fill_rustomino_bag();
 

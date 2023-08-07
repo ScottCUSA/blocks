@@ -20,7 +20,7 @@ static PAUSED_ENTRIES: Lazy<Vec<String>> = Lazy::new(|| {
     entries
 });
 
-pub(crate) trait Menu {
+pub trait Menu {
     fn items(&self) -> &Vec<graphics::Text>;
     fn selected(&self) -> usize;
     fn next(&mut self);
@@ -29,13 +29,13 @@ pub(crate) trait Menu {
     fn set_selection(&mut self, index: usize);
 }
 
-pub(crate) struct MenuState {
+pub struct MenuState {
     menu: Vec<graphics::Text>,
     selected: usize,
 }
 
 impl MenuState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         let menu = MENU_ENTRIES
             .iter()
             .map(graphics::Text::new)
@@ -70,13 +70,13 @@ impl Menu for MenuState {
     }
 }
 
-pub(crate) struct PausedState {
+pub struct PausedState {
     menu: Vec<graphics::Text>,
     selected: usize,
 }
 
 impl PausedState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         let menu = PAUSED_ENTRIES
             .iter()
             .map(graphics::Text::new)
