@@ -6,21 +6,21 @@ use crate::{
 };
 use std::{fmt::Display, mem::discriminant};
 
-pub const PLAYFIELD_SLOTS: [usize; 2] = [10, 22];
-pub const PLAYFIELD_SIZE: [i32; 2] = [10, 20];
+pub(crate) const PLAYFIELD_SLOTS: [usize; 2] = [10, 22];
+pub(crate) const PLAYFIELD_SIZE: [i32; 2] = [10, 20];
 
 type PlayfieldSlots = [[SlotState; PLAYFIELD_SLOTS[0]]; PLAYFIELD_SLOTS[1]];
 
 // RustrisPlayfield
 #[derive(Debug)]
-pub struct RustrisPlayfield {
-    pub slots: PlayfieldSlots,
-    pub active_rustomino: Option<Rustomino>,
-    pub ghost_rustomino: Option<Rustomino>,
+pub(crate) struct RustrisPlayfield {
+    pub(crate) slots: PlayfieldSlots,
+    pub(crate) active_rustomino: Option<Rustomino>,
+    pub(crate) ghost_rustomino: Option<Rustomino>,
 }
 
 impl RustrisPlayfield {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         log::info!("Initializing Rustris Playfield");
         RustrisPlayfield {
             slots: [[SlotState::Empty; PLAYFIELD_SLOTS[0]]; PLAYFIELD_SLOTS[1]],
@@ -32,7 +32,7 @@ impl RustrisPlayfield {
     /// Adds a new rustomino to the playfield
     /// returns false if there was a collision
     /// while adding the block (game over)
-    pub fn set_active(&mut self, rustomino: Rustomino) -> bool {
+    pub(crate) fn set_active(&mut self, rustomino: Rustomino) -> bool {
         log::info!("playing new rustomino: {:?}", rustomino.rtype);
         log::trace!("new rustomino: {:?}", rustomino);
         let ok = !check_collision(&self.slots, rustomino.playfield_slots());
@@ -47,7 +47,7 @@ impl RustrisPlayfield {
         ok
     }
 
-    pub fn take_active(&mut self) -> Option<Rustomino> {
+    pub(crate) fn take_active(&mut self) -> Option<Rustomino> {
         let Some(active_rustomino) = self.active_rustomino.take() else {
             return None;
         };
@@ -62,12 +62,12 @@ impl RustrisPlayfield {
         Some(active_rustomino.reset())
     }
     /// checks to see if the playfield needs the next rustomino
-    pub fn ready_for_next(&self) -> bool {
+    pub(crate) fn ready_for_next(&self) -> bool {
         self.active_rustomino.is_none()
     }
 
     // checking if rustomino can fall
-    pub fn active_can_fall(&self) -> bool {
+    pub(crate) fn active_can_fall(&self) -> bool {
         log::debug!("checking if the active rustomino can fall");
         // get the active rustomino
         let Some(rustomino) = &self.active_rustomino else {
@@ -85,20 +85,20 @@ impl RustrisPlayfield {
         true
     }
 
-    pub fn get_active_state(&self) -> Option<RustominoState> {
+    pub(crate) fn get_active_state(&self) -> Option<RustominoState> {
         self.active_rustomino
             .as_ref()
             .map(|active_rustomino| active_rustomino.state)
     }
 
-    pub fn set_active_state(&mut self, new_state: RustominoState) {
+    pub(crate) fn set_active_state(&mut self, new_state: RustominoState) {
         if let Some(active_rustomino) = self.active_rustomino.as_mut() {
             active_rustomino.set_state(new_state)
         }
     }
 
     /// Attempt to rotate the active rustomino
-    pub fn rotate_active(&mut self, rotation: Rotation) -> bool {
+    pub(crate) fn rotate_active(&mut self, rotation: Rotation) -> bool {
         let Some(active_rustomino) = self.active_rustomino.as_mut()  else {
             return false;
         };
@@ -132,7 +132,7 @@ impl RustrisPlayfield {
 
     /// Attempt to translate the active rustomino.
     /// Return true if possible
-    pub fn translate_active(&mut self, direction: TranslationDirection) -> bool {
+    pub(crate) fn translate_active(&mut self, direction: TranslationDirection) -> bool {
         let Some(active_rustomino) = self.active_rustomino.as_mut() else {
             return false;
         };
@@ -156,7 +156,7 @@ impl RustrisPlayfield {
         true
     }
 
-    pub fn hard_drop_active(&mut self) {
+    pub(crate) fn hard_drop_active(&mut self) {
         let Some(active_rustomino) = self.active_rustomino.as_mut()  else {
             return;
         };
@@ -170,7 +170,7 @@ impl RustrisPlayfield {
     }
 
     /// lock the active rustomino
-    pub fn lock_active(&mut self) {
+    pub(crate) fn lock_active(&mut self) {
         // get the active rustomino
         if let Some(active_rustomino) = self.active_rustomino.as_mut() {
             log::info!("locking rustomino: {:?}", active_rustomino.rtype);
@@ -189,7 +189,7 @@ impl RustrisPlayfield {
     }
 
     /// apply gravity to the active rustomino
-    pub fn apply_gravity(&mut self) {
+    pub(crate) fn apply_gravity(&mut self) {
         log::debug!("applying gravity");
         // apply the gravity translation rustomino
         if let Some(active_rustomino) = self.active_rustomino.as_mut() {
@@ -207,7 +207,7 @@ impl RustrisPlayfield {
         }
     }
 
-    pub fn clear_completed_lines(&mut self) -> Vec<usize> {
+    pub(crate) fn clear_completed_lines(&mut self) -> Vec<usize> {
         let completed_lines = self.get_complete_lines();
         let num_completed_lines = completed_lines.len();
         if num_completed_lines == 0 {
@@ -440,7 +440,7 @@ impl Display for RustrisPlayfield {
 }
 
 #[derive(Debug)]
-pub enum TranslationDirection {
+pub(crate) enum TranslationDirection {
     Left,
     Right,
     Down,
@@ -450,7 +450,7 @@ impl TranslationDirection {
     const LEFT_TRANSLATION: IVec2 = IVec2::new(-1, 0);
     const RIGHT_TRANSLATION: IVec2 = IVec2::new(1, 0);
     const DOWN_TRANSLATION: IVec2 = IVec2::new(0, -1);
-    pub fn get_translation(&self) -> IVec2 {
+    pub(crate) fn get_translation(&self) -> IVec2 {
         match self {
             TranslationDirection::Left => Self::LEFT_TRANSLATION,
             TranslationDirection::Right => Self::RIGHT_TRANSLATION,
@@ -460,7 +460,7 @@ impl TranslationDirection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SlotState {
+pub(crate) enum SlotState {
     Empty,
     Occupied(RustominoType),
     Locked(RustominoType),

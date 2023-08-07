@@ -7,6 +7,7 @@ use ggez::{
     input::keyboard::KeyInput,
     Context, GameResult,
 };
+use strum::IntoEnumIterator;
 
 use crate::{
     controls::{self, Control, GameControls},
@@ -17,12 +18,12 @@ use crate::{
     util::variants_equal,
 };
 
-use std::f64::consts::E;
+use std::{f64::consts::E, time};
 
 // GAMEPLAY CONSTANTS
 const GRAVITY_NUMERATOR: f64 = 1.0;
 const GRAVITY_FACTOR: f64 = 0.1; // used to slow or increase gravity factor
-const STARTING_LEVEL: usize = 20;
+const STARTING_LEVEL: usize = 1;
 const LINES_PER_LEVEL: usize = 10; // number of lines that need to be cleared before level advances
 const LOCKDOWN_DELAY: f64 = 0.5; // how long to wait before locking block (Tetris Guideline)
 const LOCKDOWN_MAX_RESETS: u32 = 15; // maximum number of times the lockdown timer can be reset (Tetris Guideline)
@@ -38,7 +39,7 @@ const MUSIC_VOL: f32 = 0.0;
 const MUSIC_VOLUME_CHANGE: f32 = 0.005;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum GameState {
+pub(crate) enum GameState {
     Menu,
     Playing,
     Paused,
@@ -47,9 +48,9 @@ pub enum GameState {
     Quit,
 }
 
-pub struct Assets {
-    pub music_1: audio::Source,
-    pub game_over: audio::Source,
+pub(crate) struct Assets {
+    pub(crate) music_1: audio::Source,
+    pub(crate) game_over: audio::Source,
 }
 
 impl Assets {
@@ -66,16 +67,16 @@ impl Assets {
     }
 }
 
-pub struct RustrisState {
-    pub playfield: RustrisPlayfield,
-    pub next_rustomino: Option<Rustomino>,
-    pub held_rustomino: Option<Rustomino>,
-    pub previous_state: GameState,
-    pub state: GameState,
-    pub level: usize,
-    pub score: usize,
-    pub assets: Assets,
-    pub controls: Option<GameControls>,
+pub(crate) struct RustrisState {
+    pub(crate) playfield: RustrisPlayfield,
+    pub(crate) next_rustomino: Option<Rustomino>,
+    pub(crate) held_rustomino: Option<Rustomino>,
+    pub(crate) previous_state: GameState,
+    pub(crate) state: GameState,
+    pub(crate) level: usize,
+    pub(crate) score: usize,
+    pub(crate) assets: Assets,
+    pub(crate) controls: GameControls,
     menu_state: menus::MenuState,
     paused_state: menus::PausedState,
     view_settings: draw::ViewSettings,
@@ -88,7 +89,7 @@ pub struct RustrisState {
 }
 
 impl RustrisState {
-    pub fn new(ctx: &mut Context) -> GameResult<Self> {
+    pub(crate) fn new(ctx: &mut Context) -> GameResult<Self> {
         log::info!("Loading game resources");
         // load font
         ctx.gfx
@@ -98,7 +99,7 @@ impl RustrisState {
         let mut assets = Assets::new(ctx)?;
         assets.music_1.play_detached(ctx)?;
 
-        let control_state = Some(GameControls::default());
+        let control_state = GameControls::default();
         let playfield = RustrisPlayfield::new();
 
         // get the window size
@@ -261,7 +262,7 @@ impl RustrisState {
         if !self.playfield.translate_active(TranslationDirection::Down) {
             // per the teris guide we shouldn't lock a block with soft drop
             let Some(state) = self.playfield.get_active_state() else {
-                panic!("soft_drop called when there isn't an active state!");
+                return;
             };
             // check if the block state is already in lockdown
             if !variants_equal(&state, &RustominoState::Lockdown { time: 0.0 }) {
@@ -456,7 +457,7 @@ impl RustrisState {
     }
     // returns a closure which handles the provided
     // control for the game
-    pub fn control_handler(&mut self, control: &Control) -> fn(&mut RustrisState) {
+    pub(crate) fn control_handler(&mut self, control: Control) -> fn(&mut RustrisState) {
         match control {
             Control::Left => RustrisState::translate_left,
             Control::Right => RustrisState::translate_right,
@@ -491,6 +492,57 @@ impl RustrisState {
         }
         self.paused_state.reset_selection();
     }
+
+    fn handle_playing_inputs(&mut self) {
+        // iterate through the controls
+        for control in Control::iter() {
+            match self.controls.input_states[&control] {
+                controls::InputState::Down(time) => {
+                    let duration = time.elapsed().as_secs_f64();
+                    match control.action_delay() {
+                        Some(delay) if duration >= delay => {
+                            log::debug!("action delay met for {:?}", control);
+                            self.controls
+                                .input_states
+                                .entry(control.clone())
+                                .and_modify(|e| {
+                                    *e = controls::InputState::Held(time::Instant::now());
+                                });
+                            self.control_handler(control)(self);
+                        }
+                        None => {
+                            log::debug!("action delay not met for {:?}", control);
+                            self.controls
+                                .input_states
+                                .entry(control.clone())
+                                .and_modify(|e| {
+                                    *e = controls::InputState::Up;
+                                });
+                            self.control_handler(control)(self);
+                        }
+                        _ => (),
+                    }
+                }
+                controls::InputState::Held(time) => {
+                    let duration = time.elapsed().as_secs_f64();
+                    match control.action_repeat_delay() {
+                        Some(delay) if duration >= delay => {
+                            log::debug!("action repeat delay met for {:?}", control);
+                            self.controls
+                                .input_states
+                                .entry(control.clone())
+                                .and_modify(|e| {
+                                    *e = controls::InputState::Held(time::Instant::now());
+                                });
+                            self.control_handler(control)(self);
+                        }
+                        _ => (),
+                    }
+                }
+                _ => (),
+            }
+        }
+    }
 }
 
 impl EventHandler for RustrisState {
@@ -506,21 +558,31 @@ impl EventHandler for RustrisState {
                     self.previous_state = GameState::Menu;
                 }
                 GameState::Playing => {
+                    self.handle_playing_inputs();
                     if self.ready_playfield() {
                         self.playing_update(delta_time);
                     }
                     self.previous_state = GameState::Playing;
                 }
-                GameState::Paused => {
+                GameState::Paused if self.previous_state != self.state => {
+                    self.controls.clear_inputs();
                     self.previous_state = GameState::Paused;
                 }
                 GameState::GameOver if self.previous_state != self.state => {
                     // play game over sound
                     self.assets.game_over.play(ctx)?;
+                    self.controls.clear_inputs();
                     self.previous_state = GameState::GameOver;
                 }
-                GameState::GameOver => {}
-                GameState::Options => {}
+                GameState::Paused => {
+                    self.previous_state = GameState::Paused;
+                }
+                GameState::GameOver => {
+                    self.previous_state = GameState::GameOver;
+                }
+                GameState::Options => {
+                    self.previous_state = GameState::Options;
+                }
                 GameState::Quit => ctx.request_quit(),
             }
             self.previous_state = self.state;
@@ -623,6 +685,10 @@ impl EventHandler for RustrisState {
                 // clear all other inputs and continue
                 if input.keycode == Some(KeyCode::Escape) {
                     self.pause();
+                    self.controls.clear_inputs();
+                }
+                if !repeated {
+                    self.controls.set_pressed(input.keycode);
                 }
             }
             GameState::Paused => {
@@ -655,7 +721,9 @@ impl EventHandler for RustrisState {
     fn key_up_event(&mut self, _ctx: &mut Context, input: KeyInput) -> GameResult {
         match self.state {
             GameState::Menu => {}
-            GameState::Playing => {}
+            GameState::Playing => {
+                self.controls.set_released(input.keycode);
+            }
             GameState::Paused => {}
             GameState::GameOver => {}
             GameState::Options => {}
@@ -726,7 +794,7 @@ fn control_handler<'a>(control: &'a Control, game: &'a mut RustrisState) -> Box<
     }
 }
 
-pub fn handle_global_inputs(input: &KeyInput, music_volume: &mut f32) {
+pub(crate) fn handle_global_inputs(input: &KeyInput, music_volume: &mut f32) {
     // volume down
     if input.keycode == Some(KeyCode::Minus) || input.keycode == Some(KeyCode::NumpadSubtract) {
         *music_volume -= MUSIC_VOLUME_CHANGE;
@@ -740,3 +808,5 @@ pub fn handle_global_inputs(input: &KeyInput, music_volume: &mut f32) {
         log::debug!("volume increase {}", music_volume);
     }
 }
+
+fn handle_playing_inputs(control_states: &mut GameControls, game: &mut RustrisState) {}

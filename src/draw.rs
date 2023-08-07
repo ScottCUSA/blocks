@@ -13,10 +13,10 @@ const BLOCK_SIZE: f32 = 30.;
 const BLOCK_PADDING: f32 = 1.;
 const STAGING_PADDING: f32 = 2.;
 
-pub const BACKGROUND_COLOR: Color = Color::new(0.0, 0.29, 0.38, 1.0);
-pub const VIEW_WIDTH: f32 = 1024.0;
-pub const VIEW_HEIGHT: f32 = 768.;
-pub const STAGING_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
+pub(crate) const BACKGROUND_COLOR: Color = Color::new(0.0, 0.29, 0.38, 1.0);
+pub(crate) const VIEW_WIDTH: f32 = 1024.0;
+pub(crate) const VIEW_HEIGHT: f32 = 768.;
+pub(crate) const STAGING_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 const PLAYFIELD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 const PREVIEW_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 const HOLD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.2);
@@ -25,21 +25,21 @@ const PAUSED_OVERLAY_COLOR: Color = Color::new(0.1, 0.1, 0.1, 0.6);
 const CONTROLS_BACKGROUND_COLOR: Color = Color::new(0.34, 0.09, 0.12, 0.8);
 
 #[derive(Debug)]
-pub struct ViewSettings {
-    pub view_rect: Rect,
-    pub playfield_rect: Rect,
-    pub staging_rect: Rect,
-    pub preview_rect: Rect,
-    pub hold_rect: Rect,
-    pub score_label_pos: Vec2,
-    pub level_label_pos: Vec2,
-    pub title_pos: Vec2,
-    pub level_pos: Vec2,
-    pub score_pos: Vec2,
+pub(crate) struct ViewSettings {
+    pub(crate) view_rect: Rect,
+    pub(crate) playfield_rect: Rect,
+    pub(crate) staging_rect: Rect,
+    pub(crate) preview_rect: Rect,
+    pub(crate) hold_rect: Rect,
+    pub(crate) score_label_pos: Vec2,
+    pub(crate) level_label_pos: Vec2,
+    pub(crate) title_pos: Vec2,
+    pub(crate) level_pos: Vec2,
+    pub(crate) score_pos: Vec2,
 }
 
 impl ViewSettings {
-    pub fn new(drawable_width: f32, drawable_height: f32) -> Self {
+    pub(crate) fn new(drawable_width: f32, drawable_height: f32) -> Self {
         // calculate the playfield dimensions based on block size, padding and playfield slots
         let playfield_w =
             (playfield::PLAYFIELD_SLOTS[0] as f32 * (BLOCK_SIZE + BLOCK_PADDING)) + BLOCK_PADDING;
@@ -91,7 +91,7 @@ impl ViewSettings {
     }
 }
 
-pub fn draw_playing_backgound(
+pub(crate) fn draw_playing_backgound(
     ctx: &mut Context,
     canvas: &mut Canvas,
     view_settings: &ViewSettings,
@@ -250,7 +250,7 @@ fn draw_next(
     Ok(())
 }
 
-pub fn draw_playing(
+pub(crate) fn draw_playing(
     ctx: &mut Context,
     canvas: &mut Canvas,
     playfield: &RustrisPlayfield,
@@ -286,7 +286,7 @@ pub fn draw_playing(
     Ok(())
 }
 
-pub fn draw_playing_overlay(
+pub(crate) fn draw_playing_overlay(
     ctx: &mut Context,
     canvas: &mut Canvas,
     game_level: usize,
@@ -330,7 +330,7 @@ pub fn draw_playing_overlay(
     Ok(())
 }
 
-pub fn draw_menu_background(
+pub(crate) fn draw_menu_background(
     ctx: &mut Context,
     canvas: &mut Canvas,
     view_settings: &ViewSettings,
@@ -402,7 +402,7 @@ fn draw_menu_text<T: Menu>(
     Ok(())
 }
 
-pub fn draw_menu(
+pub(crate) fn draw_menu(
     ctx: &mut Context,
     canvas: &mut Canvas,
     menu_state: &menus::MenuState,
@@ -415,7 +415,11 @@ pub fn draw_menu(
     Ok(())
 }
 
-pub fn draw_gameover(ctx: &mut Context, canvas: &mut Canvas, view_rect: &Rect) -> GameResult {
+pub(crate) fn draw_gameover(
+    ctx: &mut Context,
+    canvas: &mut Canvas,
+    view_rect: &Rect,
+) -> GameResult {
     let gameover_overlay =
         graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), *view_rect, PAUSED_OVERLAY_COLOR)?;
     canvas.draw(&gameover_overlay, graphics::DrawParam::default());
@@ -442,7 +446,11 @@ pub fn draw_gameover(ctx: &mut Context, canvas: &mut Canvas, view_rect: &Rect) -
     Ok(())
 }
 
-pub fn draw_help_text(ctx: &mut Context, canvas: &mut Canvas, view_rect: &Rect) -> GameResult {
+pub(crate) fn draw_help_text(
+    ctx: &mut Context,
+    canvas: &mut Canvas,
+    view_rect: &Rect,
+) -> GameResult {
     let help_overlay = graphics::Mesh::new_rectangle(
         ctx,
         DrawMode::fill(),
@@ -518,7 +526,7 @@ pub fn draw_help_text(ctx: &mut Context, canvas: &mut Canvas, view_rect: &Rect) 
     Ok(())
 }
 
-pub fn draw_paused(
+pub(crate) fn draw_paused(
     ctx: &mut Context,
     canvas: &mut Canvas,
     paused_state: &menus::PausedState,
@@ -531,7 +539,7 @@ pub fn draw_paused(
     Ok(())
 }
 
-pub fn draw_paused_background(
+pub(crate) fn draw_paused_background(
     ctx: &mut Context,
     canvas: &mut Canvas,
     view_settings: &ViewSettings,
@@ -578,15 +586,15 @@ fn playfield_block_rect(block: [i32; 2], staging_rect: &Rect, playfield_rect: &R
 }
 
 // #[derive(Debug, Clone, Copy)]
-// pub struct Rect<T> {
-//     pub x: T,
-//     pub y: T,
-//     pub w: T,
-//     pub h: T,
+// pub(crate) struct Rect<T> {
+//     pub(crate) x: T,
+//     pub(crate) y: T,
+//     pub(crate) w: T,
+//     pub(crate) h: T,
 // }
 
 // impl<T> Rect<T> {
-//     pub const fn new(x: T, y: T, w: T, h: T) -> Self {
+//     pub(crate) const fn new(x: T, y: T, w: T, h: T) -> Self {
 //         Rect { x, y, w, h }
 //     }
 // }

@@ -1,5 +1,5 @@
-use ggez::input::keyboard::{KeyCode, KeyInput};
-use std::collections::HashMap;
+use ggez::input::keyboard::KeyCode;
+use std::{collections::HashMap, time};
 use strum::{EnumIter, IntoEnumIterator};
 
 // default control settings
@@ -18,6 +18,14 @@ const SOFT_DROP_ACTION_DELAY: f64 = 0.2;
 const SOFT_DROP_ACTION_REPEAT_DELAY: f64 = 0.03;
 
 // TODO: implement saving and loading inputs from file
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum InputState {
+    #[default]
+    Up,
+    Down(time::Instant),
+    Held(time::Instant),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, EnumIter)]
 pub enum Control {
@@ -61,6 +69,7 @@ impl Control {
 pub struct GameControls {
     pub input_map: HashMap<Control, [Option<KeyCode>; 2]>,
     pub key_map: HashMap<KeyCode, Control>,
+    pub input_states: HashMap<Control, InputState>,
 }
 
 impl Default for GameControls {
@@ -104,6 +113,41 @@ impl Default for GameControls {
                     .chain(HOLD_KEYS.iter().flatten().map(|e| (*e, Control::Hold)))
                     .collect::<HashMap<KeyCode, Control>>()
             },
+            input_states: {
+                Control::iter()
+                    .map(|e| (e, InputState::default()))
+                    .collect::<HashMap<Control, InputState>>()
+            },
+        }
+    }
+}
+
+impl GameControls {
+    pub(crate) fn clear_inputs(&mut self) {
+        for input in Control::iter() {
+            self.input_states
+                .entry(input.clone())
+                .and_modify(|e| *e = InputState::Up);
+        }
+    }
+
+    pub(crate) fn set_pressed(&mut self, keycode: Option<KeyCode>) {
+        for (key, input) in self.key_map.iter() {
+            if keycode == Some(*key) {
+                self.input_states
+                    .entry(input.clone())
+                    .and_modify(|e| *e = InputState::Down(time::Instant::now()));
+            }
+        }
+    }
+
+    pub(crate) fn set_released(&mut self, keycode: Option<KeyCode>) {
+        for (key, input) in self.key_map.iter() {
+            if keycode == Some(*key) {
+                self.input_states
+                    .entry(input.clone())
+                    .and_modify(|e| *e = InputState::Up);
+            }
         }
     }
 }
