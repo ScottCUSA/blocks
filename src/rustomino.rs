@@ -1,366 +1,401 @@
 use ::rand::{seq::SliceRandom, SeedableRng};
-use macroquad::prelude::*;
+use ggez::{glam::IVec2, graphics::Color};
 use strum::{EnumIter, IntoEnumIterator};
 
-const I_START_TRANSLATION: IVec2 = ivec2(3, 18);
-const O_T_L_J_S_Z_START_TRANSLATION: IVec2 = ivec2(3, 19);
+const I_START_TRANSLATION: IVec2 = IVec2::new(3, 18);
+const O_T_L_J_S_Z_START_TRANSLATION: IVec2 = IVec2::new(3, 19);
 
-const I_BLOCKS: [IVec2; 4] = [ivec2(0, 2), ivec2(1, 2), ivec2(2, 2), ivec2(3, 2)];
-const O_BLOCKS: [IVec2; 4] = [ivec2(1, 2), ivec2(2, 2), ivec2(2, 1), ivec2(1, 1)];
-const T_BLOCKS: [IVec2; 4] = [ivec2(1, 1), ivec2(0, 1), ivec2(1, 2), ivec2(2, 1)];
-const L_BLOCKS: [IVec2; 4] = [ivec2(1, 1), ivec2(0, 1), ivec2(2, 2), ivec2(2, 1)];
-const J_BLOCKS: [IVec2; 4] = [ivec2(1, 1), ivec2(0, 1), ivec2(0, 2), ivec2(2, 1)];
-const S_BLOCKS: [IVec2; 4] = [ivec2(1, 1), ivec2(0, 1), ivec2(1, 2), ivec2(2, 2)];
-const Z_BLOCKS: [IVec2; 4] = [ivec2(1, 1), ivec2(0, 2), ivec2(1, 2), ivec2(2, 1)];
+const I_BLOCKS: [IVec2; 4] = [
+    IVec2::new(0, 2),
+    IVec2::new(1, 2),
+    IVec2::new(2, 2),
+    IVec2::new(3, 2),
+];
+const O_BLOCKS: [IVec2; 4] = [
+    IVec2::new(1, 2),
+    IVec2::new(2, 2),
+    IVec2::new(2, 1),
+    IVec2::new(1, 1),
+];
+const T_BLOCKS: [IVec2; 4] = [
+    IVec2::new(1, 1),
+    IVec2::new(0, 1),
+    IVec2::new(1, 2),
+    IVec2::new(2, 1),
+];
+const L_BLOCKS: [IVec2; 4] = [
+    IVec2::new(1, 1),
+    IVec2::new(0, 1),
+    IVec2::new(2, 2),
+    IVec2::new(2, 1),
+];
+const J_BLOCKS: [IVec2; 4] = [
+    IVec2::new(1, 1),
+    IVec2::new(0, 1),
+    IVec2::new(0, 2),
+    IVec2::new(2, 1),
+];
+const S_BLOCKS: [IVec2; 4] = [
+    IVec2::new(1, 1),
+    IVec2::new(0, 1),
+    IVec2::new(1, 2),
+    IVec2::new(2, 2),
+];
+const Z_BLOCKS: [IVec2; 4] = [
+    IVec2::new(1, 1),
+    IVec2::new(0, 2),
+    IVec2::new(1, 2),
+    IVec2::new(2, 1),
+];
 
 const I_ROTATIONS: [[IVec2; 4]; 4] = [
     [
         // N>>E || -(E>>N)
-        ivec2(2, 1),
-        ivec2(1, 0),
-        ivec2(0, -1),
-        ivec2(-1, -2),
+        IVec2::new(2, 1),
+        IVec2::new(1, 0),
+        IVec2::new(0, -1),
+        IVec2::new(-1, -2),
     ],
     [
         // E>>S || -(S>>E)
-        ivec2(1, -2),
-        ivec2(0, -1),
-        ivec2(-1, 0),
-        ivec2(-2, 1),
+        IVec2::new(1, -2),
+        IVec2::new(0, -1),
+        IVec2::new(-1, 0),
+        IVec2::new(-2, 1),
     ],
     [
         // S>>W || -(W>>S)
-        ivec2(-2, -1),
-        ivec2(-1, 0),
-        ivec2(0, 1),
-        ivec2(1, 2),
+        IVec2::new(-2, -1),
+        IVec2::new(-1, 0),
+        IVec2::new(0, 1),
+        IVec2::new(1, 2),
     ],
     [
         // W>>N || -(N>>W)
-        ivec2(-1, 2),
-        ivec2(0, 1),
-        ivec2(1, 0),
-        ivec2(2, -1),
+        IVec2::new(-1, 2),
+        IVec2::new(0, 1),
+        IVec2::new(1, 0),
+        IVec2::new(2, -1),
     ],
 ];
 
 const O_ROTATIONS: [[IVec2; 4]; 4] = [
     [
         // N>>E || -(E>>N)
-        ivec2(1, 0),
-        ivec2(0, -1),
-        ivec2(-1, 0),
-        ivec2(0, 1),
+        IVec2::new(1, 0),
+        IVec2::new(0, -1),
+        IVec2::new(-1, 0),
+        IVec2::new(0, 1),
     ],
     [
         // E>>S || -(S>>E)
-        ivec2(0, -1),
-        ivec2(-1, 0),
-        ivec2(0, 1),
-        ivec2(1, 0),
+        IVec2::new(0, -1),
+        IVec2::new(-1, 0),
+        IVec2::new(0, 1),
+        IVec2::new(1, 0),
     ],
     [
         // S>>W || -(W>>S)
-        ivec2(-1, 0),
-        ivec2(0, 1),
-        ivec2(1, 0),
-        ivec2(0, -1),
+        IVec2::new(-1, 0),
+        IVec2::new(0, 1),
+        IVec2::new(1, 0),
+        IVec2::new(0, -1),
     ],
     [
         // W>>N || -(N>>W)
-        ivec2(0, 1),
-        ivec2(1, 0),
-        ivec2(0, -1),
-        ivec2(-1, 0),
+        IVec2::new(0, 1),
+        IVec2::new(1, 0),
+        IVec2::new(0, -1),
+        IVec2::new(-1, 0),
     ],
 ];
 
 const T_ROTATIONS: [[IVec2; 4]; 4] = [
     [
         // N>>E || -(E>>N)
-        ivec2(0, 0),
-        ivec2(1, 1),
-        ivec2(1, -1),
-        ivec2(-1, -1),
+        IVec2::new(0, 0),
+        IVec2::new(1, 1),
+        IVec2::new(1, -1),
+        IVec2::new(-1, -1),
     ],
     [
         // E>>S || -(S>>E)
-        ivec2(0, 0),
-        ivec2(1, -1),
-        ivec2(-1, -1),
-        ivec2(-1, 1),
+        IVec2::new(0, 0),
+        IVec2::new(1, -1),
+        IVec2::new(-1, -1),
+        IVec2::new(-1, 1),
     ],
     [
         // S>>W || -(W>>S)
-        ivec2(0, 0),
-        ivec2(-1, -1),
-        ivec2(-1, 1),
-        ivec2(1, 1),
+        IVec2::new(0, 0),
+        IVec2::new(-1, -1),
+        IVec2::new(-1, 1),
+        IVec2::new(1, 1),
     ],
     [
         // W>>N || -(N>>W)
-        ivec2(0, 0),
-        ivec2(-1, 1),
-        ivec2(1, 1),
-        ivec2(1, -1),
+        IVec2::new(0, 0),
+        IVec2::new(-1, 1),
+        IVec2::new(1, 1),
+        IVec2::new(1, -1),
     ],
 ];
 
 const L_ROTATIONS: [[IVec2; 4]; 4] = [
     [
         // N>>E || -(E>>N)
-        ivec2(0, 0),
-        ivec2(1, 1),
-        ivec2(0, -2),
-        ivec2(-1, -1),
+        IVec2::new(0, 0),
+        IVec2::new(1, 1),
+        IVec2::new(0, -2),
+        IVec2::new(-1, -1),
     ],
     [
         // E>>S || -(S>>E)
-        ivec2(0, 0),
-        ivec2(1, -1),
-        ivec2(-2, 0),
-        ivec2(-1, 1),
+        IVec2::new(0, 0),
+        IVec2::new(1, -1),
+        IVec2::new(-2, 0),
+        IVec2::new(-1, 1),
     ],
     [
         // S>>W || -(W>>S)
-        ivec2(0, 0),
-        ivec2(-1, -1),
-        ivec2(0, 2),
-        ivec2(1, 1),
+        IVec2::new(0, 0),
+        IVec2::new(-1, -1),
+        IVec2::new(0, 2),
+        IVec2::new(1, 1),
     ],
     [
         // W>>N || -(N>>W)
-        ivec2(0, 0),
-        ivec2(-1, 1),
-        ivec2(2, 0),
-        ivec2(1, -1),
+        IVec2::new(0, 0),
+        IVec2::new(-1, 1),
+        IVec2::new(2, 0),
+        IVec2::new(1, -1),
     ],
 ];
 
 const J_ROTATIONS: [[IVec2; 4]; 4] = [
     [
         // N>>E || -(E>>N)
-        ivec2(0, 0),
-        ivec2(1, 1),
-        ivec2(2, 0),
-        ivec2(-1, -1),
+        IVec2::new(0, 0),
+        IVec2::new(1, 1),
+        IVec2::new(2, 0),
+        IVec2::new(-1, -1),
     ],
     [
         // E>>S || -(S>>E)
-        ivec2(0, 0),
-        ivec2(1, -1),
-        ivec2(0, -2),
-        ivec2(-1, 1),
+        IVec2::new(0, 0),
+        IVec2::new(1, -1),
+        IVec2::new(0, -2),
+        IVec2::new(-1, 1),
     ],
     [
         // S>>W || -(W>>S)
-        ivec2(0, 0),
-        ivec2(-1, -1),
-        ivec2(-2, 0),
-        ivec2(1, 1),
+        IVec2::new(0, 0),
+        IVec2::new(-1, -1),
+        IVec2::new(-2, 0),
+        IVec2::new(1, 1),
     ],
     [
         // W>>N || -(N>>W)
-        ivec2(0, 0),
-        ivec2(-1, 1),
-        ivec2(0, 2),
-        ivec2(1, -1),
+        IVec2::new(0, 0),
+        IVec2::new(-1, 1),
+        IVec2::new(0, 2),
+        IVec2::new(1, -1),
     ],
 ];
 
 const S_ROTATIONS: [[IVec2; 4]; 4] = [
     [
         // N>>E || -(E>>N)
-        ivec2(0, 0),
-        ivec2(1, 1),
-        ivec2(1, -1),
-        ivec2(0, -2),
+        IVec2::new(0, 0),
+        IVec2::new(1, 1),
+        IVec2::new(1, -1),
+        IVec2::new(0, -2),
     ],
     [
         // E>>S || -(S>>E)
-        ivec2(0, 0),
-        ivec2(1, -1),
-        ivec2(-1, -1),
-        ivec2(-2, 0),
+        IVec2::new(0, 0),
+        IVec2::new(1, -1),
+        IVec2::new(-1, -1),
+        IVec2::new(-2, 0),
     ],
     [
         // S>>W || -(W>>S)
-        ivec2(0, 0),
-        ivec2(-1, -1),
-        ivec2(-1, 1),
-        ivec2(0, 2),
+        IVec2::new(0, 0),
+        IVec2::new(-1, -1),
+        IVec2::new(-1, 1),
+        IVec2::new(0, 2),
     ],
     [
         // W>>N || -(N>>W)
-        ivec2(0, 0),
-        ivec2(-1, 1),
-        ivec2(1, 1),
-        ivec2(2, 0),
+        IVec2::new(0, 0),
+        IVec2::new(-1, 1),
+        IVec2::new(1, 1),
+        IVec2::new(2, 0),
     ],
 ];
 
 const Z_ROTATIONS: [[IVec2; 4]; 4] = [
     [
         // N>>E || -(E>>N)
-        ivec2(0, 0),
-        ivec2(2, 0),
-        ivec2(1, -1),
-        ivec2(-1, -1),
+        IVec2::new(0, 0),
+        IVec2::new(2, 0),
+        IVec2::new(1, -1),
+        IVec2::new(-1, -1),
     ],
     [
         // E>>S || -(S>>E)
-        ivec2(0, 0),
-        ivec2(0, -2),
-        ivec2(-1, -1),
-        ivec2(-1, 1),
+        IVec2::new(0, 0),
+        IVec2::new(0, -2),
+        IVec2::new(-1, -1),
+        IVec2::new(-1, 1),
     ],
     [
         // S>>W || -(W>>S)
-        ivec2(0, 0),
-        ivec2(-2, 0),
-        ivec2(-1, 1),
-        ivec2(1, 1),
+        IVec2::new(0, 0),
+        IVec2::new(-2, 0),
+        IVec2::new(-1, 1),
+        IVec2::new(1, 1),
     ],
     [
         // W>>N || -(N>>W)
-        ivec2(0, 0),
-        ivec2(0, 2),
-        ivec2(1, 1),
-        ivec2(1, -1),
+        IVec2::new(0, 0),
+        IVec2::new(0, 2),
+        IVec2::new(1, 1),
+        IVec2::new(1, -1),
     ],
 ];
 
 const JLSTZ_WALL_KICK_TESTS: [[IVec2; 5]; 8] = [
     [
         // N->E (0, 0),(-1, 0),(-1,1),( 0,-2),(-1,-2)
-        ivec2(0, 0),
-        ivec2(-1, 0),
-        ivec2(-1, 1),
-        ivec2(0, -2),
-        ivec2(-1, -2),
+        IVec2::new(0, 0),
+        IVec2::new(-1, 0),
+        IVec2::new(-1, 1),
+        IVec2::new(0, -2),
+        IVec2::new(-1, -2),
     ],
     [
         // E->N (0, 0),(1, 0),(1,-1),( 0,2),(1,2)
-        ivec2(0, 0),
-        ivec2(1, 0),
-        ivec2(1, -1),
-        ivec2(0, 2),
-        ivec2(1, 2),
+        IVec2::new(0, 0),
+        IVec2::new(1, 0),
+        IVec2::new(1, -1),
+        IVec2::new(0, 2),
+        IVec2::new(1, 2),
     ],
     [
         // E->S (0, 0),(1, 0),(1,-1),(0, 2),(1, 2)
-        ivec2(0, 0),
-        ivec2(1, 0),
-        ivec2(1, -1),
-        ivec2(0, 2),
-        ivec2(1, 2),
+        IVec2::new(0, 0),
+        IVec2::new(1, 0),
+        IVec2::new(1, -1),
+        IVec2::new(0, 2),
+        IVec2::new(1, 2),
     ],
     [
         // S->E ( 0, 0),(-1, 0),(-1,1),( 0,-2),(-1,-2)
-        ivec2(0, 0),
-        ivec2(-1, 0),
-        ivec2(-1, 1),
-        ivec2(0, -2),
-        ivec2(-1, -2),
+        IVec2::new(0, 0),
+        IVec2::new(-1, 0),
+        IVec2::new(-1, 1),
+        IVec2::new(0, -2),
+        IVec2::new(-1, -2),
     ],
     [
         // E->W ( 0, 0),(1, 0),(1,1),( 0,-2),(1,-2)
-        ivec2(0, 0),
-        ivec2(1, 0),
-        ivec2(1, 1),
-        ivec2(0, -2),
-        ivec2(1, -2),
+        IVec2::new(0, 0),
+        IVec2::new(1, 0),
+        IVec2::new(1, 1),
+        IVec2::new(0, -2),
+        IVec2::new(1, -2),
     ],
     [
         // W->E ( 0, 0),(-1, 0),(-1,-1),( 0,2),(-1,2)
-        ivec2(0, 0),
-        ivec2(-1, 0),
-        ivec2(-1, -1),
-        ivec2(0, 2),
-        ivec2(-1, 2),
+        IVec2::new(0, 0),
+        IVec2::new(-1, 0),
+        IVec2::new(-1, -1),
+        IVec2::new(0, 2),
+        IVec2::new(-1, 2),
     ],
     [
         // W->N ( 0, 0),(-1, 0),(-1,-1),( 0,2),(-1,2)
-        ivec2(0, 0),
-        ivec2(-1, 0),
-        ivec2(-1, -1),
-        ivec2(0, 2),
-        ivec2(-1, 2),
+        IVec2::new(0, 0),
+        IVec2::new(-1, 0),
+        IVec2::new(-1, -1),
+        IVec2::new(0, 2),
+        IVec2::new(-1, 2),
     ],
     [
         // N->W (0, 0),(1, 0),(1, 1),(0, -2),(1, -2)
-        ivec2(0, 0),
-        ivec2(1, 0),
-        ivec2(1, 1),
-        ivec2(0, -2),
-        ivec2(1, -2),
+        IVec2::new(0, 0),
+        IVec2::new(1, 0),
+        IVec2::new(1, 1),
+        IVec2::new(0, -2),
+        IVec2::new(1, -2),
     ],
 ];
 
 const I_WALL_KICK_TESTS: [[IVec2; 5]; 8] = [
     [
         // N->E ( 0, 0),(-2, 0),(1, 0),(-2,-1),(1,2)
-        ivec2(0, 0),
-        ivec2(-2, 0),
-        ivec2(1, 0),
-        ivec2(-2, -1),
-        ivec2(1, 2),
+        IVec2::new(0, 0),
+        IVec2::new(-2, 0),
+        IVec2::new(1, 0),
+        IVec2::new(-2, -1),
+        IVec2::new(1, 2),
     ],
     [
         // E->N ( 0, 0),(2, 0),(-1, 0),(2,1),(-1,-2)
-        ivec2(0, 0),
-        ivec2(2, 0),
-        ivec2(-1, 0),
-        ivec2(2, 1),
-        ivec2(-1, -2),
+        IVec2::new(0, 0),
+        IVec2::new(2, 0),
+        IVec2::new(-1, 0),
+        IVec2::new(2, 1),
+        IVec2::new(-1, -2),
     ],
     [
         // E->S ( 0, 0),(-1, 0),(2, 0),(-1,2),(2,-1)
-        ivec2(0, 0),
-        ivec2(-1, 0),
-        ivec2(2, 0),
-        ivec2(-1, 2),
-        ivec2(2, -1),
+        IVec2::new(0, 0),
+        IVec2::new(-1, 0),
+        IVec2::new(2, 0),
+        IVec2::new(-1, 2),
+        IVec2::new(2, -1),
     ],
     [
         // S->E ( 0, 0),(1, 0),(-2, 0),(1,-2),(-2,1)
-        ivec2(0, 0),
-        ivec2(1, 0),
-        ivec2(-2, 0),
-        ivec2(1, -2),
-        ivec2(-2, 1),
+        IVec2::new(0, 0),
+        IVec2::new(1, 0),
+        IVec2::new(-2, 0),
+        IVec2::new(1, -2),
+        IVec2::new(-2, 1),
     ],
     [
         // E->W ( 0, 0),(2, 0),(-1, 0),(2,1),(-1,-2)
-        ivec2(0, 0),
-        ivec2(2, 0),
-        ivec2(-1, 0),
-        ivec2(2, 1),
-        ivec2(-1, -2),
+        IVec2::new(0, 0),
+        IVec2::new(2, 0),
+        IVec2::new(-1, 0),
+        IVec2::new(2, 1),
+        IVec2::new(-1, -2),
     ],
     [
         // W->E ( 0, 0),(-2, 0),(1, 0),(-2,-1),(1,2)
-        ivec2(0, 0),
-        ivec2(-2, 0),
-        ivec2(1, 0),
-        ivec2(-2, -1),
-        ivec2(1, 2),
+        IVec2::new(0, 0),
+        IVec2::new(-2, 0),
+        IVec2::new(1, 0),
+        IVec2::new(-2, -1),
+        IVec2::new(1, 2),
     ],
     [
         // W->N ( 0, 0),(1, 0),(-2, 0),(1,-2),(-2,1)
-        ivec2(0, 0),
-        ivec2(1, 0),
-        ivec2(-2, 0),
-        ivec2(1, -2),
-        ivec2(-2, 1),
+        IVec2::new(0, 0),
+        IVec2::new(1, 0),
+        IVec2::new(-2, 0),
+        IVec2::new(1, -2),
+        IVec2::new(-2, 1),
     ],
     [
         // N->W ( 0, 0),(-1, 0),(2, 0),(-1,2),(2,-1)
-        ivec2(0, 0),
-        ivec2(-1, 0),
-        ivec2(2, 0),
-        ivec2(-1, 2),
-        ivec2(2, -1),
+        IVec2::new(0, 0),
+        IVec2::new(-1, 0),
+        IVec2::new(2, 0),
+        IVec2::new(-1, 2),
+        IVec2::new(2, -1),
     ],
 ];
 
