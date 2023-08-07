@@ -14,6 +14,7 @@ const STAGING_PADDING: f32 = 2.;
 pub const BACKGROUND_COLOR: Color = Color::new(0.0, 0.29, 0.38, 1.0);
 pub const VIEW_WIDTH: f32 = 1024.0;
 pub const VIEW_HEIGHT: f32 = 768.;
+const UI_FONT_SIZE: f32 = 24.0;
 pub const STAGING_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 const PLAYFIELD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 const PREVIEW_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
@@ -300,7 +301,7 @@ pub fn draw_playing_text(
     canvas.draw(
         title_text
             .set_font("04b30")
-            .set_scale(graphics::PxScale::from(50.0)),
+            .set_scale(graphics::PxScale::from(UI_FONT_SIZE)),
         text_param
             .dest([view_settings.title_pos.x, view_settings.title_pos.y])
             .color(Color::new(1., 1., 1., 1.)),
@@ -309,7 +310,7 @@ pub fn draw_playing_text(
     canvas.draw(
         level_text
             .set_font("04b30")
-            .set_scale(graphics::PxScale::from(50.0)),
+            .set_scale(graphics::PxScale::from(UI_FONT_SIZE)),
         text_param
             .dest([
                 view_settings.level_label_pos.x,
@@ -321,7 +322,7 @@ pub fn draw_playing_text(
     canvas.draw(
         score_text
             .set_font("04b30")
-            .set_scale(graphics::PxScale::from(50.0)),
+            .set_scale(graphics::PxScale::from(UI_FONT_SIZE)),
         text_param
             .dest([
                 view_settings.score_label_pos.x,
@@ -331,13 +332,17 @@ pub fn draw_playing_text(
     );
 
     canvas.draw(
-        &graphics::Text::new(level.to_string()),
+        graphics::Text::new(level.to_string())
+            .set_font("04b30")
+            .set_scale(graphics::PxScale::from(UI_FONT_SIZE)),
         text_param
             .dest([view_settings.level_pos.x, view_settings.level_pos.y])
             .color(Color::new(1., 1., 1., 1.)),
     );
     canvas.draw(
-        &graphics::Text::new(score.to_string()),
+        graphics::Text::new(score.to_string())
+            .set_font("04b30")
+            .set_scale(graphics::PxScale::from(UI_FONT_SIZE)),
         text_param
             .dest([view_settings.score_pos.x, view_settings.score_pos.y])
             .color(Color::new(1., 1., 1., 1.)),
@@ -547,7 +552,6 @@ pub fn draw_paused(
     // draw the menu background
     draw_paused_background(ctx, canvas, view_settings)?;
     draw_menu_text(ctx, canvas, paused_state, view_settings, "Paused!")?;
-    // draw_paused_text(ctx, canvas, paused_state, view_settings)?;
     Ok(())
 }
 
@@ -595,37 +599,3 @@ fn playfield_block_rect(block: [i32; 2], staging_rect: &Rect, playfield_rect: &R
 
     Rect::new(x, y, BLOCK_SIZE, BLOCK_SIZE)
 }
-
-// #[derive(Debug, Clone, Copy)]
-// pub struct Rect<T> {
-//     pub x: T,
-//     pub y: T,
-//     pub w: T,
-//     pub h: T,
-// }
-
-// impl<T> Rect<T> {
-//     pub const fn new(x: T, y: T, w: T, h: T) -> Self {
-//         Rect { x, y, w, h }
-//     }
-// }
-
-// impl<T> From<[T; 4]> for Rect<T>
-// where
-//     T: Copy,
-// {
-//     fn from(value: [T; 4]) -> Self {
-//         Rect {
-//             x: value[0],
-//             y: value[1],
-//             w: value[2],
-//             h: value[3],
-//         }
-//     }
-// }
-
-// impl<T> From<Rect<T>> for [T; 4] {
-//     fn from(value: Rect<T>) -> Self {
-//         [value.x, value.y, value.w, value.h]
-//     }
-// }

@@ -609,6 +609,13 @@ impl EventHandler for RustrisState {
                     &self.view_settings,
                     false,
                 )?;
+                draw::draw_playing_text(
+                    ctx,
+                    &mut canvas,
+                    self.level,
+                    self.score,
+                    &self.view_settings,
+                )?;
                 draw::draw_paused(ctx, &mut canvas, &self.paused_state, &self.view_settings)?;
             }
             GameState::GameOver => {
