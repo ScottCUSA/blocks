@@ -35,8 +35,8 @@ const DOUBLE_LINE_SCORE: usize = 300;
 const RUSTRIS_SCORE: usize = 800;
 
 // ASSET CONSTANTS
-const MUSIC_VOL: f32 = 0.0;
-const MUSIC_VOLUME_CHANGE: f32 = 0.005;
+const MUSIC_VOL: f32 = 0.1;
+const MUSIC_VOLUME_CHANGE: f32 = 0.01;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum GameState {
@@ -97,7 +97,7 @@ impl RustrisState {
 
         // load game resources
         let mut assets = Assets::new(ctx)?;
-        assets.music_1.play_detached(ctx)?;
+        assets.music_1.play(ctx)?;
 
         let control_state = GameControls::default();
         let playfield = RustrisPlayfield::new();
@@ -123,7 +123,7 @@ impl RustrisState {
             total_lines_cleared: 0,
             hold_used: false,
             lockdown_resets: 0,
-            music_volume: 0.,
+            music_volume: MUSIC_VOL,
         };
 
         Ok(s)
@@ -311,17 +311,19 @@ impl RustrisState {
 
     fn pause(&mut self) {
         log::info!("game paused");
-        self.state = GameState::Paused;
+        self.controls.clear_inputs();
+        self.set_state(GameState::Paused);
     }
 
     fn resume(&mut self) {
         log::info!("game resumed");
-        self.state = GameState::Playing;
+        self.set_state(GameState::Playing);
     }
 
     fn game_over(&mut self) {
         log::info!("Game Over! Score: {}", self.score);
-        self.state = GameState::GameOver;
+        self.controls.clear_inputs();
+        self.set_state(GameState::GameOver);
     }
 
     fn new_game(&mut self) {
@@ -329,6 +331,7 @@ impl RustrisState {
         self.next_rustomino = None;
         self.held_rustomino = None;
         self.state = GameState::Menu; // Start the game at the menu screen
+        self.previous_state = GameState::Menu;
         self.level = STARTING_LEVEL;
         self.score = 0;
         self.rustomino_bag = RustominoBag::new();
@@ -336,7 +339,6 @@ impl RustrisState {
         self.total_lines_cleared = 0;
         self.hold_used = false;
         self.lockdown_resets = 0;
-        self.music_volume = 0.;
     }
 
     fn increase_game_level(&mut self) {
@@ -466,25 +468,26 @@ impl RustrisState {
     fn menu_item_selected(&mut self) {
         if self.menu_state.selected() == 0 {
             self.resume();
+            self.menu_state.reset_selection();
         } else if self.menu_state.selected() == 1 {
-            self.state = GameState::Options;
+            self.set_state(GameState::Options);
         } else if self.menu_state.selected() == 2 {
-            self.state = GameState::Quit;
+            self.set_state(GameState::Quit);
         }
-        self.menu_state.reset_selection();
     }
 
     fn paused_item_selected(&mut self) {
         if self.paused_state.selected() == 0 {
             self.resume();
+            self.paused_state.reset_selection();
         } else if self.paused_state.selected() == 1 {
-            self.state = GameState::Options;
+            self.set_state(GameState::Options);
         } else if self.paused_state.selected() == 2 {
             self.new_game();
+            self.paused_state.reset_selection();
         } else if self.paused_state.selected() == 3 {
-            self.state = GameState::Quit;
+            self.set_state(GameState::Quit);
         }
-        self.paused_state.reset_selection();
     }
 
     fn handle_playing_inputs(&mut self) {
@@ -526,6 +529,15 @@ impl RustrisState {
             }
         }
     }
+    fn set_state(&mut self, state: GameState) {
+        log::info!(
+            "setting state to {:?} previous state {:?}",
+            state,
+            self.state
+        );
+        self.previous_state = self.state;
+        self.state = state;
+    }
 }
 
 impl EventHandler for RustrisState {
@@ -537,38 +549,23 @@ impl EventHandler for RustrisState {
             let delta_time = 1.0 / (DESIRED_FPS as f64);
             // handle the game states
             match self.state {
-                GameState::Menu => {
-                    self.previous_state = GameState::Menu;
-                }
                 GameState::Playing => {
                     self.handle_playing_inputs();
                     if self.ready_playfield() {
                         self.playing_update(delta_time);
                     }
-                    self.previous_state = GameState::Playing;
-                }
-                GameState::Paused if self.previous_state != self.state => {
-                    self.controls.clear_inputs();
-                    self.previous_state = GameState::Paused;
                 }
                 GameState::GameOver if self.previous_state != self.state => {
-                    // play game over sound
+                    // play game over sound if we've just changed state
                     self.assets.game_over.play(ctx)?;
-                    self.controls.clear_inputs();
                     self.previous_state = GameState::GameOver;
                 }
-                GameState::Paused => {
-                    self.previous_state = GameState::Paused;
-                }
-                GameState::GameOver => {
-                    self.previous_state = GameState::GameOver;
-                }
-                GameState::Options => {
-                    self.previous_state = GameState::Options;
-                }
+                GameState::Menu => {}
+                GameState::Paused => {}
+                GameState::GameOver => {}
+                GameState::Options => {}
                 GameState::Quit => ctx.request_quit(),
             }
-            self.previous_state = self.state;
         }
         Ok(())
     }
@@ -638,7 +635,9 @@ impl EventHandler for RustrisState {
                 )?;
                 draw::draw_gameover(ctx, &mut canvas, &self.view_settings.view_rect)?;
             }
-            GameState::Options => todo!(),
+            GameState::Options => {
+                draw::draw_options(ctx, &mut canvas, &self.view_settings.view_rect)?;
+            }
             GameState::Quit => {}
         }
 
@@ -657,21 +656,6 @@ impl EventHandler for RustrisState {
         repeated: bool,
     ) -> GameResult {
         match self.state {
-            GameState::Menu => {
-                // handle the user's inputs
-                if input.keycode == Some(KeyCode::Return) && !repeated {
-                    self.menu_item_selected();
-                }
-                if input.keycode == Some(KeyCode::Escape) && !repeated {
-                    self.state = GameState::Quit;
-                }
-                if input.keycode == Some(KeyCode::Up) && !repeated {
-                    self.menu_state.previous();
-                }
-                if input.keycode == Some(KeyCode::Down) && !repeated {
-                    self.menu_state.next();
-                }
-            }
             GameState::Playing => {
                 // pause the game immediately
                 // clear all other inputs and continue
@@ -686,6 +670,21 @@ impl EventHandler for RustrisState {
                         }
                     }
                     self.controls.set_pressed(input.keycode);
+                }
+            }
+            GameState::Menu => {
+                // handle the user's inputs
+                if input.keycode == Some(KeyCode::Return) && !repeated {
+                    self.menu_item_selected();
+                }
+                if input.keycode == Some(KeyCode::Escape) && !repeated {
+                    self.set_state(GameState::Quit);
+                }
+                if input.keycode == Some(KeyCode::Up) && !repeated {
+                    self.menu_state.previous();
+                }
+                if input.keycode == Some(KeyCode::Down) && !repeated {
+                    self.menu_state.next();
                 }
             }
             GameState::Paused => {
@@ -708,10 +707,31 @@ impl EventHandler for RustrisState {
             GameState::GameOver => {
                 self.new_game();
             }
-            GameState::Options => todo!(),
+            GameState::Options => {
+                if input.keycode == Some(KeyCode::Escape) && !repeated {
+                    self.set_state(self.previous_state);
+                }
+                // volume down
+                if input.keycode == Some(KeyCode::Minus)
+                    || input.keycode == Some(KeyCode::NumpadSubtract)
+                {
+                    self.music_volume -= MUSIC_VOLUME_CHANGE;
+                    self.music_volume = self.music_volume.clamp(0.0, 1.0);
+                    self.assets.music_1.set_volume(self.music_volume);
+                    log::info!("volume decreased to {:.2}", self.music_volume);
+                }
+                // volume up
+                if input.keycode == Some(KeyCode::Equals)
+                    || input.keycode == Some(KeyCode::NumpadAdd)
+                {
+                    self.music_volume += MUSIC_VOLUME_CHANGE;
+                    self.music_volume = self.music_volume.clamp(0.0, 1.0);
+                    self.assets.music_1.set_volume(self.music_volume);
+                    log::info!("volume increase {:.2}", self.music_volume);
+                }
+            }
             GameState::Quit => {}
         }
-        handle_global_inputs(&input, &mut self.music_volume);
         Ok(())
     }
 
@@ -775,19 +795,4 @@ fn gravity_delay(level: usize) -> f64 {
         ((GRAVITY_NUMERATOR / (level as f64 + 0.001)).log(E) * GRAVITY_FACTOR + 0.3).max(0.001);
     log::info!("new gravity_delay {}", gravity_delay);
     gravity_delay
-}
-
-pub fn handle_global_inputs(input: &KeyInput, music_volume: &mut f32) {
-    // volume down
-    if input.keycode == Some(KeyCode::Minus) || input.keycode == Some(KeyCode::NumpadSubtract) {
-        *music_volume -= MUSIC_VOLUME_CHANGE;
-        *music_volume = music_volume.clamp(0.0, 1.0);
-        log::debug!("volume decrease {}", music_volume);
-    }
-    // volume up
-    if input.keycode == Some(KeyCode::Equals) || input.keycode == Some(KeyCode::NumpadAdd) {
-        *music_volume += MUSIC_VOLUME_CHANGE;
-        *music_volume = music_volume.clamp(0.0, 1.0);
-        log::debug!("volume increase {}", music_volume);
-    }
 }

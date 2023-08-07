@@ -292,7 +292,7 @@ pub fn draw_playing_text(
     score: usize,
     view_settings: &ViewSettings,
 ) -> GameResult {
-    let mut title_text = graphics::Text::new("Rustris");
+    let mut title_text = graphics::Text::new("Rustris!");
     let mut level_text = graphics::Text::new("Level:");
     let mut score_text = graphics::Text::new("Score:");
 
@@ -463,85 +463,81 @@ pub fn draw_gameover(ctx: &mut Context, canvas: &mut Canvas, view_rect: &Rect) -
     Ok(())
 }
 
-// pub fn draw_options(
-//     ctx: &mut Context,
-//     canvas: &mut Canvas,
-//     view_rect: &Rect,
-// ) -> GameResult {
-//     let help_overlay = graphics::Mesh::new_rectangle(
-//         ctx,
-//         DrawMode::fill(),
-//         graphics::Rect::new(285., 410., 445., 305.),
-//         PAUSED_OVERLAY_COLOR,
-//     )?;
-//     canvas.draw(&help_overlay, graphics::DrawParam::default());
-//     //     draw_rectangle(285., 410., 445., 305., CONTROLS_BACKGROUND_COLOR);
+pub fn draw_options(ctx: &mut Context, canvas: &mut Canvas, view_rect: &Rect) -> GameResult {
+    let help_overlay = graphics::Mesh::new_rectangle(
+        ctx,
+        DrawMode::fill(),
+        graphics::Rect::new(285., 410., 445., 305.),
+        PAUSED_OVERLAY_COLOR,
+    )?;
+    canvas.draw(&help_overlay, graphics::DrawParam::default());
+    //     draw_rectangle(285., 410., 445., 305., CONTROLS_BACKGROUND_COLOR);
 
-//     //     draw_text_ex(
-//     //         "Controls:",
-//     //         305.,
-//     //         (view_rect.h / 2 + 65) as f32,
-//     //         *font_30pt,
-//     //     );
-//     //     draw_text_ex(
-//     //         "Move Left: Left, A",
-//     //         315.,
-//     //         (view_rect.h / 2 + 98) as f32,
-//     //         *font_20pt,
-//     //     );
+    //     draw_text_ex(
+    //         "Controls:",
+    //         305.,
+    //         (view_rect.h / 2 + 65) as f32,
+    //         *font_30pt,
+    //     );
+    //     draw_text_ex(
+    //         "Move Left: Left, A",
+    //         315.,
+    //         (view_rect.h / 2 + 98) as f32,
+    //         *font_20pt,
+    //     );
 
-//     //     draw_text_ex(
-//     //         "Move Right: Right, D",
-//     //         315.,
-//     //         (view_rect.h / 2 + 128) as f32,
-//     //         *font_20pt,
-//     //     );
+    //     draw_text_ex(
+    //         "Move Right: Right, D",
+    //         315.,
+    //         (view_rect.h / 2 + 128) as f32,
+    //         *font_20pt,
+    //     );
 
-//     //     draw_text_ex(
-//     //         "Rotate CW: Up, W",
-//     //         315.,
-//     //         (view_rect.h / 2 + 157) as f32,
-//     //         *font_20pt,
-//     //     );
+    //     draw_text_ex(
+    //         "Rotate CW: Up, W",
+    //         315.,
+    //         (view_rect.h / 2 + 157) as f32,
+    //         *font_20pt,
+    //     );
 
-//     //     draw_text_ex(
-//     //         "Rotate CCW: LCtrl, Z",
-//     //         315.,
-//     //         (view_rect.h / 2 + 187) as f32,
-//     //         *font_20pt,
-//     //     );
+    //     draw_text_ex(
+    //         "Rotate CCW: LCtrl, Z",
+    //         315.,
+    //         (view_rect.h / 2 + 187) as f32,
+    //         *font_20pt,
+    //     );
 
-//     //     draw_text_ex(
-//     //         "Soft Drop: Down, S",
-//     //         315.,
-//     //         (view_rect.h / 2 + 217) as f32,
-//     //         *font_20pt,
-//     //     );
+    //     draw_text_ex(
+    //         "Soft Drop: Down, S",
+    //         315.,
+    //         (view_rect.h / 2 + 217) as f32,
+    //         *font_20pt,
+    //     );
 
-//     //     draw_text_ex(
-//     //         "Hard Drop: Space",
-//     //         315.,
-//     //         (view_rect.h / 2 + 247) as f32,
-//     //         *font_20pt,
-//     //     );
+    //     draw_text_ex(
+    //         "Hard Drop: Space",
+    //         315.,
+    //         (view_rect.h / 2 + 247) as f32,
+    //         *font_20pt,
+    //     );
 
-//     //     draw_text_ex(
-//     //         "Hold: LShift, C",
-//     //         315.,
-//     //         (view_rect.h / 2 + 277) as f32,
-//     //         *font_20pt,
-//     //     );
+    //     draw_text_ex(
+    //         "Hold: LShift, C",
+    //         315.,
+    //         (view_rect.h / 2 + 277) as f32,
+    //         *font_20pt,
+    //     );
 
-//     //     draw_text_ex(
-//     //         "Adjust Music Volume: + -",
-//     //         315.,
-//     //         (view_rect.h / 2 + 307) as f32,
-//     //         *font_20pt,
-//     //     );
-//     //     // Hold: LShift, C Music Volume: + -
+    //     draw_text_ex(
+    //         "Adjust Music Volume: + -",
+    //         315.,
+    //         (view_rect.h / 2 + 307) as f32,
+    //         *font_20pt,
+    //     );
+    //     // Hold: LShift, C Music Volume: + -
 
-//     Ok(())
-// }
+    Ok(())
+}
 
 pub fn draw_paused(
     ctx: &mut Context,
