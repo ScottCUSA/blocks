@@ -1,12 +1,10 @@
-use ggez::glam::{IVec2, Vec2};
+use ggez::glam::Vec2;
 use ggez::graphics::{self, Canvas, Color, DrawMode, Rect, StrokeOptions};
 use ggez::{Context, GameResult};
-use once_cell::sync::Lazy;
 
-use crate::game::{self, RustrisState};
 use crate::menus::{self, Menu};
 use crate::playfield::{self, RustrisPlayfield, SlotState};
-use crate::rustomino::{Rustomino, RustominoType};
+use crate::rustomino::Rustomino;
 use crate::util;
 
 const BLOCK_SIZE: f32 = 30.;
@@ -22,7 +20,7 @@ const PREVIEW_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 const HOLD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.2);
 const GHOST_COLOR: Color = Color::new(0.7, 0.7, 0.7, 1.0);
 const PAUSED_OVERLAY_COLOR: Color = Color::new(0.1, 0.1, 0.1, 0.6);
-const CONTROLS_BACKGROUND_COLOR: Color = Color::new(0.34, 0.09, 0.12, 0.8);
+// const CONTROLS_BACKGROUND_COLOR: Color = Color::new(0.34, 0.09, 0.12, 0.8);
 
 #[derive(Debug)]
 pub(crate) struct ViewSettings {
@@ -128,7 +126,7 @@ pub(crate) fn draw_playing_backgound(
         ctx,
         DrawMode::fill(),
         view_settings.hold_rect,
-        PREVIEW_BACKGROUND_COLOR,
+        HOLD_BACKGROUND_COLOR,
     )?;
     canvas.draw(&hold_rect, graphics::DrawParam::default());
 
@@ -176,7 +174,7 @@ fn draw_playfield(
         ctx,
         DrawMode::Stroke(StrokeOptions::default().with_line_width(0.1)),
         Rect::new(0.0, 0.0, 1.0, 1.0),
-        Color::new(1.0, 1.0, 1.0, 1.0),
+        GHOST_COLOR,
     )?;
 
     if let Some(ghost) = &playfield.ghost_rustomino {
@@ -286,47 +284,65 @@ pub(crate) fn draw_playing(
     Ok(())
 }
 
-pub(crate) fn draw_playing_overlay(
-    ctx: &mut Context,
+pub(crate) fn draw_playing_text(
+    _ctx: &mut Context,
     canvas: &mut Canvas,
-    game_level: usize,
+    level: usize,
     score: usize,
     view_settings: &ViewSettings,
 ) -> GameResult {
-    //     draw_text_ex(
-    //         "Rustris",
-    //         view_settings.title_pos.x as f32,
-    //         view_settings.title_pos.y as f32,
-    //         *text_params,
-    //     );
+    let mut title_text = graphics::Text::new("Rustris");
+    let mut level_text = graphics::Text::new("Level:");
+    let mut score_text = graphics::Text::new("Score:");
 
-    //     draw_text_ex(
-    //         "Level:",
-    //         view_settings.level_label_pos.x as f32,
-    //         view_settings.level_label_pos.y as f32,
-    //         *text_params,
-    //     );
+    let text_param = graphics::DrawParam::default();
 
-    //     draw_text_ex(
-    //         &game_level.to_string(),
-    //         view_settings.level_pos.x as f32,
-    //         view_settings.level_pos.y as f32,
-    //         *text_params,
-    //     );
+    canvas.draw(
+        title_text
+            .set_font("04b30")
+            .set_scale(graphics::PxScale::from(50.0)),
+        text_param
+            .dest([view_settings.title_pos.x, view_settings.title_pos.y])
+            .color(Color::new(1., 1., 1., 1.)),
+    );
 
-    //     draw_text_ex(
-    //         "Score:",
-    //         view_settings.score_label_pos.x as f32,
-    //         view_settings.score_label_pos.y as f32,
-    //         *text_params,
-    //     );
+    canvas.draw(
+        level_text
+            .set_font("04b30")
+            .set_scale(graphics::PxScale::from(50.0)),
+        text_param
+            .dest([
+                view_settings.level_label_pos.x,
+                view_settings.level_label_pos.y,
+            ])
+            .color(Color::new(1., 1., 1., 1.)),
+    );
 
-    //     draw_text_ex(
-    //         &score.to_string(),
-    //         view_settings.score_pos.x as f32,
-    //         view_settings.score_pos.y as f32,
-    //         *text_params,
-    //     );
+    canvas.draw(
+        score_text
+            .set_font("04b30")
+            .set_scale(graphics::PxScale::from(50.0)),
+        text_param
+            .dest([
+                view_settings.score_label_pos.x,
+                view_settings.score_label_pos.y,
+            ])
+            .color(Color::new(1., 1., 1., 1.)),
+    );
+
+    canvas.draw(
+        &graphics::Text::new(level.to_string()),
+        text_param
+            .dest([view_settings.level_pos.x, view_settings.level_pos.y])
+            .color(Color::new(1., 1., 1., 1.)),
+    );
+    canvas.draw(
+        &graphics::Text::new(score.to_string()),
+        text_param
+            .dest([view_settings.score_pos.x, view_settings.score_pos.y])
+            .color(Color::new(1., 1., 1., 1.)),
+    );
+
     Ok(())
 }
 
@@ -446,85 +462,85 @@ pub(crate) fn draw_gameover(
     Ok(())
 }
 
-pub(crate) fn draw_help_text(
-    ctx: &mut Context,
-    canvas: &mut Canvas,
-    view_rect: &Rect,
-) -> GameResult {
-    let help_overlay = graphics::Mesh::new_rectangle(
-        ctx,
-        DrawMode::fill(),
-        graphics::Rect::new(285., 410., 445., 305.),
-        PAUSED_OVERLAY_COLOR,
-    )?;
-    canvas.draw(&help_overlay, graphics::DrawParam::default());
-    //     draw_rectangle(285., 410., 445., 305., CONTROLS_BACKGROUND_COLOR);
+// pub(crate) fn draw_options(
+//     ctx: &mut Context,
+//     canvas: &mut Canvas,
+//     view_rect: &Rect,
+// ) -> GameResult {
+//     let help_overlay = graphics::Mesh::new_rectangle(
+//         ctx,
+//         DrawMode::fill(),
+//         graphics::Rect::new(285., 410., 445., 305.),
+//         PAUSED_OVERLAY_COLOR,
+//     )?;
+//     canvas.draw(&help_overlay, graphics::DrawParam::default());
+//     //     draw_rectangle(285., 410., 445., 305., CONTROLS_BACKGROUND_COLOR);
 
-    //     draw_text_ex(
-    //         "Controls:",
-    //         305.,
-    //         (view_rect.h / 2 + 65) as f32,
-    //         *font_30pt,
-    //     );
-    //     draw_text_ex(
-    //         "Move Left: Left, A",
-    //         315.,
-    //         (view_rect.h / 2 + 98) as f32,
-    //         *font_20pt,
-    //     );
+//     //     draw_text_ex(
+//     //         "Controls:",
+//     //         305.,
+//     //         (view_rect.h / 2 + 65) as f32,
+//     //         *font_30pt,
+//     //     );
+//     //     draw_text_ex(
+//     //         "Move Left: Left, A",
+//     //         315.,
+//     //         (view_rect.h / 2 + 98) as f32,
+//     //         *font_20pt,
+//     //     );
 
-    //     draw_text_ex(
-    //         "Move Right: Right, D",
-    //         315.,
-    //         (view_rect.h / 2 + 128) as f32,
-    //         *font_20pt,
-    //     );
+//     //     draw_text_ex(
+//     //         "Move Right: Right, D",
+//     //         315.,
+//     //         (view_rect.h / 2 + 128) as f32,
+//     //         *font_20pt,
+//     //     );
 
-    //     draw_text_ex(
-    //         "Rotate CW: Up, W",
-    //         315.,
-    //         (view_rect.h / 2 + 157) as f32,
-    //         *font_20pt,
-    //     );
+//     //     draw_text_ex(
+//     //         "Rotate CW: Up, W",
+//     //         315.,
+//     //         (view_rect.h / 2 + 157) as f32,
+//     //         *font_20pt,
+//     //     );
 
-    //     draw_text_ex(
-    //         "Rotate CCW: LCtrl, Z",
-    //         315.,
-    //         (view_rect.h / 2 + 187) as f32,
-    //         *font_20pt,
-    //     );
+//     //     draw_text_ex(
+//     //         "Rotate CCW: LCtrl, Z",
+//     //         315.,
+//     //         (view_rect.h / 2 + 187) as f32,
+//     //         *font_20pt,
+//     //     );
 
-    //     draw_text_ex(
-    //         "Soft Drop: Down, S",
-    //         315.,
-    //         (view_rect.h / 2 + 217) as f32,
-    //         *font_20pt,
-    //     );
+//     //     draw_text_ex(
+//     //         "Soft Drop: Down, S",
+//     //         315.,
+//     //         (view_rect.h / 2 + 217) as f32,
+//     //         *font_20pt,
+//     //     );
 
-    //     draw_text_ex(
-    //         "Hard Drop: Space",
-    //         315.,
-    //         (view_rect.h / 2 + 247) as f32,
-    //         *font_20pt,
-    //     );
+//     //     draw_text_ex(
+//     //         "Hard Drop: Space",
+//     //         315.,
+//     //         (view_rect.h / 2 + 247) as f32,
+//     //         *font_20pt,
+//     //     );
 
-    //     draw_text_ex(
-    //         "Hold: LShift, C",
-    //         315.,
-    //         (view_rect.h / 2 + 277) as f32,
-    //         *font_20pt,
-    //     );
+//     //     draw_text_ex(
+//     //         "Hold: LShift, C",
+//     //         315.,
+//     //         (view_rect.h / 2 + 277) as f32,
+//     //         *font_20pt,
+//     //     );
 
-    //     draw_text_ex(
-    //         "Adjust Music Volume: + -",
-    //         315.,
-    //         (view_rect.h / 2 + 307) as f32,
-    //         *font_20pt,
-    //     );
-    //     // Hold: LShift, C Music Volume: + -
+//     //     draw_text_ex(
+//     //         "Adjust Music Volume: + -",
+//     //         315.,
+//     //         (view_rect.h / 2 + 307) as f32,
+//     //         *font_20pt,
+//     //     );
+//     //     // Hold: LShift, C Music Volume: + -
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 pub(crate) fn draw_paused(
     ctx: &mut Context,
@@ -557,32 +573,31 @@ pub(crate) fn draw_paused_background(
 
 fn next_block_rect(block: [i32; 2], preview_rect: &Rect) -> Rect {
     // block[x,y] absolute units
-    let x = preview_rect.x + (block[0] as f32 * (BLOCK_SIZE + BLOCK_PADDING) as f32) + 1.0;
+    let x = preview_rect.x + (block[0] as f32 * (BLOCK_SIZE + BLOCK_PADDING)) + 1.0;
     // get bottom left of playfield_rect
-    let y =
-        preview_rect.y + preview_rect.h - (block[1] as f32 * (BLOCK_SIZE + BLOCK_PADDING) as f32);
+    let y = preview_rect.y + preview_rect.h - (block[1] as f32 * (BLOCK_SIZE + BLOCK_PADDING));
 
-    Rect::new(x, y, BLOCK_SIZE as f32, BLOCK_SIZE as f32)
+    Rect::new(x, y, BLOCK_SIZE, BLOCK_SIZE)
 }
 
 fn hold_block_rect(block: [i32; 2], hold_rect: &Rect) -> Rect {
     // block[x,y] absolute units
-    let x = hold_rect.x + (block[0] as f32 * (BLOCK_SIZE + BLOCK_PADDING) as f32) + 1.0;
+    let x = hold_rect.x + (block[0] as f32 * (BLOCK_SIZE + BLOCK_PADDING)) + 1.0;
     // get bottom left of playfield_rect
-    let y = hold_rect.y + hold_rect.h - (block[1] as f32 * (BLOCK_SIZE + BLOCK_PADDING) as f32);
+    let y = hold_rect.y + hold_rect.h - (block[1] as f32 * (BLOCK_SIZE + BLOCK_PADDING));
 
-    Rect::new(x, y, BLOCK_SIZE as f32, BLOCK_SIZE as f32)
+    Rect::new(x, y, BLOCK_SIZE, BLOCK_SIZE)
 }
 
 fn playfield_block_rect(block: [i32; 2], staging_rect: &Rect, playfield_rect: &Rect) -> Rect {
     // block[x,y] absolute units
-    let x = staging_rect.x + (block[0] as f32 * (BLOCK_SIZE + BLOCK_PADDING) as f32) + 1.0;
+    let x = staging_rect.x + (block[0] as f32 * (BLOCK_SIZE + BLOCK_PADDING)) + 1.0;
     // get bottom left of playfield_rect
     let y = playfield_rect.y + playfield_rect.h
-        - ((block[1] + 1) as f32 * (BLOCK_SIZE + BLOCK_PADDING) as f32)
+        - ((block[1] + 1) as f32 * (BLOCK_SIZE + BLOCK_PADDING))
         - 1.0;
 
-    Rect::new(x, y, BLOCK_SIZE as f32, BLOCK_SIZE as f32)
+    Rect::new(x, y, BLOCK_SIZE, BLOCK_SIZE)
 }
 
 // #[derive(Debug, Clone, Copy)]

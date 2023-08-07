@@ -27,7 +27,7 @@ pub enum InputState {
     Held(time::Instant),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
 pub enum Control {
     Left,
     Right,
@@ -75,11 +75,7 @@ pub struct GameControls {
 impl Default for GameControls {
     fn default() -> Self {
         Self {
-            input_map: {
-                Control::iter()
-                    .map(|i| (i.clone(), i.default_keys()))
-                    .collect()
-            },
+            input_map: { Control::iter().map(|i| (i, i.default_keys())).collect() },
             key_map: {
                 LEFT_KEYS
                     .iter()
@@ -126,7 +122,7 @@ impl GameControls {
     pub(crate) fn clear_inputs(&mut self) {
         for input in Control::iter() {
             self.input_states
-                .entry(input.clone())
+                .entry(input)
                 .and_modify(|e| *e = InputState::Up);
         }
     }
@@ -135,7 +131,7 @@ impl GameControls {
         for (key, input) in self.key_map.iter() {
             if keycode == Some(*key) {
                 self.input_states
-                    .entry(input.clone())
+                    .entry(*input)
                     .and_modify(|e| *e = InputState::Down(time::Instant::now()));
             }
         }
@@ -145,7 +141,7 @@ impl GameControls {
         for (key, input) in self.key_map.iter() {
             if keycode == Some(*key) {
                 self.input_states
-                    .entry(input.clone())
+                    .entry(*input)
                     .and_modify(|e| *e = InputState::Up);
             }
         }

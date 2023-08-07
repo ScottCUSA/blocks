@@ -4,7 +4,7 @@ use crate::{
     rustomino::{translated, Rotation, Rustomino, RustominoState, RustominoType},
     util::variants_equal,
 };
-use std::{fmt::Display, mem::discriminant};
+use std::fmt::Display;
 
 pub(crate) const PLAYFIELD_SLOTS: [usize; 2] = [10, 22];
 pub(crate) const PLAYFIELD_SIZE: [i32; 2] = [10, 20];

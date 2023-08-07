@@ -280,12 +280,6 @@ impl RustrisState {
         log::trace!("playfield:\n{}", self.playfield);
     }
 
-    // Hold action. Hold a rustomino for later use.
-    // If a rustomino has not yet been held, the active rustomino is held,
-    // and the next rustomino is added to the playfield
-    // If a rustomino is already held, this rustomino is added to the playfield,
-    // and the active rustomino is held
-    // The player can't use the hold action again until the active rustomino is locked
     fn hold(&mut self) {
         // check to see if the player has used the hold action
         // and they haven't yet locked the previous block they took from hold
@@ -473,7 +467,7 @@ impl RustrisState {
         if self.menu_state.selected() == 0 {
             self.resume();
         } else if self.menu_state.selected() == 1 {
-            // self.state = GameState::Options;
+            self.state = GameState::Options;
         } else if self.menu_state.selected() == 2 {
             self.state = GameState::Quit;
         }
@@ -484,7 +478,7 @@ impl RustrisState {
         if self.paused_state.selected() == 0 {
             self.resume();
         } else if self.paused_state.selected() == 1 {
-            // self.state = GameState::Options;
+            self.state = GameState::Options;
         } else if self.paused_state.selected() == 2 {
             self.new_game();
         } else if self.paused_state.selected() == 3 {
@@ -502,23 +496,15 @@ impl RustrisState {
                     match control.action_delay() {
                         Some(delay) if duration >= delay => {
                             log::debug!("action delay met for {:?}", control);
-                            self.controls
-                                .input_states
-                                .entry(control.clone())
-                                .and_modify(|e| {
-                                    *e = controls::InputState::Held(time::Instant::now());
-                                });
+                            self.controls.input_states.entry(control).and_modify(|e| {
+                                *e = controls::InputState::Held(time::Instant::now());
+                            });
                             self.control_handler(control)(self);
                         }
                         None => {
-                            log::debug!("action delay not met for {:?}", control);
-                            self.controls
-                                .input_states
-                                .entry(control.clone())
-                                .and_modify(|e| {
-                                    *e = controls::InputState::Up;
-                                });
-                            self.control_handler(control)(self);
+                            self.controls.input_states.entry(control).and_modify(|e| {
+                                *e = controls::InputState::Up;
+                            });
                         }
                         _ => (),
                     }
@@ -528,12 +514,9 @@ impl RustrisState {
                     match control.action_repeat_delay() {
                         Some(delay) if duration >= delay => {
                             log::debug!("action repeat delay met for {:?}", control);
-                            self.controls
-                                .input_states
-                                .entry(control.clone())
-                                .and_modify(|e| {
-                                    *e = controls::InputState::Held(time::Instant::now());
-                                });
+                            self.controls.input_states.entry(control).and_modify(|e| {
+                                *e = controls::InputState::Held(time::Instant::now());
+                            });
                             self.control_handler(control)(self);
                         }
                         _ => (),
@@ -592,8 +575,8 @@ impl EventHandler for RustrisState {
 
     fn draw(&mut self, ctx: &mut ggez::Context) -> GameResult {
         let mut canvas = graphics::Canvas::from_frame(ctx, BACKGROUND_COLOR);
-        // handle the game states
 
+        // handle the game states
         match self.state {
             GameState::Menu => {
                 draw::draw_menu(ctx, &mut canvas, &self.menu_state, &self.view_settings)?;
@@ -608,7 +591,7 @@ impl EventHandler for RustrisState {
                     &self.view_settings,
                     false,
                 )?;
-                draw::draw_playing_overlay(
+                draw::draw_playing_text(
                     ctx,
                     &mut canvas,
                     self.level,
@@ -627,9 +610,6 @@ impl EventHandler for RustrisState {
                     false,
                 )?;
                 draw::draw_paused(ctx, &mut canvas, &self.paused_state, &self.view_settings)?;
-                // draw::draw_playing_overlay(game.level, game.score);
-                // draw::draw_paused();
-                // draw::draw_help_text();
             }
             GameState::GameOver => {
                 draw::draw_playing_backgound(ctx, &mut canvas, &self.view_settings)?;
@@ -642,7 +622,7 @@ impl EventHandler for RustrisState {
                     &self.view_settings,
                     true,
                 )?;
-                draw::draw_playing_overlay(
+                draw::draw_playing_text(
                     ctx,
                     &mut canvas,
                     self.level,
@@ -663,7 +643,12 @@ impl EventHandler for RustrisState {
 
     // Handle key events.  These just map keyboard events
     // and alter our input state appropriately.
-    fn key_down_event(&mut self, ctx: &mut Context, input: KeyInput, repeated: bool) -> GameResult {
+    fn key_down_event(
+        &mut self,
+        _ctx: &mut Context,
+        input: KeyInput,
+        repeated: bool,
+    ) -> GameResult {
         match self.state {
             GameState::Menu => {
                 // handle the user's inputs
@@ -688,6 +673,11 @@ impl EventHandler for RustrisState {
                     self.controls.clear_inputs();
                 }
                 if !repeated {
+                    if let Some(keycode) = input.keycode {
+                        if let Some(control) = self.controls.key_map.get(&keycode) {
+                            self.control_handler(*control)(self);
+                        }
+                    }
                     self.controls.set_pressed(input.keycode);
                 }
             }
@@ -780,20 +770,6 @@ fn gravity_delay(level: usize) -> f64 {
     gravity_delay
 }
 
-// returns a closure which handles the provided
-// control for the game
-fn control_handler<'a>(control: &'a Control, game: &'a mut RustrisState) -> Box<dyn FnMut() + 'a> {
-    match *control {
-        Control::Left => Box::new(|| game.translate(TranslationDirection::Left)),
-        Control::Right => Box::new(|| game.translate(TranslationDirection::Right)),
-        Control::RotateCW => Box::new(|| game.rotate(Rotation::Cw)),
-        Control::RotateCCW => Box::new(|| game.rotate(Rotation::Ccw)),
-        Control::SoftDrop => Box::new(|| game.soft_drop()),
-        Control::HardDrop => Box::new(|| game.hard_drop()),
-        Control::Hold => Box::new(|| game.hold()),
-    }
-}
-
 pub(crate) fn handle_global_inputs(input: &KeyInput, music_volume: &mut f32) {
     // volume down
     if input.keycode == Some(KeyCode::Minus) || input.keycode == Some(KeyCode::NumpadSubtract) {
@@ -808,5 +784,3 @@ pub(crate) fn handle_global_inputs(input: &KeyInput, music_volume: &mut f32) {
         log::debug!("volume increase {}", music_volume);
     }
 }
-
-fn handle_playing_inputs(control_states: &mut GameControls, game: &mut RustrisState) {}
