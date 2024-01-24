@@ -19,9 +19,9 @@ pub const STAGING_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 const PLAYFIELD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 const PREVIEW_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 const HOLD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.2);
+const OPTIONS_BACKGROUND_COLOR: Color = Color::new(0.34, 0.09, 0.12, 1.);
 const GHOST_COLOR: Color = Color::new(0.7, 0.7, 0.7, 1.0);
 const PAUSED_OVERLAY_COLOR: Color = Color::new(0.1, 0.1, 0.1, 0.6);
-// const CONTROLS_BACKGROUND_COLOR: Color = Color::new(0.34, 0.09, 0.12, 0.8);
 
 #[derive(Debug)]
 pub struct ViewSettings {
@@ -430,7 +430,7 @@ pub fn draw_menu(
     view_settings: &ViewSettings,
 ) -> GameResult {
     // draw the menu background
-    draw_menu_background(ctx, canvas, view_settings)?;
+    // draw_menu_background(ctx, canvas, view_settings)?;
     draw_menu_text(ctx, canvas, menu_state, view_settings, "Rustris!")?;
     // draw_main_menu_text(ctx, canvas, menu_state, view_settings)?;
     Ok(())
@@ -464,14 +464,31 @@ pub fn draw_gameover(ctx: &mut Context, canvas: &mut Canvas, view_rect: &Rect) -
 }
 
 pub fn draw_options(ctx: &mut Context, canvas: &mut Canvas, view_rect: &Rect) -> GameResult {
-    let help_overlay = graphics::Mesh::new_rectangle(
+    let options_background_shadow = graphics::Mesh::new_rectangle(
         ctx,
         DrawMode::fill(),
-        graphics::Rect::new(285., 410., 445., 305.),
+        graphics::Rect::new(
+            view_rect.w / 2. - (600. / 2.) + 10.,
+            view_rect.h / 2. - (400. / 2.) + 10.,
+            600.,
+            400.,
+        ),
         PAUSED_OVERLAY_COLOR,
     )?;
-    canvas.draw(&help_overlay, graphics::DrawParam::default());
-    //     draw_rectangle(285., 410., 445., 305., CONTROLS_BACKGROUND_COLOR);
+    canvas.draw(&options_background_shadow, graphics::DrawParam::default());
+
+    let options_background_mesh = graphics::Mesh::new_rectangle(
+        ctx,
+        DrawMode::fill(),
+        Rect::new(
+            view_rect.w / 2. - (600. / 2.),
+            view_rect.h / 2. - (400. / 2.),
+            600.,
+            400.,
+        ),
+        OPTIONS_BACKGROUND_COLOR,
+    )?;
+    canvas.draw(&options_background_mesh, graphics::DrawParam::default());
 
     //     draw_text_ex(
     //         "Controls:",
