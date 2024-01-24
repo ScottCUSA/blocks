@@ -59,10 +59,8 @@ impl Assets {
         let mut music_1 = audio::Source::new(ctx, "/music_1.ogg")?;
         music_1.set_volume(MUSIC_VOL);
         music_1.set_repeat(true);
-
         // load game sound effects
         let game_over = audio::Source::new(ctx, "/game_over.ogg")?;
-
         Ok(Assets { music_1, game_over })
     }
 }
@@ -198,23 +196,13 @@ impl RustrisState {
     fn get_next_rustomino(&mut self) -> Rustomino {
         // get the current next_rustomino
         // by replaceing it's value with one from the bag
-        let next_rustomino = self
-            .next_rustomino
-            .replace(self.rustomino_bag.get_rustomino());
-        // check there was a rustomino
-        match next_rustomino {
-            // return it if there was
+        // if there is no next_rustomino get one from the bag
+        let next_rustomino = match self.next_rustomino.take() {
             Some(rustomino) => rustomino,
-            None => {
-                // take the next rustomino
-                let Some(rustomino) = self.next_rustomino
-                    .replace(self.rustomino_bag.get_rustomino())
-                else {
-                    unreachable!("rustomino bag is empty");
-                };
-                rustomino
-            }
-        }
+            None => self.rustomino_bag.get_next(),
+        };
+        self.next_rustomino = Some(self.rustomino_bag.get_next());
+        next_rustomino
     }
 
     fn ready_playfield(&mut self) -> bool {

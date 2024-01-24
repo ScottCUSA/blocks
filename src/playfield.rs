@@ -48,9 +48,8 @@ impl RustrisPlayfield {
     }
 
     pub fn take_active(&mut self) -> Option<Rustomino> {
-        let Some(active_rustomino) = self.active_rustomino.take() else {
-            return None;
-        };
+        let active_rustomino = self.active_rustomino.take()?;
+
         log::debug!("taking active rustomino: {:?}", active_rustomino.rtype);
         log::trace!("rustomino: {:?}", active_rustomino);
         set_playfield_slot_states(
@@ -99,12 +98,12 @@ impl RustrisPlayfield {
 
     /// Attempt to rotate the active rustomino
     pub fn rotate_active(&mut self, rotation: Rotation) -> bool {
-        let Some(active_rustomino) = self.active_rustomino.as_mut()  else {
+        let Some(active_rustomino) = self.active_rustomino.as_mut() else {
             return false;
         };
 
         // check to see if the block can be rotated with or without a wall kick
-        let Some(wall_kick_trans) = check_rotation(&self.slots, active_rustomino, &rotation)  else {
+        let Some(wall_kick_trans) = check_rotation(&self.slots, active_rustomino, &rotation) else {
             return false;
         };
 
@@ -157,7 +156,7 @@ impl RustrisPlayfield {
     }
 
     pub fn hard_drop_active(&mut self) {
-        let Some(active_rustomino) = self.active_rustomino.as_mut()  else {
+        let Some(active_rustomino) = self.active_rustomino.as_mut() else {
             return;
         };
         let delta = get_hard_drop_translation(&self.slots, active_rustomino);
