@@ -409,57 +409,52 @@ pub struct Rustomino {
 }
 
 impl Rustomino {
-    pub fn new(block_type: RustominoType) -> Rustomino {
-        match block_type {
-            RustominoType::I => Rustomino {
-                rtype: block_type,
-                state: RustominoState::Falling { time: 0. },
-                rotation: RustominoRotation::new(I_ROTATIONS),
-                blocks: I_BLOCKS,
-                translation: I_START_TRANSLATION,
-            },
-            RustominoType::O => Rustomino {
-                rtype: block_type,
-                state: RustominoState::Falling { time: 0. },
-                rotation: RustominoRotation::new(O_ROTATIONS),
-                blocks: O_BLOCKS,
-                translation: O_T_L_J_S_Z_START_TRANSLATION,
-            },
-            RustominoType::T => Rustomino {
-                rtype: block_type,
-                state: RustominoState::Falling { time: 0. },
-                rotation: RustominoRotation::new(T_ROTATIONS),
-                blocks: T_BLOCKS,
-                translation: O_T_L_J_S_Z_START_TRANSLATION,
-            },
-            RustominoType::L => Rustomino {
-                rtype: block_type,
-                state: RustominoState::Falling { time: 0. },
-                rotation: RustominoRotation::new(L_ROTATIONS),
-                blocks: L_BLOCKS,
-                translation: O_T_L_J_S_Z_START_TRANSLATION,
-            },
-            RustominoType::J => Rustomino {
-                rtype: block_type,
-                state: RustominoState::Falling { time: 0. },
-                rotation: RustominoRotation::new(J_ROTATIONS),
-                blocks: J_BLOCKS,
-                translation: O_T_L_J_S_Z_START_TRANSLATION,
-            },
-            RustominoType::S => Rustomino {
-                rtype: block_type,
-                state: RustominoState::Falling { time: 0. },
-                rotation: RustominoRotation::new(S_ROTATIONS),
-                blocks: S_BLOCKS,
-                translation: O_T_L_J_S_Z_START_TRANSLATION,
-            },
-            RustominoType::Z => Rustomino {
-                rtype: block_type,
-                state: RustominoState::Falling { time: 0. },
-                rotation: RustominoRotation::new(Z_ROTATIONS),
-                blocks: Z_BLOCKS,
-                translation: O_T_L_J_S_Z_START_TRANSLATION,
-            },
+    pub fn new(rtype: RustominoType) -> Rustomino {
+        let (rotation, blocks, translation) = {
+            match rtype {
+                RustominoType::I => (
+                    RustominoRotation::new(I_ROTATIONS),
+                    I_BLOCKS,
+                    I_START_TRANSLATION,
+                ),
+                RustominoType::O => (
+                    RustominoRotation::new(O_ROTATIONS),
+                    O_BLOCKS,
+                    O_T_L_J_S_Z_START_TRANSLATION,
+                ),
+                RustominoType::T => (
+                    RustominoRotation::new(T_ROTATIONS),
+                    T_BLOCKS,
+                    O_T_L_J_S_Z_START_TRANSLATION,
+                ),
+                RustominoType::L => (
+                    RustominoRotation::new(L_ROTATIONS),
+                    L_BLOCKS,
+                    O_T_L_J_S_Z_START_TRANSLATION,
+                ),
+                RustominoType::J => (
+                    RustominoRotation::new(J_ROTATIONS),
+                    J_BLOCKS,
+                    O_T_L_J_S_Z_START_TRANSLATION,
+                ),
+                RustominoType::S => (
+                    RustominoRotation::new(S_ROTATIONS),
+                    S_BLOCKS,
+                    O_T_L_J_S_Z_START_TRANSLATION,
+                ),
+                RustominoType::Z => (
+                    RustominoRotation::new(Z_ROTATIONS),
+                    Z_BLOCKS,
+                    O_T_L_J_S_Z_START_TRANSLATION,
+                ),
+            }
+        };
+        Rustomino {
+            rtype,
+            state: RustominoState::Falling { time: 0. },
+            rotation,
+            blocks,
+            translation,
         }
     }
 
@@ -482,25 +477,22 @@ impl Rustomino {
     pub fn rotate(&mut self, rotation: &Rotation, translation: &IVec2) {
         let rotation_trans = self.rotation.get_rotation_trans(rotation);
 
-        self.blocks = [
-            self.blocks[0] + rotation_trans[0] + *translation,
-            self.blocks[1] + rotation_trans[1] + *translation,
-            self.blocks[2] + rotation_trans[2] + *translation,
-            self.blocks[3] + rotation_trans[3] + *translation,
-        ];
+        for (i, item) in rotation_trans.iter().enumerate() {
+            self.blocks[i] = self.blocks[i] + *item + *translation;
+        }
 
         self.rotation.rotate(rotation);
     }
 
     pub fn rotated(&self, rotation: &Rotation) -> [IVec2; 4] {
         let rotation = self.rotation.get_rotation_trans(rotation);
+        let mut result = [IVec2::ZERO; 4];
 
-        [
-            self.blocks[0] + self.translation + rotation[0],
-            self.blocks[1] + self.translation + rotation[1],
-            self.blocks[2] + self.translation + rotation[2],
-            self.blocks[3] + self.translation + rotation[3],
-        ]
+        for i in 0..4 {
+            result[i] = self.blocks[i] + self.translation + rotation[i];
+        }
+
+        result
     }
 
     pub fn wall_kick_tests(&self, rotation: &Rotation) -> [IVec2; 5] {
@@ -712,9 +704,9 @@ impl RustominoBag {
         }
     }
 
-    pub fn get_rustomino(&mut self) -> Rustomino {
+    pub fn get_next(&mut self) -> Rustomino {
         // make sure the bag isn't empty
-        self.fill_rustomino_bag();
+        self.fill_bag();
 
         let rtype = self.bag.pop().expect("rustomino bag is empty");
         log::info!("next rustomino type: {:?}", rtype);
@@ -724,7 +716,7 @@ impl RustominoBag {
 
     // add one of each rustomino type to bag
     // then shuffle the bag
-    fn fill_rustomino_bag(&mut self) {
+    fn fill_bag(&mut self) {
         if !self.bag.is_empty() {
             return;
         }
