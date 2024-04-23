@@ -1,5 +1,5 @@
 [package]
-name = "rustris"
+name = "blocks"
 version = "0.3.2"
 edition = "2021"
 build = "build.rs"

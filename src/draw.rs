@@ -3,7 +3,7 @@ use ggez::graphics::{self, Canvas, Color, DrawMode, Rect, StrokeOptions};
 use ggez::{Context, GameResult};
 
 use crate::menus::{self, Menu};
-use crate::playfield::{self, RustrisPlayfield, SlotState};
+use crate::playfield::{self, Playfield, SlotState};
 use crate::rustomino::Rustomino;
 use crate::util;
 
@@ -137,7 +137,7 @@ pub fn draw_playing_backgound(
 fn draw_playfield(
     ctx: &mut Context,
     canvas: &mut Canvas,
-    playfield: &RustrisPlayfield,
+    playfield: &Playfield,
     staging_rect: &Rect,
     playfield_rect: &Rect,
     game_over: bool,
@@ -252,7 +252,7 @@ fn draw_next(
 pub fn draw_playing(
     ctx: &mut Context,
     canvas: &mut Canvas,
-    playfield: &RustrisPlayfield,
+    playfield: &Playfield,
     next_rustomino: &Option<Rustomino>,
     hold_rustomino: &Option<Rustomino>,
     view_settings: &ViewSettings,
@@ -292,7 +292,7 @@ pub fn draw_playing_text(
     score: usize,
     view_settings: &ViewSettings,
 ) -> GameResult {
-    let mut title_text = graphics::Text::new("Rustris!");
+    let mut title_text = graphics::Text::new("Blocks!");
     let mut level_text = graphics::Text::new("Level:");
     let mut score_text = graphics::Text::new("Score:");
 
@@ -396,7 +396,7 @@ fn draw_menu_text<T: Menu>(
         .dest([title_x, title_y])
         .color(Color::new(1., 1., 1., 1.));
 
-    // draw rustris title
+    // draw title
     canvas.draw(scaled_title, title_draw_param);
 
     for (i, item) in menu_state.items().iter().enumerate() {
@@ -431,7 +431,7 @@ pub fn draw_menu(
 ) -> GameResult {
     // draw the menu background
     // draw_menu_background(ctx, canvas, view_settings)?;
-    draw_menu_text(ctx, canvas, menu_state, view_settings, "Rustris!")?;
+    draw_menu_text(ctx, canvas, menu_state, view_settings, "Blocks!")?;
     // draw_main_menu_text(ctx, canvas, menu_state, view_settings)?;
     Ok(())
 }
@@ -564,7 +564,7 @@ pub fn draw_paused(
 ) -> GameResult {
     // draw the menu background
     draw_paused_background(ctx, canvas, view_settings)?;
-    draw_menu_text(ctx, canvas, paused_state, view_settings, "Paused!")?;
+    draw_menu_text(ctx, canvas, paused_state, view_settings, "Paused")?;
     Ok(())
 }
 

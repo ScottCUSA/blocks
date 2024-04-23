@@ -13,7 +13,7 @@ use crate::{
     controls::{self, Control, GameControls},
     draw::{self, BACKGROUND_COLOR},
     menus::{self, Menu},
-    playfield::{RustrisPlayfield, TranslationDirection, PLAYFIELD_SIZE},
+    playfield::{Playfield, TranslationDirection, PLAYFIELD_SIZE},
     rustomino::{Rotation, Rustomino, RustominoBag, RustominoState},
     util::variants_equal,
 };
@@ -32,7 +32,7 @@ const LOCKDOWN_MAX_RESETS: u32 = 15; // maximum number of times the lockdown tim
 const SINGLE_LINE_SCORE: usize = 100;
 const TRIPLE_LINE_SCORE: usize = 500;
 const DOUBLE_LINE_SCORE: usize = 300;
-const RUSTRIS_SCORE: usize = 800;
+const QUAD_SCORE: usize = 800;
 
 // ASSET CONSTANTS
 const MUSIC_VOL: f32 = 0.1;
@@ -65,8 +65,8 @@ impl Assets {
     }
 }
 
-pub struct RustrisState {
-    pub playfield: RustrisPlayfield,
+pub struct BlocksState {
+    pub playfield: Playfield,
     pub next_rustomino: Option<Rustomino>,
     pub held_rustomino: Option<Rustomino>,
     pub previous_state: GameState,
@@ -86,7 +86,7 @@ pub struct RustrisState {
     music_volume: f32,
 }
 
-impl RustrisState {
+impl BlocksState {
     pub fn new(ctx: &mut Context) -> GameResult<Self> {
         log::info!("Loading game resources");
         // load font
@@ -98,12 +98,12 @@ impl RustrisState {
         assets.music_1.play(ctx)?;
 
         let control_state = GameControls::default();
-        let playfield = RustrisPlayfield::new();
+        let playfield = Playfield::new();
 
         // get the window size
         let (width, height) = ctx.gfx.drawable_size();
 
-        let s = RustrisState {
+        let s = BlocksState {
             playfield,
             next_rustomino: None,
             held_rustomino: None,
@@ -315,7 +315,7 @@ impl RustrisState {
     }
 
     fn new_game(&mut self) {
-        self.playfield = RustrisPlayfield::new();
+        self.playfield = Playfield::new();
         self.next_rustomino = None;
         self.held_rustomino = None;
         self.state = GameState::Menu; // Start the game at the menu screen
@@ -441,15 +441,15 @@ impl RustrisState {
     }
     // returns a closure which handles the provided
     // control for the game
-    pub fn control_handler(&mut self, control: Control) -> fn(&mut RustrisState) {
+    pub fn control_handler(&mut self, control: Control) -> fn(&mut BlocksState) {
         match control {
-            Control::Left => RustrisState::translate_left,
-            Control::Right => RustrisState::translate_right,
-            Control::RotateCW => RustrisState::rotate_cw,
-            Control::RotateCCW => RustrisState::rotate_ccw,
-            Control::SoftDrop => RustrisState::soft_drop,
-            Control::HardDrop => RustrisState::hard_drop,
-            Control::Hold => RustrisState::hold,
+            Control::Left => BlocksState::translate_left,
+            Control::Right => BlocksState::translate_right,
+            Control::RotateCW => BlocksState::rotate_cw,
+            Control::RotateCCW => BlocksState::rotate_ccw,
+            Control::SoftDrop => BlocksState::soft_drop,
+            Control::HardDrop => BlocksState::hard_drop,
+            Control::Hold => BlocksState::hold,
         }
     }
 
@@ -528,7 +528,7 @@ impl RustrisState {
     }
 }
 
-impl EventHandler for RustrisState {
+impl EventHandler for BlocksState {
     fn update(&mut self, ctx: &mut ggez::Context) -> GameResult {
         const DESIRED_FPS: u32 = 60;
 
@@ -751,16 +751,16 @@ impl EventHandler for RustrisState {
 }
 
 fn score_cleared_lines(num_lines: usize, level: usize) -> usize {
-    // Single line 100xlevel
-    // Double line 300xlevel
-    // Triple line 500xlevel
-    // Rustris (4 lines) 800xlevel
+    // Single lines 100xlevel
+    // Double lines 300xlevel
+    // Triple lines 500xlevel
+    // Quad lines 800xlevel
     (level + 1)
         * match num_lines {
             1 => SINGLE_LINE_SCORE,
             2 => DOUBLE_LINE_SCORE,
             3 => TRIPLE_LINE_SCORE,
-            4 => RUSTRIS_SCORE,
+            4 => QUAD_SCORE,
             _ => panic!("impossible number of lines cleared"),
         }
 }
