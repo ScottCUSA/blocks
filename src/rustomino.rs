@@ -530,7 +530,7 @@ impl RustominoType {
     const YELLOW: Color = Color::new(1.0, 1.0, 0.0, 1.0);
     const PURPLE: Color = Color::new(0.72, 0.01, 0.99, 1.0);
     const ORANGE: Color = Color::new(1.0, 0.45, 0.03, 1.0);
-    const BLUE: Color = Color::new(0.09, 0.0, 1.0, 1.0);
+    const BLUE: Color = Color::new(0.09, 0.2, 1.0, 1.0);
     const GREEN: Color = Color::new(0.4, 0.99, 0.0, 1.0);
     const RED: Color = Color::new(1.0, 0.06, 0.24, 1.0);
 
