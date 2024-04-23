@@ -238,6 +238,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "blocks"
+version = "0.3.2"
+dependencies = [
+ "env_logger",
+ "ggez",
+ "log",
+ "once_cell",
+ "rand",
+ "rand_xoshiro",
+ "strum",
+ "winres",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2057,20 +2071,6 @@ dependencies = [
  "libc",
  "linux-raw-sys",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "rustris"
-version = "0.3.2"
-dependencies = [
- "env_logger",
- "ggez",
- "log",
- "once_cell",
- "rand",
- "rand_xoshiro",
- "strum",
- "winres",
 ]
 
 [[package]]

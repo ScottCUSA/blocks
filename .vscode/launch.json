@@ -7,15 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'rustris'",
+            "name": "Debug executable 'blocks'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=rustris",
-                    "--package=rustris"
+                    "--bin=blocks",
+                    "--package=blocks"
                 ],
                 "filter": {
-                    "name": "rustris",
+                    "name": "blocks",
                     "kind": "bin"
                 }
             },
@@ -28,16 +28,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'rustris'",
+            "name": "Debug unit tests in executable 'blocks'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=rustris",
-                    "--package=rustris"
+                    "--bin=blocks",
+                    "--package=blocks"
                 ],
                 "filter": {
-                    "name": "rustris",
+                    "name": "blocks",
                     "kind": "bin"
                 }
             },

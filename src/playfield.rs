@@ -11,18 +11,17 @@ pub const PLAYFIELD_SIZE: [i32; 2] = [10, 20];
 
 type PlayfieldSlots = [[SlotState; PLAYFIELD_SLOTS[0]]; PLAYFIELD_SLOTS[1]];
 
-// RustrisPlayfield
 #[derive(Debug)]
-pub struct RustrisPlayfield {
+pub struct Playfield {
     pub slots: PlayfieldSlots,
     pub active_rustomino: Option<Rustomino>,
     pub ghost_rustomino: Option<Rustomino>,
 }
 
-impl RustrisPlayfield {
+impl Playfield {
     pub fn new() -> Self {
-        log::info!("Initializing Rustris Playfield");
-        RustrisPlayfield {
+        log::info!("Initializing Playfield");
+        Playfield {
             slots: [[SlotState::Empty; PLAYFIELD_SLOTS[0]]; PLAYFIELD_SLOTS[1]],
             active_rustomino: None,
             ghost_rustomino: None,
@@ -251,7 +250,7 @@ impl RustrisPlayfield {
         completed_lines
     }
 
-    /// Returns the get complete lines of this [`RustrisPlayfield`].
+    /// Returns the get complete lines of this [`Playfield`].
     fn get_complete_lines(&self) -> Vec<usize> {
         let mut complete_lines = vec![];
         'outer: for (i, line) in self.slots.iter().enumerate() {
@@ -422,7 +421,7 @@ fn set_playfield_slot_states(
 }
 
 // display the playfield's slot states for debugging
-impl Display for RustrisPlayfield {
+impl Display for Playfield {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (y, row) in self.slots.iter().rev().enumerate() {
             if y == 2 {

@@ -13,7 +13,7 @@ mod util;
 
 const ASSETS_FOLDER: &str = "./resources";
 
-// TODO: load icon for rustris window
+// TODO: load icon for blocks window
 // https://docs.rs/macroquad/0.3.25/macroquad/texture/struct.Image.html
 
 fn main() {
@@ -35,8 +35,8 @@ fn main() {
     log::info!("resource_dir: {:?}", resource_dir);
 
     // setup game context
-    let (mut ctx, event_loop) = ContextBuilder::new("Rustris", "Scott Cummings")
-        .window_setup(conf::WindowSetup::default().title("Rustris"))
+    let (mut ctx, event_loop) = ContextBuilder::new("Blocks", "Scott Cummings")
+        .window_setup(conf::WindowSetup::default().title("Blocks"))
         .window_mode(
             conf::WindowMode::default()
                 .resizable(true)
@@ -48,7 +48,7 @@ fn main() {
         .expect("could not create engine context");
 
     // setup game state
-    let game = game::RustrisState::new(&mut ctx).expect("unable to initialize gamestate");
+    let game = game::BlocksState::new(&mut ctx).expect("unable to initialize gamestate");
 
     // run game
     event::run(ctx, event_loop, game);
