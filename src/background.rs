@@ -1,0 +1,185 @@
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BackgroundStyle {
+    Drift,
+    Stars,
+    Plasma,
+    Off,
+}
+
+impl BackgroundStyle {
+    pub const ALL: [BackgroundStyle; 4] = [
+        BackgroundStyle::Drift,
+        BackgroundStyle::Stars,
+        BackgroundStyle::Plasma,
+        BackgroundStyle::Off,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            BackgroundStyle::Drift => "Drift",
+            BackgroundStyle::Stars => "Stars",
+            BackgroundStyle::Plasma => "Plasma",
+            BackgroundStyle::Off => "Off",
+        }
+    }
+}
+
+const LEVEL_SPEEDUP: f32 = 0.06;
+const MAX_LEVEL_SPEED: f32 = 2.0;
+const SURGE_SPEED: f32 = 2.5; // extra speed at full energy
+const SURGE_DECAY: f32 = 1.5; // energy lost per second
+const SURGE: [f32; 4] = [0.25, 0.45, 0.7, 1.0]; // energy per lines cleared
+pub const STAR_FIELDS: usize = 64;
+pub const LEVEL_UP_TIME: f32 = 1.3; // seconds
+const RUSH_SPEED: f32 = 1.5; // extra speed at the rush peak
+pub const FREEZE_TIME: f32 = 2.5; // seconds to slow to a stop
+pub const THAW_TIME: f32 = 2.0; // seconds to thaw
+const SKIP_STEP: f32 = 1.0 / 60.0;
+
+/// animated background shown behind the game
+pub struct Background {
+    pub style: BackgroundStyle,
+    pub time: f32,         // animation clock, runs faster with level and energy
+    pub energy: f32,       // 0.0 to 1.0, raised by line clears
+    level_up: Option<f32>, // seconds since a level up
+    pub stars: usize,      // star field, replaced on level up
+    freeze: Option<f32>,   // seconds since game over
+    freeze_rate: f32,      // speed at game over
+    frozen_at: f32,        // time at game over
+    thaw: Option<f32>,     // seconds since the thaw started
+    pub twinkle: f32,      // star twinkle clock, runs while frozen
+}
+
+impl Background {
+    pub fn new() -> Self {
+        Self {
+            style: BackgroundStyle::Drift,
+            time: 0.0,
+            energy: 0.0,
+            level_up: None,
+            stars: 0,
+            freeze: None,
+            freeze_rate: 0.0,
+            frozen_at: 0.0,
+            thaw: None,
+            twinkle: 0.0,
+        }
+    }
+
+    /// step through the styles
+    pub fn cycle(&mut self, delta: isize) {
+        self.style = crate::style::cycle(&BackgroundStyle::ALL, self.style, delta);
+    }
+
+    fn speed(&self, level: usize) -> f32 {
+        let level_speed = (1.0 + (level.max(1) - 1) as f32 * LEVEL_SPEEDUP).min(MAX_LEVEL_SPEED);
+        level_speed * (1.0 + SURGE_SPEED * self.energy)
+    }
+
+    pub fn update(&mut self, delta_time: f64, level: usize) {
+        let dt = delta_time as f32;
+        let speed = self.speed(level);
+        self.time += dt
+            * match (self.freeze, self.style) {
+                // plasma cells freeze one by one, see frozen_time
+                (Some(_), BackgroundStyle::Plasma) => self.freeze_rate,
+                (Some(_), _) => self.freeze_rate * (1.0 - self.chill()),
+                (None, BackgroundStyle::Plasma) => speed + RUSH_SPEED * self.rush(),
+                (None, _) => speed,
+            };
+        self.twinkle += dt * speed;
+        self.energy = (self.energy - SURGE_DECAY * dt).max(0.0);
+        self.level_up = self.level_up.map(|t| t + dt).filter(|t| *t < LEVEL_UP_TIME);
+        match self.thaw {
+            Some(t) if t + dt >= THAW_TIME => {
+                self.freeze = None;
+                self.thaw = None;
+            }
+            Some(t) => self.thaw = Some(t + dt),
+            None => self.freeze = self.freeze.map(|t| t + dt),
+        }
+    }
+
+    /// update in small steps
+    pub fn skip(&mut self, secs: f32, level: usize) {
+        for _ in 0..(secs / SKIP_STEP).round() as usize {
+            self.update(SKIP_STEP as f64, level);
+        }
+    }
+
+    /// game over
+    pub fn freeze(&mut self, level: usize) {
+        self.freeze = Some(0.0);
+        self.freeze_rate = self.speed(level);
+        self.frozen_at = self.time;
+        self.level_up = None;
+        self.thaw = None;
+    }
+
+    /// start thawing a freeze
+    pub fn thaw(&mut self) {
+        if self.freeze.is_some() && self.thaw.is_none() {
+            self.thaw = Some(0.0);
+        }
+    }
+
+    /// seconds since game over, held while thawing
+    pub fn frozen(&self) -> Option<f32> {
+        self.freeze
+    }
+
+    /// seconds since the thaw started
+    pub fn thawed(&self) -> f32 {
+        self.thaw.unwrap_or(0.0)
+    }
+
+    /// how stopped, 0.0 moving to 1.0 still
+    pub fn chill(&self) -> f32 {
+        self.freeze
+            .map_or(0.0, |t| smoothstep(t / FREEZE_TIME) * (1.0 - self.melt()))
+    }
+
+    /// thaw progress, 0.0 to 1.0
+    pub fn melt(&self) -> f32 {
+        smoothstep(self.thawed() / THAW_TIME)
+    }
+
+    /// clock at a moment after game over
+    pub fn frozen_time(&self, after: f32) -> f32 {
+        self.frozen_at + after * self.freeze_rate
+    }
+
+    pub fn level_up(&mut self) {
+        self.level_up = Some(0.0);
+        self.stars = (self.stars + 1) % STAR_FIELDS;
+    }
+
+    pub fn reset(&mut self) {
+        self.energy = 0.0;
+        self.level_up = None;
+        self.freeze = None;
+        self.thaw = None;
+    }
+
+    /// level up progress, 0.0 to 1.0
+    pub fn wave(&self) -> Option<f32> {
+        self.level_up.map(|t| t / LEVEL_UP_TIME)
+    }
+
+    /// level up speed burst, 0.0 to 1.0
+    pub fn rush(&self) -> f32 {
+        self.wave()
+            .map_or(0.0, |p| (p * std::f32::consts::PI).sin().powi(2))
+    }
+
+    /// line clear surge
+    pub fn surge(&mut self, lines: usize) {
+        let energy = SURGE[lines.clamp(1, SURGE.len()) - 1];
+        self.energy = self.energy.max(energy);
+    }
+}
+
+fn smoothstep(x: f32) -> f32 {
+    let t = x.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}

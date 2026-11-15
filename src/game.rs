@@ -1,31 +1,46 @@
 use ggez::{
     audio::{self, SoundSource},
+    conf,
     event::EventHandler,
     glam::IVec2,
     graphics::{self},
     input::keyboard::KeyCode,
     input::keyboard::KeyInput,
-    Context, GameResult,
+    winit, Context, GameResult,
 };
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
+mod debug;
+mod music;
 mod screenshot;
+mod stretch;
 pub use screenshot::Screenshot;
 use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{
+    background::{Background, BackgroundStyle},
     controls::{self, Control, GameControls},
-    draw::{self, BACKGROUND_COLOR},
+    draw,
+    effects::Effects,
+    level_progress::LevelProgress,
     menus::{self, Menu},
     playfield::{Playfield, TranslationDirection, PLAYFIELD_SIZE},
     rustomino::{Rotation, Rustomino, RustominoBag, RustominoState},
-    effects::Effects,
     score_display::ScoreDisplay,
+    scores::{HighScore, Initials, ScoreBoard},
+    settings::{Settings, WindowState},
+    style::{self, BlockStyle, BoardStyle, Style},
 };
 
 // GAMEPLAY CONSTANTS
-const MIN_GRAVITY_DELAY: f64 = 1.0 / 1200.0; // 20G at 60 ticks per second
+const UNFOCUSED_FRAME: Duration = Duration::from_nanos(1_000_000_000 / 15); // 15fps
+const FAST_GRAVITY_DELAY: f64 = 0.05; // gravity trail on every row at or below this
+const MIN_GRAVITY_DELAY: f64 = 1.0 / 1200.0; // 20 rows per 60th of a second
 const STARTING_LEVEL: usize = 1;
+const STANDARD_TOP_LEVEL: usize = 15; // standard mode stops speeding up here
 const LINES_PER_LEVEL: usize = 10; // number of lines that need to be cleared before level advances
 const LOCKDOWN_DELAY: f64 = 0.5; // how long to wait before locking block (guideline)
 const LINE_CLEAR_DELAY: f64 = 0.4; // how long completed lines stay before being removed
@@ -36,6 +51,8 @@ const SINGLE_LINE_SCORE: usize = 100;
 const TRIPLE_LINE_SCORE: usize = 500;
 const DOUBLE_LINE_SCORE: usize = 300;
 const QUAD_SCORE: usize = 800;
+const SOFT_DROP_SCORE: usize = 1; // per row
+const HARD_DROP_SCORE: usize = 2; // per row
 
 // ASSET CONSTANTS
 // made by tools/make_chiptune.py, except the original
@@ -47,9 +64,33 @@ const MUSIC_THEMES: [(&str, &str); 5] = [
     ("Original", "/music_1_8bit.ogg"),
 ];
 const VOLUME_LEVELS: u8 = 10; // steps on the options volume sliders
-const DEFAULT_VOLUME_LEVEL: u8 = 5;
+pub const DEFAULT_VOLUME_LEVEL: u8 = 5;
 const MUSIC_VOL_MAX: f32 = 0.2;
+const MUSIC_LEVEL_SPEEDUP: f32 = 0.02; // tempo gained per level
+const MUSIC_MAX_SPEED: f32 = 1.3; // tempo cap
+const MUSIC_RAMP_TIME: f32 = 0.6; // seconds, speed change time constant
 const SFX_VOL_MAX: f32 = 1.0;
+const JINGLE_VOL_MAX: f32 = 0.2; // jingles are mastered louder
+const HIGH_SCORE_VOL_MAX: f32 = 0.25;
+const MIN_WINDOW_SCALE: f32 = 0.5; // smallest window, in physical pixels, relative to the view
+
+/// gravity curve, fixed for a game
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum Mode {
+    Standard, // speeds up until level 15
+    Hard,     // speeds up to instant drops at level 19
+}
+
+impl Mode {
+    pub const ALL: [Mode; 2] = [Mode::Standard, Mode::Hard];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Mode::Standard => "Standard",
+            Mode::Hard => "Hard",
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum GameState {
@@ -58,6 +99,9 @@ pub enum GameState {
     Paused,
     GameOver,
     Options,
+    NameEntry,
+    HighScores,
+    Debug, // animation viewer
     Quit,
 }
 
@@ -74,6 +118,7 @@ pub enum Sfx {
     LineClear3,
     Quad,
     LevelUp,
+    HighScore,
     MenuMove,
     MenuSelect,
 }
@@ -91,17 +136,29 @@ impl Sfx {
             Sfx::LineClear3 => "/line_clear_3.wav",
             Sfx::Quad => "/quad.wav",
             Sfx::LevelUp => "/level_up.wav",
+            Sfx::HighScore => "/high_score.wav",
             Sfx::MenuMove => "/menu_move.wav",
             Sfx::MenuSelect => "/menu_select.wav",
+        }
+    }
+
+    fn volume(self, level: u8) -> f32 {
+        match self {
+            Sfx::HighScore => volume(level, HIGH_SCORE_VOL_MAX),
+            _ => volume(level, SFX_VOL_MAX),
         }
     }
 }
 
 pub struct Assets {
-    music: Vec<audio::Source>,
+    music: Vec<music::Track>,
     theme: usize,
-    pub game_over: audio::Source,
+    music_speed: f32,
+    game_over: audio::Source,
     sfx: HashMap<Sfx, audio::Source>,
+    // sources paused on focus loss
+    music_suspended: bool,
+    game_over_suspended: bool,
 }
 
 impl Assets {
@@ -109,23 +166,27 @@ impl Assets {
         // load background music
         let mut music = Vec::new();
         for (_, path) in MUSIC_THEMES {
-            let mut source = audio::Source::new(ctx, path)?;
-            source.set_volume(volume(DEFAULT_VOLUME_LEVEL, MUSIC_VOL_MAX));
-            music.push(source);
+            let track = music::Track::new(ctx, path)?;
+            track.set_volume(volume(DEFAULT_VOLUME_LEVEL, MUSIC_VOL_MAX));
+            music.push(track);
         }
+        let mut game_over = audio::Source::new(ctx, "/game_over_8bit.ogg")?;
+        game_over.set_volume(volume(DEFAULT_VOLUME_LEVEL, JINGLE_VOL_MAX));
         // load game sound effects
-        let game_over = audio::Source::new(ctx, "/game_over_8bit.ogg")?;
         let mut sfx = HashMap::new();
         for effect in Sfx::iter() {
             let mut source = audio::Source::new(ctx, effect.path())?;
-            source.set_volume(volume(DEFAULT_VOLUME_LEVEL, SFX_VOL_MAX));
+            source.set_volume(effect.volume(DEFAULT_VOLUME_LEVEL));
             sfx.insert(effect, source);
         }
         Ok(Assets {
             music,
             theme: 0,
+            music_speed: 1.0,
             game_over,
             sfx,
+            music_suspended: false,
+            game_over_suspended: false,
         })
     }
 
@@ -135,30 +196,79 @@ impl Assets {
         }
     }
 
-    fn music(&self) -> &audio::Source {
+    fn music(&self) -> &music::Track {
         &self.music[self.theme]
     }
 
     fn set_theme(&mut self, theme: usize, play: bool) {
         self.music().stop();
         self.theme = theme;
+        self.apply_music_speed();
         if play {
             self.music().play();
         }
     }
 
     fn set_music_level(&mut self, level: u8) {
-        for source in &mut self.music {
-            source.set_volume(volume(level, MUSIC_VOL_MAX));
+        for track in &self.music {
+            track.set_volume(volume(level, MUSIC_VOL_MAX));
+        }
+    }
+
+    /// pause the music for the game over jingle
+    fn play_game_over(&self) {
+        self.music().pause();
+        self.game_over.stop();
+        self.game_over.play();
+    }
+
+    /// ease the music speed toward target
+    fn update_music_speed(&mut self, delta_time: f64, target: f32) {
+        let t = 1.0 - (-(delta_time as f32) / MUSIC_RAMP_TIME).exp();
+        self.music_speed += (target - self.music_speed) * t;
+        if (target - self.music_speed).abs() < 0.0005 {
+            self.music_speed = target;
+        }
+        self.apply_music_speed();
+    }
+
+    fn apply_music_speed(&self) {
+        self.music().set_tempo(self.music_speed);
+    }
+
+    /// stop the jingle and restart the music from the top
+    fn end_game_over(&mut self) {
+        self.game_over.stop();
+        if self.music().paused() {
+            self.music_speed = 1.0;
+            self.apply_music_speed();
+            self.music().play();
+        }
+    }
+
+    /// pause whatever is playing while unfocused
+    fn suspend(&mut self) {
+        self.music_suspended = self.music().playing();
+        self.game_over_suspended = self.game_over.playing();
+        self.music().pause();
+        self.game_over.pause();
+    }
+
+    /// resume what suspend paused
+    fn unsuspend(&mut self) {
+        if std::mem::take(&mut self.music_suspended) {
+            self.music().resume();
+        }
+        if std::mem::take(&mut self.game_over_suspended) {
+            self.game_over.resume();
         }
     }
 
     fn set_sound_level(&mut self, level: u8) {
-        let volume = volume(level, SFX_VOL_MAX);
-        self.game_over.set_volume(volume);
-        for source in self.sfx.values_mut() {
-            source.set_volume(volume);
+        for (effect, source) in &mut self.sfx {
+            source.set_volume(effect.volume(level));
         }
+        self.game_over.set_volume(volume(level, JINGLE_VOL_MAX));
     }
 }
 
@@ -175,7 +285,11 @@ pub struct BlocksState {
     pub level: usize,
     pub score: usize,
     score_display: ScoreDisplay,
+    level_display: ScoreDisplay,
+    level_progress: LevelProgress,
     effects: Effects,
+    background: Background,
+    pub style: Style,
     pub assets: Assets,
     pub controls: GameControls,
     menu_state: menus::MenuList,
@@ -184,18 +298,74 @@ pub struct BlocksState {
     view_settings: draw::ViewSettings,
     meshes: draw::Meshes,
     rustomino_bag: RustominoBag,
+    mode: Mode,
     gravity_delay: f64, // time between gravity ticks
     total_lines_cleared: usize,
     hold_used: bool, // if user has held a rustomino, resets on lock
     lockdown_resets: u32,
     lowest_row: i32, // lowest row reached by the active rustomino
+    focused: bool,
+    last_frame: Instant,
     music_level: u8,
     sound_level: u8,
+    settings: Settings,
+    scores: ScoreBoard,
+    initials: Initials,
+    highlight: Option<usize>, // new entry on the score board
+    scores_from_game: bool,
     screenshot: Option<Screenshot>,
+    debug: debug::DebugView,
+}
+
+/// resizable window, sized in logical pixels so high dpi screens get a larger window
+/// starts hidden, show_window places and shows it
+pub fn window_mode(screenshot: bool, window: &WindowState) -> conf::WindowMode {
+    let (min_width, min_height) = (
+        draw::VIEW_WIDTH * MIN_WINDOW_SCALE,
+        draw::VIEW_HEIGHT * MIN_WINDOW_SCALE,
+    );
+    let mut mode = conf::WindowMode::default()
+        .resizable(true)
+        .resize_on_scale_factor_change(true)
+        .dimensions(draw::VIEW_WIDTH, draw::VIEW_HEIGHT)
+        .min_dimensions(min_width, min_height)
+        .visible(false);
+    // screenshots stay at a fixed pixel size
+    if !screenshot {
+        mode.logical_size = Some(winit::dpi::LogicalSize::new(
+            window.width.max(min_width),
+            window.height.max(min_height),
+        ));
+        mode = mode.maximized(window.maximized);
+    }
+    mode
+}
+
+/// restore the saved position if it is on a monitor, then show the window
+pub fn show_window(ctx: &Context, window: &WindowState) {
+    let handle = ctx.gfx.window();
+    if let (Some(x), Some(y)) = (window.x, window.y) {
+        let on_screen = handle.available_monitors().any(|monitor| {
+            let (pos, size) = (monitor.position(), monitor.size());
+            (pos.x..pos.x + size.width as i32).contains(&x)
+                && (pos.y..pos.y + size.height as i32).contains(&y)
+        });
+        if on_screen {
+            let position = winit::dpi::PhysicalPosition::new(x, y);
+            if let Err(e) = ctx.gfx.set_window_position(position) {
+                log::warn!("could not restore window position: {e}");
+            }
+        }
+    }
+    handle.set_visible(true);
 }
 
 impl BlocksState {
-    pub fn new(ctx: &mut Context, screenshot: Option<Screenshot>) -> GameResult<Self> {
+    pub fn new(
+        ctx: &mut Context,
+        screenshot: Option<Screenshot>,
+        settings: Settings,
+    ) -> GameResult<Self> {
         log::info!("Loading game resources");
         // load font
         ctx.gfx
@@ -203,9 +373,11 @@ impl BlocksState {
 
         // load game resources
         let assets = Assets::new(ctx)?;
-        if screenshot.is_none() {
-            assets.music().play();
-        }
+        let scores = if screenshot.is_none() {
+            ScoreBoard::load()
+        } else {
+            ScoreBoard::default()
+        };
 
         let control_state = GameControls::default();
         let playfield = Playfield::new();
@@ -229,17 +401,34 @@ impl BlocksState {
             meshes: draw::Meshes::new(ctx)?,
             score: 0,
             score_display: ScoreDisplay::new(0),
+            level_display: ScoreDisplay::new(STARTING_LEVEL),
+            level_progress: LevelProgress::new(LINES_PER_LEVEL, 0),
             effects: Effects::new(),
+            background: Background::new(),
+            style: Style::default(),
             rustomino_bag: RustominoBag::new(),
-            gravity_delay: gravity_delay(STARTING_LEVEL),
+            mode: Mode::Standard,
+            gravity_delay: gravity_delay(STARTING_LEVEL, Mode::Standard),
             total_lines_cleared: 0,
             hold_used: false,
             lockdown_resets: 0,
             lowest_row: i32::MAX,
+            focused: true,
+            last_frame: Instant::now(),
             music_level: DEFAULT_VOLUME_LEVEL,
             sound_level: DEFAULT_VOLUME_LEVEL,
+            initials: Initials::new(&settings.initials),
+            settings,
+            scores,
+            highlight: None,
+            scores_from_game: false,
             screenshot,
+            debug: debug::DebugView::new(),
         };
+        s.apply_settings();
+        if s.screenshot.is_none() {
+            s.assets.music().play();
+        }
         if let Some(scene) = s.screenshot.as_ref().map(|screenshot| screenshot.scene) {
             s.setup_scene(scene);
         }
@@ -260,9 +449,29 @@ impl BlocksState {
             RustominoState::Falling { time } if time + delta_time >= self.gravity_delay => {
                 // drop one row per elapsed gravity delay, carrying over the remainder
                 let mut time = time + delta_time;
-                while time >= self.gravity_delay && self.playfield.active_can_fall() {
+                let from = self
+                    .playfield
+                    .active_rustomino
+                    .as_ref()
+                    .map(|r| r.playfield_slots());
+                let mut rows = 0;
+                // max gravity lands instantly, no midair frames
+                let instant = self.gravity_delay <= MIN_GRAVITY_DELAY;
+                while (instant || time >= self.gravity_delay) && self.playfield.active_can_fall() {
                     self.playfield.apply_gravity();
-                    time -= self.gravity_delay;
+                    time = (time - self.gravity_delay).max(0.0);
+                    rows += 1;
+                }
+                // streak fast falls and skipped rows
+                if rows > 1 || (rows > 0 && self.gravity_delay <= FAST_GRAVITY_DELAY) {
+                    if let (Some(from), Some(rustomino)) = (from, &self.playfield.active_rustomino)
+                    {
+                        self.effects.gravity_drop(
+                            &from,
+                            &rustomino.playfield_slots(),
+                            rustomino.rtype.color(),
+                        );
+                    }
                 }
                 self.update_lowest_row();
                 self.playfield
@@ -389,7 +598,13 @@ impl BlocksState {
         log::debug!("soft drop called");
         // landing is handled in playing_update
         if self.playfield.translate_active(TranslationDirection::Down) {
+            if let Some(rustomino) = &self.playfield.active_rustomino {
+                self.effects
+                    .soft_drop(&rustomino.playfield_slots(), rustomino.rtype.color());
+            }
             self.update_lowest_row();
+            self.score += SOFT_DROP_SCORE;
+            self.score_display.add_quiet(SOFT_DROP_SCORE);
         }
         log::trace!("playfield:\n{}", self.playfield);
     }
@@ -399,7 +614,20 @@ impl BlocksState {
         if self.playfield.ready_for_next() {
             return;
         }
-        self.playfield.hard_drop_active();
+        if let Some(from) = self.playfield.hard_drop_active() {
+            if let Some(rustomino) = &self.playfield.active_rustomino {
+                let rows = (from[0].y - rustomino.playfield_slots()[0].y) as usize;
+                if rows > 0 {
+                    self.score += rows * HARD_DROP_SCORE;
+                    self.score_display.add(rows * HARD_DROP_SCORE);
+                }
+                self.effects.hard_drop(
+                    &from,
+                    &rustomino.playfield_slots(),
+                    rustomino.rtype.color(),
+                );
+            }
+        }
         log::info!("hard drop");
         self.lock(Sfx::HardDrop);
         log::trace!("playfield:\n{}", self.playfield);
@@ -453,10 +681,56 @@ impl BlocksState {
     fn game_over(&mut self) {
         log::info!("Game Over! Score: {}", self.score);
         self.controls.clear_inputs();
+        self.effects.game_over();
+        self.background.freeze(self.level);
         self.set_state(GameState::GameOver);
     }
 
+    /// leave the game over screen for name entry or the score board
+    fn end_game_over(&mut self) {
+        self.assets.end_game_over();
+        self.highlight = None;
+        self.scores_from_game = true;
+        if self.scores.qualifies(self.score) {
+            self.initials = Initials::new(&self.settings.initials);
+            self.assets.play(Sfx::HighScore);
+            self.set_state(GameState::NameEntry);
+        } else {
+            self.assets.play(Sfx::MenuSelect);
+            self.set_state(GameState::HighScores);
+        }
+    }
+
+    /// record the score with the entered initials
+    fn submit_initials(&mut self) {
+        let initials = self.initials.text();
+        self.highlight = self.scores.insert(HighScore {
+            initials: initials.clone(),
+            score: self.score,
+            level: self.level,
+            lines: self.total_lines_cleared,
+        });
+        self.settings.initials = initials;
+        if self.screenshot.is_none() {
+            self.scores.save();
+            self.settings.save();
+        }
+        self.assets.play(Sfx::MenuSelect);
+        self.set_state(GameState::HighScores);
+    }
+
+    fn close_high_scores(&mut self) {
+        self.assets.play(Sfx::MenuSelect);
+        self.highlight = None;
+        if std::mem::take(&mut self.scores_from_game) {
+            self.new_game();
+        } else {
+            self.set_state(GameState::Menu);
+        }
+    }
+
     fn new_game(&mut self) {
+        self.assets.end_game_over();
         self.playfield = Playfield::new();
         self.next_rustomino = None;
         self.held_rustomino = None;
@@ -465,18 +739,37 @@ impl BlocksState {
         self.level = STARTING_LEVEL;
         self.score = 0;
         self.score_display = ScoreDisplay::new(0);
+        self.level_display = ScoreDisplay::new(STARTING_LEVEL);
+        self.level_progress = LevelProgress::new(LINES_PER_LEVEL, 0);
         self.effects = Effects::new();
+        self.background.reset();
         self.rustomino_bag = RustominoBag::new();
-        self.gravity_delay = gravity_delay(STARTING_LEVEL);
+        self.gravity_delay = gravity_delay(STARTING_LEVEL, self.mode);
         self.total_lines_cleared = 0;
         self.hold_used = false;
+    }
+
+    /// faster music in game, normal elsewhere
+    fn music_speed(&self) -> f32 {
+        let in_game = match self.state {
+            GameState::Playing | GameState::Paused => true,
+            GameState::Options => self.options_in_game(),
+            GameState::Debug => self.debug.view == GameState::Playing,
+            _ => false,
+        };
+        if in_game {
+            music_speed(self.level_display.shown())
+        } else {
+            1.0
+        }
     }
 
     fn increase_game_level(&mut self) {
         self.level += 1;
         log::info!("increasing game level to {}", self.level);
         // get the gravity tick delay for the next level
-        self.gravity_delay = gravity_delay(self.level);
+        self.gravity_delay = gravity_delay(self.level, self.mode);
+        self.background.level_up();
     }
 
     fn lock(&mut self, sound: Sfx) {
@@ -496,6 +789,10 @@ impl BlocksState {
             return;
         }
 
+        if sound == Sfx::Lock {
+            self.effects
+                .lock(&rustomino.playfield_slots(), rustomino.rtype.color());
+        }
         self.hold_used = false;
         let Some(landed) = self.playfield.lock_active() else {
             return;
@@ -532,6 +829,7 @@ impl BlocksState {
             return;
         }
         self.effects.line_clear(&self.playfield);
+        self.background.surge(num_lines_cleared);
         // score the completed lines and append it to the total score
         let score = score_cleared_lines(num_lines_cleared, self.level);
         self.score += score;
@@ -545,6 +843,7 @@ impl BlocksState {
 
         // track the total number of lines cleared
         self.total_lines_cleared += num_lines_cleared;
+        self.level_progress.add(num_lines_cleared);
         log::info!(
             "total number of cleared lines: {}",
             self.total_lines_cleared
@@ -598,6 +897,9 @@ impl BlocksState {
         } else if self.menu_state.selected() == 1 {
             self.set_state(GameState::Options);
         } else if self.menu_state.selected() == 2 {
+            self.scores_from_game = false;
+            self.set_state(GameState::HighScores);
+        } else if self.menu_state.selected() == 3 {
             self.set_state(GameState::Quit);
         }
     }
@@ -654,61 +956,174 @@ impl BlocksState {
         }
     }
     fn draw_scene(&self, ctx: &mut Context, canvas: &mut graphics::Canvas) -> GameResult {
-        draw::draw_background(canvas, &self.meshes, &self.view_settings.view_rect);
+        canvas.set_screen_coordinates(self.view_settings.view_rect);
+        draw::set_pixel_scale(self.view_settings.scale);
+        draw::draw_background(
+            canvas,
+            &self.meshes,
+            &self.view_settings.view_rect,
+            self.background.style,
+        );
 
         // handle the game states
-        match self.state {
+        let state = self.shown_state();
+        match state {
             GameState::Menu => {
+                draw::draw_background_animation(
+                    canvas,
+                    &self.meshes,
+                    &self.background,
+                    &self.view_settings.view_rect,
+                );
                 draw::draw_menu(
                     ctx,
                     canvas,
                     &self.meshes,
                     &self.menu_state,
                     &self.view_settings,
+                    self.style.block,
                 )?;
             }
             GameState::Playing | GameState::Paused | GameState::GameOver => {
+                draw::draw_background_animation(
+                    canvas,
+                    &self.meshes,
+                    &self.background,
+                    &self.view_settings.view_rect,
+                );
                 self.draw_game(ctx, canvas)?;
-                match self.state {
+                match state {
                     GameState::Paused => draw::draw_paused(
                         ctx,
                         canvas,
                         &self.meshes,
                         &self.paused_state,
                         &self.view_settings,
+                        self.style.block,
                     )?,
-                    GameState::GameOver => draw::draw_gameover(
-                        ctx,
-                        canvas,
-                        &self.meshes,
-                        &self.view_settings.view_rect,
-                    )?,
+                    GameState::GameOver => {
+                        if let Some(game_over) = &self.effects.game_over {
+                            draw::draw_gameover(
+                                ctx,
+                                canvas,
+                                &self.meshes,
+                                &self.view_settings.view_rect,
+                                game_over,
+                                self.score,
+                                self.level,
+                            )?;
+                        }
+                    }
                     _ => {}
                 }
             }
             GameState::Options => {
-                draw::draw_backdrop(ctx, canvas, &self.meshes, &self.view_settings.view_rect);
+                draw::draw_background_animation(
+                    canvas,
+                    &self.meshes,
+                    &self.background,
+                    &self.view_settings.view_rect,
+                );
+                // opened from pause, show the game underneath
+                if self.options_in_game() {
+                    self.draw_game(ctx, canvas)?;
+                    draw::draw_overlay(canvas, &self.meshes, &self.view_settings.view_rect);
+                }
                 draw::draw_options(
                     ctx,
                     canvas,
                     &self.meshes,
                     &self.options_state,
+                    self.mode.name(),
+                    self.options_in_game(),
                     MUSIC_THEMES[self.assets.theme].0,
+                    self.background.style.name(),
+                    &self.style,
                     self.music_level,
                     self.sound_level,
                     VOLUME_LEVELS,
                     &self.view_settings,
                 )?;
             }
+            GameState::NameEntry => {
+                draw::draw_background_animation(
+                    canvas,
+                    &self.meshes,
+                    &self.background,
+                    &self.view_settings.view_rect,
+                );
+                self.draw_game(ctx, canvas)?;
+                draw::draw_name_entry(
+                    ctx,
+                    canvas,
+                    &self.meshes,
+                    &self.view_settings.view_rect,
+                    &self.initials,
+                    self.score,
+                    self.style.block,
+                )?;
+            }
+            GameState::HighScores => {
+                draw::draw_background_animation(
+                    canvas,
+                    &self.meshes,
+                    &self.background,
+                    &self.view_settings.view_rect,
+                );
+                draw::draw_high_scores(
+                    ctx,
+                    canvas,
+                    &self.meshes,
+                    &self.view_settings.view_rect,
+                    &self.scores,
+                    self.highlight,
+                    self.style.block,
+                )?;
+            }
+            // debug background view
+            GameState::Debug => draw::draw_background_animation(
+                canvas,
+                &self.meshes,
+                &self.background,
+                &self.view_settings.view_rect,
+            ),
             GameState::Quit => {}
+        }
+
+        if self.state == GameState::Debug && !self.debug.hidden {
+            let names = debug::Animation::ALL.map(debug::Animation::name);
+            draw::draw_debug(
+                ctx,
+                canvas,
+                &self.meshes,
+                &self.view_settings,
+                &names,
+                self.debug.selected,
+                self.debug.speed(),
+                self.debug.paused,
+                self.debug.replay,
+                self.debug.level,
+                self.debug.fps(),
+                self.style.block,
+            )?;
         }
 
         Ok(())
     }
 
+    /// the screen being drawn, the viewer shows the screen of its animation
+    fn shown_state(&self) -> GameState {
+        if self.state == GameState::Debug {
+            self.debug.view
+        } else {
+            self.state
+        }
+    }
+
     fn draw_game(&self, ctx: &mut Context, canvas: &mut graphics::Canvas) -> GameResult {
         let screen = canvas.screen_coordinates();
-        if let Some(rect) = screen.filter(|_| self.state == GameState::Playing) {
+        let shaking = matches!(self.shown_state(), GameState::Playing | GameState::GameOver);
+        if let Some(rect) = screen.filter(|_| shaking) {
             let shake = self.effects.shake();
             canvas.set_screen_coordinates(graphics::Rect::new(
                 rect.x - shake.x,
@@ -724,14 +1139,29 @@ impl BlocksState {
             &self.next_rustomino,
             &self.held_rustomino,
             &self.view_settings,
-            self.state == GameState::GameOver,
+            self.effects.game_over.as_ref(),
+            &self.style,
         );
-        draw::draw_effects(canvas, &self.meshes, &self.effects, &self.view_settings);
+        draw::draw_level_progress(
+            canvas,
+            &self.meshes,
+            &self.level_progress,
+            &self.view_settings,
+            self.style.block,
+        );
+        draw::draw_effects(
+            ctx,
+            canvas,
+            &self.meshes,
+            &self.effects,
+            &self.view_settings,
+        )?;
         draw::draw_playing_text(
             ctx,
             canvas,
-            self.level,
+            &self.level_display,
             &self.score_display,
+            self.scores.best().max(self.score_display.shown()),
             &self.view_settings,
         )?;
         if let Some(rect) = screen {
@@ -744,12 +1174,22 @@ impl BlocksState {
     fn adjust_option(&mut self, delta: i8) {
         let step = |level: u8| (level as i8 + delta).clamp(0, VOLUME_LEVELS as i8) as u8;
         match self.options_state.selected() {
+            // locked during a game
+            menus::OPTION_MODE if self.options_in_game() => return,
+            menus::OPTION_MODE => self.mode = style::cycle(&Mode::ALL, self.mode, delta as isize),
             menus::OPTION_THEME => {
                 let count = MUSIC_THEMES.len() as isize;
                 let theme = (self.assets.theme as isize + delta as isize).rem_euclid(count);
                 self.assets
                     .set_theme(theme as usize, self.screenshot.is_none());
                 return;
+            }
+            menus::OPTION_BACKGROUND => self.background.cycle(delta as isize),
+            menus::OPTION_BLOCKS => {
+                self.style.block = style::cycle(&BlockStyle::ALL, self.style.block, delta as isize)
+            }
+            menus::OPTION_BOARD => {
+                self.style.board = style::cycle(&BoardStyle::ALL, self.style.board, delta as isize)
             }
             menus::OPTION_MUSIC => {
                 self.music_level = step(self.music_level);
@@ -764,7 +1204,78 @@ impl BlocksState {
         self.assets.play(Sfx::MenuMove);
     }
 
+    /// apply saved options
+    fn apply_settings(&mut self) {
+        let settings = &self.settings;
+        if let Some(mode) = style::from_name(&Mode::ALL, &settings.mode, Mode::name) {
+            self.mode = mode;
+        }
+        if let Some(theme) = MUSIC_THEMES
+            .iter()
+            .position(|(name, _)| *name == settings.theme)
+        {
+            self.assets.set_theme(theme, false);
+        }
+        if let Some(background) = style::from_name(
+            &BackgroundStyle::ALL,
+            &settings.background,
+            BackgroundStyle::name,
+        ) {
+            self.background.style = background;
+        }
+        if let Some(block) = style::from_name(&BlockStyle::ALL, &settings.blocks, BlockStyle::name)
+        {
+            self.style.block = block;
+        }
+        if let Some(board) = style::from_name(&BoardStyle::ALL, &settings.board, BoardStyle::name) {
+            self.style.board = board;
+        }
+        self.music_level = settings.music_level.min(VOLUME_LEVELS);
+        self.sound_level = settings.sound_level.min(VOLUME_LEVELS);
+        self.assets.set_music_level(self.music_level);
+        self.assets.set_sound_level(self.sound_level);
+    }
+
+    /// copy the current options into the settings and save them
+    fn save_settings(&mut self) {
+        if self.screenshot.is_some() {
+            return;
+        }
+        let settings = &mut self.settings;
+        settings.mode = self.mode.name().to_string();
+        settings.theme = MUSIC_THEMES[self.assets.theme].0.to_string();
+        settings.background = self.background.style.name().to_string();
+        settings.blocks = self.style.block.name().to_string();
+        settings.board = self.style.board.name().to_string();
+        settings.music_level = self.music_level;
+        settings.sound_level = self.sound_level;
+        settings.save();
+    }
+
+    /// remember the window size and position
+    fn store_window_state(&mut self, ctx: &Context) {
+        let handle = ctx.gfx.window();
+        let window = &mut self.settings.window;
+        window.maximized = handle.is_maximized();
+        if window.maximized {
+            return;
+        }
+        let size = handle.inner_size().to_logical::<f32>(handle.scale_factor());
+        window.width = size.width;
+        window.height = size.height;
+        // not available on wayland
+        if let Ok(position) = ctx.gfx.window_position() {
+            window.x = Some(position.x);
+            window.y = Some(position.y);
+        }
+    }
+
+    fn options_in_game(&self) -> bool {
+        self.state == GameState::Options && self.previous_state == GameState::Paused
+    }
+
     fn close_options(&mut self) {
+        self.save_settings();
         self.assets.play(Sfx::MenuSelect);
         self.options_state.reset_selection();
         self.set_state(self.previous_state);
@@ -783,56 +1294,87 @@ impl BlocksState {
 
 impl EventHandler for BlocksState {
     fn update(&mut self, ctx: &mut ggez::Context) -> GameResult {
-        const DESIRED_FPS: u32 = 60;
-
         // screenshots are of a fixed scene
         if self.screenshot.is_some() {
             return Ok(());
         }
 
         // loop the music, rodio 0.22 repeat is silent for vorbis
-        if self.assets.music().stopped() {
+        if self.focused && self.assets.music().stopped() {
             self.assets.music().play();
         }
 
-        // limit game to 60fps
-        while ctx.time.check_update_time(DESIRED_FPS) {
-            let delta_time = 1.0 / (DESIRED_FPS as f64);
+        // fixed rate ticks, drawn at the display rate
+        let tick_rate = self.debug.fps();
+        while ctx.time.check_update_time(tick_rate) {
+            let delta_time = 1.0 / (tick_rate as f64);
             // handle the game states
             match self.state {
                 GameState::Playing => {
                     self.handle_playing_inputs(delta_time);
                     self.score_display.update(delta_time);
+                    self.level_display.update(delta_time);
+                    // the shown level ticks up with the bar's burst
+                    if self.level_progress.update(delta_time) {
+                        self.level_display.add(1);
+                    }
                     self.effects.update(delta_time);
+                    self.background.update(delta_time, self.level);
                     if self.playfield.is_clearing_lines() {
                         self.playfield.update_line_clear(delta_time);
                     } else if self.ready_playfield() {
                         self.playing_update(delta_time);
                     }
                 }
-                GameState::GameOver if self.previous_state != self.state => {
+                GameState::GameOver => {
                     // play game over sound if we've just changed state
-                    self.assets.game_over.play();
-                    self.previous_state = GameState::GameOver;
+                    if self.previous_state != self.state {
+                        self.assets.play_game_over();
+                        self.previous_state = GameState::GameOver;
+                    }
+                    self.effects.update(delta_time);
+                    self.background.update(delta_time, self.level);
                 }
-                GameState::Menu => {}
-                GameState::Paused => {}
-                GameState::GameOver => {}
-                GameState::Options => {}
+                GameState::Paused => self.background.update(delta_time, self.level),
+                GameState::Options if self.options_in_game() => {
+                    self.background.update(delta_time, self.level)
+                }
+                GameState::NameEntry => {
+                    self.effects.update(delta_time);
+                    self.background.update(delta_time, self.level)
+                }
+                GameState::Menu | GameState::Options | GameState::HighScores => {
+                    self.background.update(delta_time, 1)
+                }
+                GameState::Debug => self.debug_update(delta_time),
                 GameState::Quit => ctx.request_quit(),
             }
+            let speed = self.music_speed();
+            self.assets.update_music_speed(delta_time, speed);
         }
         Ok(())
     }
 
     fn draw(&mut self, ctx: &mut ggez::Context) -> GameResult {
-        let mut canvas = graphics::Canvas::from_frame(ctx, BACKGROUND_COLOR);
+        let mut canvas =
+            graphics::Canvas::from_frame(ctx, draw::clear_color(self.background.style));
         self.draw_scene(ctx, &mut canvas)?;
         canvas.finish(ctx)?;
 
         if self.capture_screenshot(ctx)? {
             ctx.request_quit();
         }
+
+        // cap frames at the tick rate, 15fps in the background
+        let frame = if self.focused {
+            Duration::from_secs_f64(1.0 / self.debug.fps() as f64)
+        } else {
+            UNFOCUSED_FRAME
+        };
+        if let Some(wait) = (self.last_frame + frame).checked_duration_since(Instant::now()) {
+            std::thread::sleep(wait);
+        }
+        self.last_frame = Instant::now();
 
         ggez::timer::yield_now();
         Ok(())
@@ -873,6 +1415,9 @@ impl EventHandler for BlocksState {
                 if keycode == Some(KeyCode::Escape) && !repeated {
                     self.set_state(GameState::Quit);
                 }
+                if keycode == Some(KeyCode::F12) && !repeated {
+                    self.open_debug();
+                }
                 if keycode == Some(KeyCode::ArrowUp) && !repeated {
                     self.menu_state.previous();
                     self.assets.play(Sfx::MenuMove);
@@ -901,8 +1446,8 @@ impl EventHandler for BlocksState {
                     self.assets.play(Sfx::MenuMove);
                 }
             }
-            GameState::GameOver if !repeated => {
-                self.new_game();
+            GameState::GameOver if !repeated && self.effects.game_over_ready() => {
+                self.end_game_over();
             }
             GameState::GameOver => {}
             GameState::Options => {
@@ -923,6 +1468,39 @@ impl EventHandler for BlocksState {
                     self.adjust_option(1);
                 }
             }
+            GameState::NameEntry => {
+                let enter =
+                    keycode == Some(KeyCode::Enter) || keycode == Some(KeyCode::NumpadEnter);
+                let typed = input.event.text.as_ref().and_then(|t| t.chars().next());
+                if (enter || keycode == Some(KeyCode::Escape)) && !repeated {
+                    self.submit_initials();
+                } else if keycode == Some(KeyCode::Backspace) {
+                    self.initials.backspace();
+                    self.assets.play(Sfx::MenuMove);
+                } else if keycode == Some(KeyCode::ArrowUp) {
+                    self.initials.step(1);
+                    self.assets.play(Sfx::MenuMove);
+                } else if keycode == Some(KeyCode::ArrowDown) {
+                    self.initials.step(-1);
+                    self.assets.play(Sfx::MenuMove);
+                } else if keycode == Some(KeyCode::ArrowLeft) {
+                    self.initials.move_cursor(-1);
+                    self.assets.play(Sfx::MenuMove);
+                } else if keycode == Some(KeyCode::ArrowRight) {
+                    self.initials.move_cursor(1);
+                    self.assets.play(Sfx::MenuMove);
+                } else if let Some(letter) = typed.filter(|c| c.is_ascii_alphabetic()) {
+                    self.initials.type_letter(letter);
+                    self.assets.play(Sfx::MenuMove);
+                }
+            }
+            GameState::HighScores if !repeated => self.close_high_scores(),
+            GameState::HighScores => {}
+            GameState::Debug => {
+                if let Some(keycode) = keycode {
+                    self.debug_key(keycode, repeated, input.mods.shift_key());
+                }
+            }
             GameState::Quit => {}
         }
         Ok(())
@@ -938,9 +1516,20 @@ impl EventHandler for BlocksState {
             GameState::Paused => {}
             GameState::GameOver => {}
             GameState::Options => {}
+            GameState::NameEntry => {}
+            GameState::HighScores => {}
+            GameState::Debug => {}
             GameState::Quit => {}
         }
         Ok(())
+    }
+
+    fn quit_event(&mut self, ctx: &mut Context) -> Result<bool, ggez::GameError> {
+        if self.screenshot.is_none() {
+            self.store_window_state(ctx);
+            self.save_settings();
+        }
+        Ok(false)
     }
 
     fn resize_event(&mut self, _ctx: &mut Context, width: f32, height: f32) -> GameResult {
@@ -949,8 +1538,17 @@ impl EventHandler for BlocksState {
     }
 
     fn focus_event(&mut self, _ctx: &mut Context, gained: bool) -> Result<(), ggez::GameError> {
-        if !gained && self.state == GameState::Playing && self.screenshot.is_none() {
-            self.pause();
+        if self.screenshot.is_some() || gained == self.focused {
+            return Ok(());
+        }
+        self.focused = gained;
+        if gained {
+            self.assets.unsuspend();
+        } else {
+            self.assets.suspend();
+            if self.state == GameState::Playing {
+                self.pause();
+            }
         }
         Ok(())
     }
@@ -982,9 +1580,18 @@ fn fully_out_of_bounds(&slots: &[IVec2; 4]) -> bool {
     true
 }
 
+/// music playback rate for the shown level
+fn music_speed(level: usize) -> f32 {
+    (1.0 + (level.max(1) - 1) as f32 * MUSIC_LEVEL_SPEEDUP).min(MUSIC_MAX_SPEED)
+}
+
 /// calculate the gravity delay for the provided level (guideline)
 /// returns fractional seconds
-fn gravity_delay(level: usize) -> f64 {
+fn gravity_delay(level: usize, mode: Mode) -> f64 {
+    let level = match mode {
+        Mode::Standard => level.min(STANDARD_TOP_LEVEL),
+        Mode::Hard => level,
+    };
     let n = level as i32 - 1;
     let gravity_delay = (0.8 - n as f64 * 0.007).powi(n).max(MIN_GRAVITY_DELAY);
     log::info!("new gravity_delay {}", gravity_delay);

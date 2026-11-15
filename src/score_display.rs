@@ -14,7 +14,7 @@ impl ScorePopup {
     }
 }
 
-/// animated view of the score
+/// animated view of the score or level
 pub struct ScoreDisplay {
     from: usize,
     target: usize,
@@ -37,6 +37,12 @@ impl ScoreDisplay {
         self.target += points;
         self.time = 0.0;
         self.popups.push(ScorePopup { points, time: 0.0 });
+    }
+
+    /// add without a popup or pop
+    pub fn add_quiet(&mut self, points: usize) {
+        self.from += points;
+        self.target += points;
     }
 
     pub fn update(&mut self, delta_time: f64) {

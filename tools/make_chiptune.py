@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Render the game's original 8-bit music themes to resources/music_<name>.ogg.
+"""Render the game's original 8-bit music themes to resources/music_<name>.ogg
+and the game over jingle to resources/game_over_8bit.ogg.
 
 Two pulse channels, a triangle bass and a noise drum channel, in the style
 of NES-era hardware. Melodies are written as "note:eighths" tokens.
 
-usage: tools/make_chiptune.py [name ...]   (renders every song by default)
+usage: tools/make_chiptune.py [name ...]   (renders every song and jingle by default)
 """
 
 import array
@@ -128,6 +129,7 @@ SONGS = {
         "staccato": 1.0, "echo": None,
         "sections": [
             ("A", 0.5, False), ("B", 0.25, False), ("A", 0.5, True), ("C", 0.25, False),
+            ("D", 0.125, True),
         ],
         "parts": {
             "A": (["Am", "Am", "E", "E", "Am", "Dm", "E", "Am"], phrase("""
@@ -160,13 +162,23 @@ SONGS = {
                 D5:2 C5:1 B4:1 G#4:2 B4:2
                 E5:6 R:2
             """), None),
+            "D": (["Am", "G", "F", "E", "Am", "G", "F", "E"], phrase("""
+                E5:1 A5:1 C6:1 A5:1 E5:1 A5:1 C6:1 E6:1
+                D6:1 B5:1 G5:1 B5:1 D6:2 B5:2
+                C6:1 A5:1 F5:1 A5:1 C6:2 A5:2
+                B5:2 G#5:1 E5:1 B5:4
+                A5:2 C6:1 B5:1 A5:2 E5:2
+                G5:2 B5:1 A5:1 G5:2 D5:2
+                F5:1 G5:1 A5:1 F5:1 E5:1 D5:1 C5:1 B4:1
+                G#4:2 B4:1 D5:1 E5:4
+            """), None),
         },
     },
     # bright staccato march, C major
     "bounce": {
         "bpm": 168, "bar": 8, "intro": 2, "bass": "march", "drums": "march", "drum_volume": 0.9,
         "staccato": 0.6, "echo": None,
-        "sections": [("A", 0.25, False), ("B", 0.5, False), ("A", 0.25, True)],
+        "sections": [("A", 0.25, False), ("B", 0.5, False), ("A", 0.25, True), ("C", 0.5, False)],
         "parts": {
             "A": (["C", "G", "Am", "F", "C", "F", "G", "C"], phrase("""
                 E5:1 G5:1 C6:2 G5:1 E5:1 G5:2
@@ -188,13 +200,26 @@ SONGS = {
                 G#5:2 B5:1 G#5:1 E5:2 D5:2
                 B4:2 D5:1 E5:1 G#5:2 G5:2
             """), None),
+            "C": (["F", "Bb", "F", "C", "F", "Bb", "G", "G"], phrase("""
+                A5:2 C6:1 A5:1 F5:2 A5:2
+                Bb5:2 D6:1 Bb5:1 F5:2 D5:2
+                C5:1 F5:1 A5:1 C6:1 A5:2 F5:2
+                G5:2 E5:1 G5:1 C6:4
+                A5:1 Bb5:1 C6:1 A5:1 F5:2 C6:2
+                D6:2 C6:1 Bb5:1 F5:2 Bb5:2
+                B5:1 A5:1 G5:1 F5:1 D5:2 B4:2
+                D5:1 F5:1 G5:1 B5:1 D6:2 G5:2
+            """), None),
         },
     },
     # two part minuet, D minor, 3/4
     "baroque": {
         "bpm": 132, "bar": 6, "intro": 0, "bass": None, "drums": "minuet", "drum_volume": 0.6,
         "staccato": 0.9, "echo": None,
-        "sections": [("A", 0.125, False), ("B", 0.25, False), ("A", 0.125, True), ("B", 0.25, True)],
+        "sections": [
+            ("A", 0.125, False), ("B", 0.25, False), ("C", 0.5, False),
+            ("A", 0.125, True), ("B", 0.25, True),
+        ],
         "parts": {
             "A": (None, phrase("""
                 D5:1 E5:1 F5:1 G5:1 A5:2
@@ -234,13 +259,32 @@ SONGS = {
                 D3:2 A2:2 F2:2
                 A2:2 E2:2 A2:2
             """)),
+            "C": (None, phrase("""
+                F#5:1 A5:1 D6:2 A5:2
+                E5:1 A5:1 C#6:2 A5:2
+                B5:1 A5:1 G5:1 F#5:1 D5:2
+                G5:2 B5:1 G5:1 E5:2
+                F#5:1 G5:1 A5:1 B5:1 A5:2
+                B5:1 C#6:1 D6:1 B5:1 G5:2
+                E5:1 F#5:1 G5:1 E5:1 C#5:1 E5:1
+                A4:2 C#5:1 E5:1 A5:2
+            """), phrase("""
+                D3:2 F#3:2 A3:2
+                A2:2 C#3:2 E3:2
+                B2:2 D3:2 F#3:2
+                G2:2 B2:2 D3:2
+                D3:2 A2:2 F#2:2
+                G2:2 B2:2 G2:2
+                A2:2 C#3:2 A2:2
+                A2:2 E2:2 A2:2
+            """)),
         },
     },
     # slow and moody with echo, E minor
     "nocturne": {
         "bpm": 112, "bar": 8, "intro": 2, "bass": "arp", "drums": "halftime", "drum_volume": 0.55,
         "staccato": 1.0, "echo": (3, 0.35),
-        "sections": [("A", 0.5, False), ("B", 0.25, False), ("A", 0.5, True)],
+        "sections": [("A", 0.5, False), ("B", 0.25, False), ("C", 0.125, False), ("A", 0.5, True)],
         "parts": {
             "A": (["Em", "C", "G", "D", "Em", "C", "Am", "B"], phrase("""
                 B4:4 E5:2 G5:2
@@ -262,7 +306,41 @@ SONGS = {
                 B5:2 A5:1 G5:1 F#5:2 D#5:2
                 B4:6 R:2
             """), None),
+            "C": (["Am", "Em", "Am", "B", "C", "G", "Am", "B"], phrase("""
+                C5:2 E5:2 A5:4
+                G5:3 F#5:1 E5:4
+                A5:2 C6:2 B5:2 A5:2
+                F#5:6 R:2
+                G5:2 C6:2 E6:4
+                D6:3 B5:1 G5:4
+                C6:2 B5:2 A5:2 F#5:2
+                D#5:2 F#5:2 B5:4
+            """), None),
         },
+    },
+}
+
+
+# falling A minor arpeggios that settle on a held chord
+JINGLES = {
+    "game_over": {
+        "file": "game_over_8bit.ogg", "bpm": 176, "fade": 1.2, "level": 0.7,
+        "lead": phrase("""
+            A5:1 E5:1 C5:1 A4:1 G#4:2 B4:2
+            F5:1 C5:1 A4:1 F4:1 E4:2 G#4:2
+            A4:8
+        """),
+        "harmony": phrase("""
+            C5:4 E4:2 G#4:2
+            A4:4 B3:2 D4:2
+            C4:8
+        """),
+        "bass": phrase("""
+            A2:4 E2:4
+            F2:4 E2:4
+            A1:8
+        """),
+        "kicks": [0, 8, 16],
     },
 }
 
@@ -356,16 +434,52 @@ def bar_count(melody, bar):
     return eighths // bar
 
 
-def write(name, track):
+def render_jingle(jingle):
+    rng = random.Random(7)
+    eighth = 60 / jingle["bpm"] / 2
+    total = sum(e for _, e in jingle["lead"])
+    track = array.array("f", [0.0] * (int(total * eighth * RATE) + RATE))
+
+    def length(eighths):
+        return int(round(eighths * eighth * RATE))
+
+    def add(start_eighth, samples):
+        start = int(round(start_eighth * eighth * RATE))
+        for i, s in enumerate(samples):
+            if start + i < len(track):
+                track[start + i] += s
+
+    def play_line(notes, voice):
+        at = 0
+        for note, eighths in notes:
+            if note != "R":
+                voice(at, midi(note), eighths)
+            at += eighths
+
+    play_line(jingle["lead"], lambda at, m, e: add(at, pulse(freq_midi(m), length(e) - 300, 0.5, 0.32)))
+    play_line(jingle["lead"], lambda at, m, e: add(at + 1.5, pulse(freq_midi(m), length(e) - 300, 0.5, 0.1)))
+    play_line(jingle["harmony"], lambda at, m, e: add(at, pulse(freq_midi(m), length(e) - 300, 0.25, 0.18)))
+    play_line(jingle["bass"], lambda at, m, e: add(at, triangle(freq_midi(m), length(e) - 300, 0.6)))
+    for e in jingle["kicks"]:
+        add(e, kick(rng, 0.9))
+
+    end = length(total) + int(RATE * 0.3)
+    fade = int(RATE * jingle["fade"])
+    for i in range(end - fade, end):
+        track[i] *= (end - i) / fade
+    return track[:end]
+
+
+def write(filename, track, level=0.8):
     peak = max(abs(s) for s in track) or 1.0
-    out = OUT_DIR / f"music_{name}.ogg"
+    out = OUT_DIR / filename
     with tempfile.TemporaryDirectory() as tmp:
         wav_path = pathlib.Path(tmp) / "song.wav"
         with wave.open(str(wav_path), "wb") as w:
             w.setnchannels(1)
             w.setsampwidth(2)
             w.setframerate(RATE)
-            w.writeframes(array.array("h", (int(s / peak * 0.8 * 32767) for s in track)).tobytes())
+            w.writeframes(array.array("h", (int(s / peak * level * 32767) for s in track)).tobytes())
         subprocess.run(
             ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(wav_path),
              "-c:a", "libvorbis", "-q:a", "6", str(out)],
@@ -375,9 +489,12 @@ def write(name, track):
 
 
 def main():
-    names = sys.argv[1:] or list(SONGS)
+    names = sys.argv[1:] or list(SONGS) + list(JINGLES)
     for name in names:
-        write(name, render(SONGS[name]))
+        if name in JINGLES:
+            write(JINGLES[name]["file"], render_jingle(JINGLES[name]), JINGLES[name]["level"])
+        else:
+            write(f"music_{name}.ogg", render(SONGS[name]))
 
 
 if __name__ == "__main__":

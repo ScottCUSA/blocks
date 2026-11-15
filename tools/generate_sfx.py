@@ -100,6 +100,28 @@ def level_up():
     return mix(*run, sweep, *trill, hold)
 
 
+def high_score():
+    """brass style fanfare, repeated pickups into a held note, then a climb to a held chord"""
+    beat = 0.08
+    # (beat, length in beats, melody, harmony, bass)
+    score = [
+        (0, 0.75, "G4", None, "G4"), (1, 0.75, "G4", None, None), (2, 0.75, "G4", None, None),
+        (3, 3, "C5", "G4", "C4"),
+        (6, 0.75, "E5", "C5", None), (7, 0.75, "G5", "E5", None),
+        (8, 8, "C6", "G5", "C4"),
+    ]
+    parts = []
+    for at, length, melody, harmony, bass in score:
+        t, dur = at * beat, length * beat
+        decay = 1.5 if length > 1 else 2
+        parts.append((t, tone(NOTE[melody], dur, duty=0.5, decay=decay)))
+        if harmony:
+            parts.append((t, tone(NOTE[harmony], dur, duty=0.25, decay=decay, volume=0.6)))
+        if bass:
+            parts.append((t, tone(NOTE[bass] / 2, dur if length > 1 else 3 * beat, shape="triangle", decay=2, volume=0.8)))
+    return mix(*parts)
+
+
 def write(name, samples, peak=0.6):
     top = max(abs(s) for s in samples) or 1.0
     frames = bytearray()
@@ -116,7 +138,7 @@ def write(name, samples, peak=0.6):
 SOUNDS = {
     "move": (blip(1200, 0.03, duty=0.125, decay=10), 0.25),
     "rotate": (blip(600, 0.06, end_freq=1200, decay=5), 0.3),
-    "lock": (mix((0, tone(220, 0.08, end_freq=90, shape="triangle", decay=5)), (0, noise(0.05, hold=24, volume=0.4))), 0.5),
+    "lock": (mix((0, tone(260, 0.12, end_freq=110, shape="triangle", decay=5)), (0, noise(0.08, hold=30, decay=8, volume=0.5, seed=3))), 0.5),
     "hard_drop": (mix((0, tone(180, 0.18, end_freq=50, shape="triangle", decay=4)), (0, noise(0.12, hold=40, decay=7, volume=0.6, seed=2))), 0.6),
     "hold": (mix((0, blip(784, 0.05, duty=0.5, decay=4)), (0.05, blip(523, 0.08, duty=0.5, decay=5))), 0.35),
     "line_clear": (line_clear(0), 0.3),
@@ -131,6 +153,7 @@ SOUNDS = {
         0.55,
     ),
     "level_up": (level_up(), 0.2),
+    "high_score": (high_score(), 0.7),  # played at jingle volume
     "menu_move": (blip(988, 0.04, decay=8), 0.25),
     "menu_select": (mix((0, blip(659, 0.05, decay=3)), (0.05, blip(1319, 0.11, decay=4))), 0.35),
 }
