@@ -1,10 +1,14 @@
 use ggez::graphics;
 
 // options menu rows
-pub const OPTION_THEME: usize = 0;
-pub const OPTION_MUSIC: usize = 1;
-pub const OPTION_SOUND: usize = 2;
-pub const OPTION_BACK: usize = 3;
+pub const OPTION_MODE: usize = 0;
+pub const OPTION_THEME: usize = 1;
+pub const OPTION_BACKGROUND: usize = 2;
+pub const OPTION_BLOCKS: usize = 3;
+pub const OPTION_BOARD: usize = 4;
+pub const OPTION_MUSIC: usize = 5;
+pub const OPTION_SOUND: usize = 6;
+pub const OPTION_BACK: usize = 7;
 
 pub trait Menu {
     fn items(&self) -> &Vec<graphics::Text>;
@@ -28,7 +32,7 @@ impl MenuList {
     }
 
     pub fn main() -> Self {
-        Self::new(&["Start Game", "Options", "Quit Game"])
+        Self::new(&["Start Game", "Options", "High Scores", "Quit Game"])
     }
 
     pub fn paused() -> Self {
@@ -36,7 +40,16 @@ impl MenuList {
     }
 
     pub fn options() -> Self {
-        Self::new(&["Theme", "Music", "Sound", "Back"])
+        Self::new(&[
+            "Mode",
+            "Theme",
+            "Background",
+            "Blocks",
+            "Board",
+            "Music",
+            "Sound",
+            "Back",
+        ])
     }
 }
 

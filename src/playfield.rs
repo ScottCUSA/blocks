@@ -164,12 +164,13 @@ impl Playfield {
         true
     }
 
-    pub fn hard_drop_active(&mut self) {
-        let Some(active_rustomino) = self.active_rustomino.as_mut() else {
-            return;
-        };
+    /// returns the slots it dropped from
+    pub fn hard_drop_active(&mut self) -> Option<[IVec2; 4]> {
+        let active_rustomino = self.active_rustomino.as_mut()?;
+        let from = active_rustomino.playfield_slots();
         let delta = get_hard_drop_translation(&self.slots, active_rustomino);
         active_rustomino.translate(delta);
+        Some(from)
     }
 
     /// lock the active rustomino

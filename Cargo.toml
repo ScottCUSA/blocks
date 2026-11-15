@@ -12,6 +12,9 @@ log = "=0.4.35"
 env_logger = { version = "=0.11.11", default-features = false }
 ggez = "=0.10.0"
 png = "=0.18.1"
+serde = { version = "=1.0.229", features = ["derive"] }
+toml = "=1.2.1"
+directories = "=6.0.0"
 # send the audio device drop message to tracing instead of stderr
 rodio = { version = "=0.22.2", default-features = false, features = ["tracing"] }
 
