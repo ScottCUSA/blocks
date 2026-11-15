@@ -1,21 +1,66 @@
 use ggez::glam::IVec2;
 
-use crate::{
-    rustomino::{translated, Rotation, Rustomino, RustominoState, RustominoType},
-    util::variants_equal,
-};
+use crate::rustomino::{translated, Rotation, Rustomino, RustominoState, RustominoType};
 use std::fmt::Display;
 
 pub const PLAYFIELD_SLOTS: [usize; 2] = [10, 22];
+pub const LINE_CLEAR_FADE: f64 = 0.5; // fraction of the line clear each block spends fading
 pub const PLAYFIELD_SIZE: [i32; 2] = [10, 20];
 
 type PlayfieldSlots = [[SlotState; PLAYFIELD_SLOTS[0]]; PLAYFIELD_SLOTS[1]];
 
 #[derive(Debug)]
+pub struct LineClear {
+    pub lines: Vec<usize>,
+    pub origins: Vec<usize>, // columns where the locked rustomino landed
+    pub time: f64,           // seconds since the lines were completed
+    pub duration: f64,       // seconds until the lines are removed
+}
+
+impl LineClear {
+    /// fraction of the line clear completed, 0.0 to 1.0
+    pub fn progress(&self) -> f64 {
+        (self.time / self.duration).clamp(0.0, 1.0)
+    }
+
+    /// columns between x and the nearest origin
+    pub fn distance(&self, x: usize) -> usize {
+        self.origins
+            .iter()
+            .map(|origin| origin.abs_diff(x))
+            .min()
+            .unwrap_or(0)
+    }
+
+    /// nearest origin to x
+    pub fn origin(&self, x: usize) -> usize {
+        self.origins
+            .iter()
+            .copied()
+            .min_by_key(|origin| origin.abs_diff(x))
+            .unwrap_or(x)
+    }
+
+    /// fraction of the line clear when block x starts fading
+    pub fn wipe_start(&self, x: usize) -> f64 {
+        let max_distance = self.max_distance().max(1) as f64;
+        self.distance(x) as f64 / max_distance * (1.0 - LINE_CLEAR_FADE)
+    }
+
+    pub fn max_distance(&self) -> usize {
+        (0..PLAYFIELD_SLOTS[0])
+            .map(|x| self.distance(x))
+            .max()
+            .unwrap_or(0)
+    }
+}
+
+#[derive(Debug)]
 pub struct Playfield {
-    pub slots: PlayfieldSlots,
+    pub slots: PlayfieldSlots, // locked blocks only
     pub active_rustomino: Option<Rustomino>,
     pub ghost_rustomino: Option<Rustomino>,
+    pub line_clear: Option<LineClear>,
 }
 
 impl Playfield {
@@ -25,6 +70,7 @@ impl Playfield {
             slots: [[SlotState::Empty; PLAYFIELD_SLOTS[0]]; PLAYFIELD_SLOTS[1]],
             active_rustomino: None,
             ghost_rustomino: None,
+            line_clear: None,
         }
     }
 
@@ -35,14 +81,8 @@ impl Playfield {
         log::info!("playing new rustomino: {:?}", rustomino.rtype);
         log::trace!("new rustomino: {:?}", rustomino);
         let ok = !check_collision(&self.slots, rustomino.playfield_slots());
-        set_playfield_slot_states(
-            &mut self.slots,
-            &rustomino.playfield_slots(),
-            SlotState::Occupied(rustomino.rtype),
-        );
-        self.ghost_rustomino = Some(rustomino.clone());
         self.active_rustomino = Some(rustomino);
-        self.update_ghost_rustomino(false);
+        self.update_ghost_rustomino();
         ok
     }
 
@@ -51,14 +91,10 @@ impl Playfield {
 
         log::debug!("taking active rustomino: {:?}", active_rustomino.rtype);
         log::trace!("rustomino: {:?}", active_rustomino);
-        set_playfield_slot_states(
-            &mut self.slots,
-            &active_rustomino.playfield_slots(),
-            SlotState::Empty,
-        );
-        self.update_ghost_rustomino(false);
+        self.update_ghost_rustomino();
         Some(active_rustomino.reset())
     }
+
     /// checks to see if the playfield needs the next rustomino
     pub fn ready_for_next(&self) -> bool {
         self.active_rustomino.is_none()
@@ -66,21 +102,19 @@ impl Playfield {
 
     // checking if rustomino can fall
     pub fn active_can_fall(&self) -> bool {
-        log::debug!("checking if the active rustomino can fall");
-        // get the active rustomino
-        let Some(rustomino) = &self.active_rustomino else {
-            return false;
-        };
+        self.active_rustomino.as_ref().is_some_and(|rustomino| {
+            !check_collision(
+                &self.slots,
+                rustomino.translated(&TranslationDirection::DOWN_TRANSLATION),
+            )
+        })
+    }
 
-        // check if moving would cause a collision
-        if check_collision(
-            &self.slots,
-            rustomino.translated(&TranslationDirection::DOWN_TRANSLATION),
-        ) {
-            return false;
-        }
-
-        true
+    /// lowest row occupied by the active rustomino
+    pub fn active_lowest_row(&self) -> Option<i32> {
+        self.active_rustomino
+            .as_ref()
+            .and_then(|r| r.playfield_slots().iter().map(|s| s.y).min())
     }
 
     pub fn get_active_state(&self) -> Option<RustominoState> {
@@ -106,25 +140,8 @@ impl Playfield {
             return false;
         };
 
-        // clear the current slot states
-        set_playfield_slot_states(
-            &mut self.slots,
-            &active_rustomino.playfield_slots(),
-            SlotState::Empty,
-        );
-
-        // perform the translation
         active_rustomino.rotate(&rotation, &wall_kick_trans);
-
-        // set the new slot states to occupied
-        set_playfield_slot_states(
-            &mut self.slots,
-            &active_rustomino.playfield_slots(),
-            SlotState::Occupied(active_rustomino.rtype),
-        );
-
-        self.update_ghost_rustomino(true);
-
+        self.update_ghost_rustomino();
         true
     }
 
@@ -136,21 +153,14 @@ impl Playfield {
         };
 
         // check to see if the translation would cause a collision with a locked block
-        let translated_blocks = active_rustomino.translated(&direction.get_translation());
-        if check_collision(&self.slots, translated_blocks) {
+        let translation = direction.get_translation();
+        if check_collision(&self.slots, active_rustomino.translated(&translation)) {
             log::debug!("cannot translate, collision detected");
             return false;
         }
 
-        translate_rustomino(
-            &mut self.slots,
-            SlotState::Occupied(active_rustomino.rtype),
-            active_rustomino,
-            direction.get_translation(),
-        );
-
-        self.update_ghost_rustomino(true);
-
+        active_rustomino.translate(translation);
+        self.update_ghost_rustomino();
         true
     }
 
@@ -159,189 +169,117 @@ impl Playfield {
             return;
         };
         let delta = get_hard_drop_translation(&self.slots, active_rustomino);
-        set_playfield_slot_states(
-            &mut self.slots,
-            &active_rustomino.playfield_slots(),
-            SlotState::Empty,
-        );
         active_rustomino.translate(delta);
     }
 
     /// lock the active rustomino
-    pub fn lock_active(&mut self) {
-        // get the active rustomino
-        if let Some(active_rustomino) = self.active_rustomino.as_mut() {
-            log::info!("locking rustomino: {:?}", active_rustomino.rtype);
-            log::trace!("rustomino: {:?}", active_rustomino);
+    /// returns the slots it was locked into
+    pub fn lock_active(&mut self) -> Option<[IVec2; 4]> {
+        let active_rustomino = self.active_rustomino.take()?;
+        log::info!("locking rustomino: {:?}", active_rustomino.rtype);
+        log::trace!("rustomino: {:?}", active_rustomino);
 
-            set_playfield_slot_states(
-                &mut self.slots,
-                &active_rustomino.playfield_slots(),
-                SlotState::Locked(active_rustomino.rtype),
-            );
-
-            // prepare for the next rustomino
-            self.active_rustomino = None;
-            self.update_ghost_rustomino(true);
+        let slots = active_rustomino.playfield_slots();
+        for slot in slots {
+            self.slots[slot.y as usize][slot.x as usize] =
+                SlotState::Locked(active_rustomino.rtype);
         }
+        self.update_ghost_rustomino();
+        Some(slots)
     }
 
     /// apply gravity to the active rustomino
     pub fn apply_gravity(&mut self) {
-        log::debug!("applying gravity");
-        // apply the gravity translation rustomino
+        log::trace!("applying gravity");
         if let Some(active_rustomino) = self.active_rustomino.as_mut() {
-            log::trace!(
-                "applying gravity: {:?} to {:?}",
-                active_rustomino,
-                active_rustomino.translated(&TranslationDirection::DOWN_TRANSLATION),
-            );
-            translate_rustomino(
-                &mut self.slots,
-                SlotState::Occupied(active_rustomino.rtype),
-                active_rustomino,
-                TranslationDirection::Down.get_translation(),
-            );
+            active_rustomino.translate(TranslationDirection::DOWN_TRANSLATION);
         }
     }
 
-    pub fn clear_completed_lines(&mut self) -> Vec<usize> {
-        let completed_lines = self.get_complete_lines();
-        let num_completed_lines = completed_lines.len();
-        if num_completed_lines == 0 {
-            return completed_lines;
+    /// start clearing any completed lines
+    /// returns the number of lines being cleared
+    pub fn start_line_clear(&mut self, duration: f64, landed: &[IVec2]) -> usize {
+        let lines = self.get_complete_lines();
+        if lines.is_empty() {
+            return 0;
         }
+        log::info!("clearing completed lines: {:?}", lines);
+        let num_lines = lines.len();
+        let mut origins: Vec<usize> = landed.iter().map(|slot| slot.x as usize).collect();
+        origins.sort_unstable();
+        origins.dedup();
+        self.line_clear = Some(LineClear {
+            lines,
+            origins,
+            time: 0.0,
+            duration,
+        });
+        num_lines
+    }
 
+    pub fn is_clearing_lines(&self) -> bool {
+        self.line_clear.is_some()
+    }
+
+    /// advance the line clear, removing the lines when it finishes
+    pub fn update_line_clear(&mut self, delta_time: f64) {
+        let Some(line_clear) = self.line_clear.as_mut() else {
+            return;
+        };
+        line_clear.time += delta_time;
+        if line_clear.time >= line_clear.duration {
+            let line_clear = self.line_clear.take().expect("line clear in progress");
+            self.remove_lines(&line_clear.lines);
+        }
+    }
+
+    fn remove_lines(&mut self, completed_lines: &[usize]) {
         log::trace!("clearing lines before: playfield:\n{}", self);
-        log::info!("clearing completed lines: {:?}", completed_lines);
 
-        // iterate through the slots
-        // clearing completed lines
-        self.slots
-            .iter_mut()
-            .enumerate()
-            .filter(|(y, _)| completed_lines.contains(y))
-            .for_each(|(_, slots_x)| {
-                for slot in slots_x.iter_mut() {
-                    *slot = SlotState::Empty;
-                }
-            });
-
-        log::trace!("clearing lines middle: playfield:\n{}", self);
-
-        // then "move" the states of the slots above cleared lines down
-        // starts at the highest cleared line, and moves block states down
-        // this can probably be improved
-        for line in completed_lines.iter().rev() {
-            for y in *line..self.slots.len() {
-                for x in 0..self.slots[y].len() {
-                    // is this line is the very top row
-                    if y + 1 >= PLAYFIELD_SLOTS[1] {
-                        self.slots[y][x] = SlotState::Empty; // set all slots to empty
-                    } else {
-                        self.slots[y][x] = self.slots[y + 1][x]; // cope from the line above
-                    }
-                }
+        // move the remaining lines down in one pass
+        let mut write = 0;
+        for read in 0..self.slots.len() {
+            if !completed_lines.contains(&read) {
+                self.slots[write] = self.slots[read];
+                write += 1;
             }
+        }
+        for line in &mut self.slots[write..] {
+            *line = [SlotState::Empty; PLAYFIELD_SLOTS[0]];
         }
 
         log::trace!("clearing lines after: playfield:\n{}", self);
-        self.update_ghost_rustomino(false);
-        completed_lines
     }
 
     /// Returns the get complete lines of this [`Playfield`].
     fn get_complete_lines(&self) -> Vec<usize> {
-        let mut complete_lines = vec![];
-        'outer: for (i, line) in self.slots.iter().enumerate() {
-            for slot in line {
-                // compare variant ignoring the value
-                if !variants_equal(slot, &SlotState::Locked(RustominoType::I)) {
-                    continue 'outer;
-                }
-            }
-            complete_lines.push(i);
-        }
-        complete_lines
+        self.slots
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| line.iter().all(|slot| matches!(slot, SlotState::Locked(_))))
+            .map(|(i, _)| i)
+            .collect()
     }
 
-    fn update_ghost_rustomino(&mut self, translating: bool) {
-        let Some(active_rustomino) = &self.active_rustomino else {
-            log::debug!("active_rustomino is None, removing ghost rustomino");
-            if !translating {
-                if let Some(ghost_rustomino) = self.ghost_rustomino.as_mut() {
-                    set_playfield_slot_states(
-                        &mut self.slots,
-                        &ghost_rustomino.playfield_slots(),
-                        SlotState::Empty,
-                    );
-                }
-            }
-            self.ghost_rustomino = None;
-            return;
-        };
-
-        log::debug!("updating ghost location");
-        let drop_translation = get_hard_drop_translation(&self.slots, active_rustomino);
-        if let Some(ghost_rustomino) = self.ghost_rustomino.as_mut() {
-            if translating {
-                for slot in ghost_rustomino.playfield_slots() {
-                    if !variants_equal(
-                        &self.slots[slot[1] as usize][slot[0] as usize],
-                        &SlotState::Occupied(RustominoType::I),
-                    ) {
-                        self.slots[slot[1] as usize][slot[0] as usize] = SlotState::Empty;
-                    }
-                }
-            }
-
-            ghost_rustomino.blocks = active_rustomino.blocks;
-            ghost_rustomino.translation = active_rustomino.translation;
-
-            // perform the translation
-            ghost_rustomino.translate(drop_translation);
-
-            log::trace!(
-                "update_ghost_rustomino: new ghost rustomino location: {:?}",
-                ghost_rustomino.playfield_slots()
-            );
-
-            // set the new slot states to occupied
-            for slot in ghost_rustomino.playfield_slots() {
-                if !variants_equal(
-                    &self.slots[slot[1] as usize][slot[0] as usize],
-                    &SlotState::Occupied(RustominoType::I),
-                ) {
-                    self.slots[slot[1] as usize][slot[0] as usize] =
-                        SlotState::Ghost(ghost_rustomino.rtype);
-                }
-            }
-        }
+    fn update_ghost_rustomino(&mut self) {
+        self.ghost_rustomino = self.active_rustomino.as_ref().map(|active_rustomino| {
+            let mut ghost_rustomino = active_rustomino.clone();
+            ghost_rustomino.translate(get_hard_drop_translation(&self.slots, active_rustomino));
+            ghost_rustomino
+        });
     }
 }
 
 fn get_hard_drop_translation(playfield_slots: &PlayfieldSlots, rustomino: &Rustomino) -> IVec2 {
-    let mut translation = TranslationDirection::DOWN_TRANSLATION;
-
-    // if we can't move it down without colliding the delta is 0
-    if check_collision(playfield_slots, rustomino.translated(&translation)) {
-        log::debug!("hard_drop_translation: cannot move, block on stack");
-        return IVec2::ZERO;
-    }
-
-    // keep attempting to move the rustomino down until it collides and return
-    // the last non-colliding translation
-    loop {
-        let good_translation = translation;
+    let mut translation = IVec2::ZERO;
+    while !check_collision(
+        playfield_slots,
+        rustomino.translated(&(translation + TranslationDirection::DOWN_TRANSLATION)),
+    ) {
         translation += TranslationDirection::DOWN_TRANSLATION;
-        if check_collision(playfield_slots, rustomino.translated(&translation)) {
-            log::debug!(
-                "hard_drop_translation: found hard drop translation: {:?}",
-                good_translation
-            );
-            return good_translation;
-        }
     }
+    log::debug!("hard_drop_translation: {:?}", translation);
+    translation
 }
 
 /// check to see if the provided block locations collide with other locked blocks
@@ -362,10 +300,10 @@ fn check_collision(playfield_slots: &PlayfieldSlots, block_locations: [IVec2; 4]
             log::trace!("collided with bottom wall: {:?}", block_locations);
             return true;
         }
-        // slots[y][x] compare variant ignoring value
-        if variants_equal(
-            &playfield_slots[location[1] as usize][location[0] as usize],
-            &SlotState::Locked(RustominoType::I),
+        // slots[y][x]
+        if matches!(
+            playfield_slots[location[1] as usize][location[0] as usize],
+            SlotState::Locked(_)
         ) {
             log::trace!("collided with locked block: {:?}", block_locations);
             return true;
@@ -387,48 +325,27 @@ fn check_rotation(
         .copied()
 }
 
-fn translate_rustomino(
-    playfield_slots: &mut PlayfieldSlots,
-    new_state: SlotState,
-    rustomino: &mut Rustomino,
-    translation: IVec2,
-) {
-    // clear the current slot states
-    set_playfield_slot_states(
-        playfield_slots,
-        &rustomino.playfield_slots(),
-        SlotState::Empty,
-    );
-    // perform the translation
-    rustomino.translate(translation);
-    // set the new slot states to occupied
-    set_playfield_slot_states(playfield_slots, &rustomino.playfield_slots(), new_state);
-}
-
-fn set_playfield_slot_states(
-    playfield_slots: &mut PlayfieldSlots,
-    block_slots: &[IVec2; 4],
-    new_state: SlotState,
-) {
-    log::info!(
-        "set_slot_state called block_slots: {:?} to state: {:?}",
-        block_slots,
-        new_state
-    );
-    for slot in block_slots {
-        playfield_slots[slot[1] as usize][slot[0] as usize] = new_state;
-    }
-}
-
 // display the playfield's slot states for debugging
 impl Display for Playfield {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (y, row) in self.slots.iter().rev().enumerate() {
-            if y == 2 {
+        let active = self.active_rustomino.as_ref().map(|r| r.playfield_slots());
+        let ghost = self.ghost_rustomino.as_ref().map(|r| r.playfield_slots());
+        let contains = |blocks: &Option<[IVec2; 4]>, slot: IVec2| {
+            blocks.is_some_and(|blocks| blocks.contains(&slot))
+        };
+        for (y, row) in self.slots.iter().enumerate().rev() {
+            if y + 1 == PLAYFIELD_SIZE[1] as usize {
                 writeln!(f, "{}", "-".repeat(PLAYFIELD_SLOTS[0] * 2))?;
             }
-            for slot in row {
-                write!(f, "{slot}")?;
+            for (x, slot) in row.iter().enumerate() {
+                let pos = IVec2::new(x as i32, y as i32);
+                if contains(&active, pos) {
+                    write!(f, " #")?;
+                } else if contains(&ghost, pos) {
+                    write!(f, " %")?;
+                } else {
+                    write!(f, "{slot}")?;
+                }
             }
             writeln!(f)?;
         }
@@ -460,18 +377,14 @@ impl TranslationDirection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlotState {
     Empty,
-    Occupied(RustominoType),
     Locked(RustominoType),
-    Ghost(RustominoType),
 }
 
 impl Display for SlotState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
             SlotState::Empty => write!(f, "  ")?,
-            SlotState::Occupied(_) => write!(f, " #")?,
             SlotState::Locked(_) => write!(f, " @")?,
-            SlotState::Ghost(_) => write!(f, " %")?,
         }
         Ok(())
     }

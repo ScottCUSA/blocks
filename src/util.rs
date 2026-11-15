@@ -1,10 +1,5 @@
 use ggez::graphics::Color;
 
-// utility function to compare enum variants
-pub fn variants_equal<T>(a: &T, b: &T) -> bool {
-    std::mem::discriminant(a) == std::mem::discriminant(b)
-}
-
 pub fn fast_wobble(time: f32) -> f32 {
     f32::sin(time * 6.0)
 }

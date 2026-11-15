@@ -1,4 +1,4 @@
-use ::rand::{seq::SliceRandom, SeedableRng};
+use ::rand::seq::SliceRandom;
 use ggez::{glam::IVec2, graphics::Color};
 use strum::{EnumIter, IntoEnumIterator};
 
@@ -413,37 +413,37 @@ impl Rustomino {
         let (rotation, blocks, translation) = {
             match rtype {
                 RustominoType::I => (
-                    RustominoRotation::new(I_ROTATIONS),
+                    RustominoRotation::new(&I_ROTATIONS),
                     I_BLOCKS,
                     I_START_TRANSLATION,
                 ),
                 RustominoType::O => (
-                    RustominoRotation::new(O_ROTATIONS),
+                    RustominoRotation::new(&O_ROTATIONS),
                     O_BLOCKS,
                     O_T_L_J_S_Z_START_TRANSLATION,
                 ),
                 RustominoType::T => (
-                    RustominoRotation::new(T_ROTATIONS),
+                    RustominoRotation::new(&T_ROTATIONS),
                     T_BLOCKS,
                     O_T_L_J_S_Z_START_TRANSLATION,
                 ),
                 RustominoType::L => (
-                    RustominoRotation::new(L_ROTATIONS),
+                    RustominoRotation::new(&L_ROTATIONS),
                     L_BLOCKS,
                     O_T_L_J_S_Z_START_TRANSLATION,
                 ),
                 RustominoType::J => (
-                    RustominoRotation::new(J_ROTATIONS),
+                    RustominoRotation::new(&J_ROTATIONS),
                     J_BLOCKS,
                     O_T_L_J_S_Z_START_TRANSLATION,
                 ),
                 RustominoType::S => (
-                    RustominoRotation::new(S_ROTATIONS),
+                    RustominoRotation::new(&S_ROTATIONS),
                     S_BLOCKS,
                     O_T_L_J_S_Z_START_TRANSLATION,
                 ),
                 RustominoType::Z => (
-                    RustominoRotation::new(Z_ROTATIONS),
+                    RustominoRotation::new(&Z_ROTATIONS),
                     Z_BLOCKS,
                     O_T_L_J_S_Z_START_TRANSLATION,
                 ),
@@ -477,9 +477,11 @@ impl Rustomino {
     pub fn rotate(&mut self, rotation: &Rotation, translation: &IVec2) {
         let rotation_trans = self.rotation.get_rotation_trans(rotation);
 
-        for (i, item) in rotation_trans.iter().enumerate() {
-            self.blocks[i] = self.blocks[i] + *item + *translation;
+        for (block, delta) in self.blocks.iter_mut().zip(rotation_trans) {
+            *block += delta;
         }
+        // apply the wall kick to the position, not the shape
+        self.translation += *translation;
 
         self.rotation.rotate(rotation);
     }
@@ -593,40 +595,36 @@ pub enum Rotation {
 #[derive(Debug, Clone, Copy)]
 pub struct RustominoRotation {
     direction: Direction,
-    n2e_trans: [IVec2; 4],
-    e2s_trans: [IVec2; 4],
-    s2w_trans: [IVec2; 4],
-    w2n_trans: [IVec2; 4],
+    // N>>E, E>>S, S>>W, W>>N
+    translations: &'static [[IVec2; 4]; 4],
 }
 
 impl RustominoRotation {
-    fn new(values: [[IVec2; 4]; 4]) -> Self {
+    fn new(translations: &'static [[IVec2; 4]; 4]) -> Self {
         Self {
             direction: Direction::N,
-            n2e_trans: values[0],
-            e2s_trans: values[1],
-            s2w_trans: values[2],
-            w2n_trans: values[3],
+            translations,
         }
     }
 
     fn get_rotation_trans(&self, rotation: &Rotation) -> [IVec2; 4] {
+        let [n2e, e2s, s2w, w2n] = self.translations;
         match self.direction {
             Direction::N => match rotation {
-                Rotation::Cw => self.n2e_trans,
-                Rotation::Ccw => neg_trans(self.w2n_trans),
+                Rotation::Cw => *n2e,
+                Rotation::Ccw => neg_trans(*w2n),
             },
             Direction::E => match rotation {
-                Rotation::Cw => self.e2s_trans,
-                Rotation::Ccw => neg_trans(self.n2e_trans),
+                Rotation::Cw => *e2s,
+                Rotation::Ccw => neg_trans(*n2e),
             },
             Direction::S => match rotation {
-                Rotation::Cw => self.s2w_trans,
-                Rotation::Ccw => neg_trans(self.e2s_trans),
+                Rotation::Cw => *s2w,
+                Rotation::Ccw => neg_trans(*e2s),
             },
             Direction::W => match rotation {
-                Rotation::Cw => self.w2n_trans,
-                Rotation::Ccw => neg_trans(self.s2w_trans),
+                Rotation::Cw => *w2n,
+                Rotation::Ccw => neg_trans(*s2w),
             },
         }
     }
@@ -700,7 +698,7 @@ impl RustominoBag {
     pub fn new() -> Self {
         RustominoBag {
             bag: Vec::new(),
-            rng: rand_xoshiro::Xoshiro256PlusPlus::from_entropy(),
+            rng: rand::make_rng(),
         }
     }
 
