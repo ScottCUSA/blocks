@@ -1,15 +1,16 @@
-use ggez::input::keyboard::KeyCode;
-use std::{collections::HashMap, time};
+use ggez::input::keyboard::{KeyCode, KeyInput};
+use ggez::winit::keyboard::PhysicalKey;
+use std::collections::HashMap;
 use strum::{EnumIter, IntoEnumIterator};
 
 // default control settings
-const LEFT_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Left), Some(KeyCode::A)];
-const RIGHT_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Right), Some(KeyCode::D)];
-const ROTATE_CW_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Up), Some(KeyCode::W)];
-const ROTATE_CCW_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::LControl), Some(KeyCode::Z)];
-const SOFT_DROP_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Down), Some(KeyCode::S)];
+const LEFT_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::ArrowLeft), Some(KeyCode::KeyA)];
+const RIGHT_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::ArrowRight), Some(KeyCode::KeyD)];
+const ROTATE_CW_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::ArrowUp), Some(KeyCode::KeyW)];
+const ROTATE_CCW_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::ControlLeft), Some(KeyCode::KeyZ)];
+const SOFT_DROP_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::ArrowDown), Some(KeyCode::KeyS)];
 const HARD_DROP_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::Space), None];
-const HOLD_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::LShift), Some(KeyCode::C)];
+const HOLD_KEYS: [Option<KeyCode>; 2] = [Some(KeyCode::ShiftLeft), Some(KeyCode::KeyC)];
 
 // input repeat delays
 const TRANSLATE_ACTION_DELAY: f64 = 0.3;
@@ -23,8 +24,8 @@ const SOFT_DROP_ACTION_REPEAT_DELAY: f64 = 0.03;
 pub enum InputState {
     #[default]
     Up,
-    Down(time::Instant),
-    Held(time::Instant),
+    Down(f64), // seconds held
+    Held(f64), // seconds since last repeat
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
@@ -67,7 +68,6 @@ impl Control {
 }
 
 pub struct GameControls {
-    pub input_map: HashMap<Control, [Option<KeyCode>; 2]>,
     pub key_map: HashMap<KeyCode, Control>,
     pub input_states: HashMap<Control, InputState>,
 }
@@ -75,46 +75,27 @@ pub struct GameControls {
 impl Default for GameControls {
     fn default() -> Self {
         Self {
-            input_map: { Control::iter().map(|i| (i, i.default_keys())).collect() },
-            key_map: {
-                LEFT_KEYS
-                    .iter()
-                    .flatten()
-                    .map(|e| (*e, Control::Left))
-                    .chain(RIGHT_KEYS.iter().flatten().map(|e| (*e, Control::Right)))
-                    .chain(
-                        ROTATE_CW_KEYS
-                            .iter()
-                            .flatten()
-                            .map(|e| (*e, Control::RotateCW)),
-                    )
-                    .chain(
-                        ROTATE_CCW_KEYS
-                            .iter()
-                            .flatten()
-                            .map(|e| (*e, Control::RotateCCW)),
-                    )
-                    .chain(
-                        SOFT_DROP_KEYS
-                            .iter()
-                            .flatten()
-                            .map(|e| (*e, Control::SoftDrop)),
-                    )
-                    .chain(
-                        HARD_DROP_KEYS
-                            .iter()
-                            .flatten()
-                            .map(|e| (*e, Control::HardDrop)),
-                    )
-                    .chain(HOLD_KEYS.iter().flatten().map(|e| (*e, Control::Hold)))
-                    .collect::<HashMap<KeyCode, Control>>()
-            },
-            input_states: {
-                Control::iter()
-                    .map(|e| (e, InputState::default()))
-                    .collect::<HashMap<Control, InputState>>()
-            },
+            key_map: Control::iter()
+                .flat_map(|control| {
+                    control
+                        .default_keys()
+                        .into_iter()
+                        .flatten()
+                        .map(move |key| (key, control))
+                })
+                .collect(),
+            input_states: Control::iter()
+                .map(|e| (e, InputState::default()))
+                .collect(),
         }
+    }
+}
+
+/// physical key code of a key event
+pub fn keycode(input: &KeyInput) -> Option<KeyCode> {
+    match input.event.physical_key {
+        PhysicalKey::Code(code) => Some(code),
+        PhysicalKey::Unidentified(_) => None,
     }
 }
 
@@ -128,22 +109,14 @@ impl GameControls {
     }
 
     pub fn set_pressed(&mut self, keycode: Option<KeyCode>) {
-        for (key, input) in self.key_map.iter() {
-            if keycode == Some(*key) {
-                self.input_states
-                    .entry(*input)
-                    .and_modify(|e| *e = InputState::Down(time::Instant::now()));
-            }
+        if let Some(&control) = keycode.and_then(|key| self.key_map.get(&key)) {
+            self.input_states.insert(control, InputState::Down(0.0));
         }
     }
 
     pub fn set_released(&mut self, keycode: Option<KeyCode>) {
-        for (key, input) in self.key_map.iter() {
-            if keycode == Some(*key) {
-                self.input_states
-                    .entry(*input)
-                    .and_modify(|e| *e = InputState::Up);
-            }
+        if let Some(&control) = keycode.and_then(|key| self.key_map.get(&key)) {
+            self.input_states.insert(control, InputState::Up);
         }
     }
 }

@@ -5,10 +5,12 @@ use ggez::{conf, event, ContextBuilder};
 
 mod controls;
 mod draw;
+mod effects;
 mod game;
 mod menus;
 mod playfield;
 mod rustomino;
+mod score_display;
 mod util;
 
 const ASSETS_FOLDER: &str = "./resources";
@@ -34,6 +36,13 @@ fn main() {
     };
     log::info!("resource_dir: {:?}", resource_dir);
 
+    // --screenshot <scene> [path] renders one frame in a hidden window and exits
+    let args: Vec<String> = env::args().collect();
+    let screenshot = game::Screenshot::from_args(&args).unwrap_or_else(|e| {
+        eprintln!("{e}");
+        std::process::exit(2);
+    });
+
     // setup game context
     let (mut ctx, event_loop) = ContextBuilder::new("Blocks", "Scott Cummings")
         .window_setup(conf::WindowSetup::default().title("Blocks"))
@@ -41,15 +50,17 @@ fn main() {
             conf::WindowMode::default()
                 .resizable(true)
                 .dimensions(draw::VIEW_WIDTH, draw::VIEW_HEIGHT)
-                .min_dimensions(draw::VIEW_WIDTH, draw::VIEW_HEIGHT),
+                .min_dimensions(draw::VIEW_WIDTH, draw::VIEW_HEIGHT)
+                .visible(screenshot.is_none()),
         )
         .add_resource_path(resource_dir)
         .build()
         .expect("could not create engine context");
 
     // setup game state
-    let game = game::BlocksState::new(&mut ctx).expect("unable to initialize gamestate");
+    let game =
+        game::BlocksState::new(&mut ctx, screenshot).expect("unable to initialize gamestate");
 
     // run game
-    event::run(ctx, event_loop, game);
+    event::run(ctx, event_loop, game).expect("game loop error");
 }

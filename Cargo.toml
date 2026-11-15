@@ -5,14 +5,15 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
-strum = { version = "0.26.2", features = ["derive"] }
-rand = "0.8"
-rand_xoshiro = "0.6"
-log = "0.4"
-env_logger = { version = "0.11.3", default-features = false }
-ggez = "0.9.3"
-once_cell = "1.17.1"
+strum = { version = "=0.28.0", features = ["derive"] }
+rand = "=0.10.3"
+rand_xoshiro = "=0.8.1"
+log = "=0.4.35"
+env_logger = { version = "=0.11.11", default-features = false }
+ggez = "=0.10.0"
+png = "=0.18.1"
+# send the audio device drop message to tracing instead of stderr
+rodio = { version = "=0.22.2", default-features = false, features = ["tracing"] }
 
 [target.'cfg(windows)'.build-dependencies]
-winres = "0.1"
-
+winres = "=0.1.12"

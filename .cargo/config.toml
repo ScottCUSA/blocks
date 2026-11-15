@@ -25,3 +25,11 @@ linker = "rust-lld.exe"
 # Enable high optimizations for dependencies but not for our code:
 [profile.dev.package."*"]
 opt-level = 3
+
+[profile.release]
+split-debuginfo = "true"
+strip = "symbols"
+
+# ignore registry versions published less than 3 days ago
+[registry]
+global-min-publish-age = "3 days"
