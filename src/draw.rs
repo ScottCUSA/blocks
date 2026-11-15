@@ -4,6 +4,7 @@ use ggez::{Context, GameResult};
 
 use crate::background::{Background, BackgroundStyle, STAR_FIELDS};
 use crate::effects::{Effects, GameOver};
+use crate::game::Mode;
 use crate::level_progress::LevelProgress;
 use crate::menus::{self, Menu};
 use crate::playfield::{self, LineClear, Playfield, SlotState};
@@ -580,6 +581,7 @@ fn draw_playing_backgound(
     meshes: &Meshes,
     view_settings: &ViewSettings,
     board: BoardStyle,
+    hold: bool,
 ) {
     // frames around the staging area and playfield, and the side panels
     let staging = view_settings.staging_rect;
@@ -590,11 +592,11 @@ fn draw_playing_backgound(
         staging.w,
         playfield.y + playfield.h - staging.y,
     );
-    for rect in [
-        play_area,
-        view_settings.preview_rect,
-        view_settings.hold_rect,
-    ] {
+    let hold_rect = hold.then_some(view_settings.hold_rect);
+    for rect in [Some(play_area), Some(view_settings.preview_rect), hold_rect]
+        .into_iter()
+        .flatten()
+    {
         draw_rect(canvas, meshes, frame_rect(rect), FRAME_COLOR);
     }
 
@@ -604,7 +606,10 @@ fn draw_playing_backgound(
         (view_settings.preview_rect, PREVIEW_BACKGROUND_COLOR),
         (view_settings.hold_rect, HOLD_BACKGROUND_COLOR),
     ];
-    for (rect, color) in backgrounds {
+    for (rect, color) in backgrounds
+        .into_iter()
+        .filter(|(rect, _)| hold || *rect != view_settings.hold_rect)
+    {
         draw_rect(canvas, meshes, rect, color);
     }
 
@@ -665,11 +670,13 @@ fn draw_playfield(
     canvas: &mut Canvas,
     meshes: &Meshes,
     playfield: &Playfield,
-    staging_rect: &Rect,
-    playfield_rect: &Rect,
+    view_settings: &ViewSettings,
     game_over: Option<&GameOver>,
     style: BlockStyle,
+    ghost: bool,
 ) {
+    let (staging_rect, playfield_rect) =
+        (&view_settings.staging_rect, &view_settings.playfield_rect);
     // draw the locked blocks
     for (y, slots_x) in playfield.slots.iter().enumerate() {
         let clearing = playfield
@@ -711,7 +718,7 @@ fn draw_playfield(
         }
     }
 
-    if let Some(ghost) = &playfield.ghost_rustomino {
+    if let Some(ghost) = playfield.ghost_rustomino.as_ref().filter(|_| ghost) {
         let color = block_color(ghost.rtype, game_over, PREVIEW_ROW);
         let slots = ghost.playfield_slots();
         if style == BlockStyle::Jelly {
@@ -857,25 +864,28 @@ pub fn draw_playing(
     view_settings: &ViewSettings,
     game_over: Option<&GameOver>,
     style: &Style,
+    assists: bool, // ghost and hold
 ) {
-    draw_playing_backgound(canvas, meshes, view_settings, style.board);
+    draw_playing_backgound(canvas, meshes, view_settings, style.board, assists);
     draw_playfield(
         canvas,
         meshes,
         playfield,
-        &view_settings.staging_rect,
-        &view_settings.playfield_rect,
+        view_settings,
         game_over,
         style.block,
+        assists,
     );
-    draw_preview(
-        canvas,
-        meshes,
-        hold_rustomino,
-        &view_settings.hold_rect,
-        game_over,
-        style.block,
-    );
+    if assists {
+        draw_preview(
+            canvas,
+            meshes,
+            hold_rustomino,
+            &view_settings.hold_rect,
+            game_over,
+            style.block,
+        );
+    }
     draw_preview(
         canvas,
         meshes,
@@ -984,6 +994,7 @@ pub fn draw_playing_text(
     score: &ScoreDisplay,
     best: usize,
     view_settings: &ViewSettings,
+    hold_shown: bool,
 ) -> GameResult {
     let label_size = UI_FONT_SIZE * 0.75;
     let label_offset = Vec2::new(0.0, -(label_size + FRAME_WIDTH + 8.0));
@@ -991,13 +1002,15 @@ pub fn draw_playing_text(
     let preview = view_settings.preview_rect;
 
     draw_piece_colored(canvas, "Blocks!", view_settings.title_pos, UI_FONT_SIZE);
-    draw_text(
-        canvas,
-        "Hold",
-        Vec2::new(hold.x, hold.y) + label_offset,
-        label_size,
-        LABEL_COLOR,
-    );
+    if hold_shown {
+        draw_text(
+            canvas,
+            "Hold",
+            Vec2::new(hold.x, hold.y) + label_offset,
+            label_size,
+            LABEL_COLOR,
+        );
+    }
     draw_text(
         canvas,
         "Next",
@@ -1784,7 +1797,7 @@ pub fn draw_options(
     canvas: &mut Canvas,
     meshes: &Meshes,
     menu: &menus::MenuList,
-    mode: &str,
+    mode: Mode,
     mode_locked: bool, // during a game
     theme: &str,
     background: &str,
@@ -1848,7 +1861,7 @@ pub fn draw_options(
             | menus::OPTION_BOARD => {
                 let locked = i == menus::OPTION_MODE && mode_locked;
                 let value = match i {
-                    menus::OPTION_MODE => mode,
+                    menus::OPTION_MODE => mode.name(),
                     menus::OPTION_THEME => theme,
                     menus::OPTION_BACKGROUND => background,
                     menus::OPTION_BLOCKS => style.block.name(),
@@ -1898,13 +1911,17 @@ pub fn draw_options(
         }
     }
 
-    // controls reference
+    // controls reference, no hold in hard mode
+    let rows: Vec<_> = CONTROLS
+        .iter()
+        .filter(|(action, _)| mode != Mode::Hard || *action != "Hold")
+        .collect();
     let header = PANEL_PADDING + CONTROLS_ROW_HEIGHT * 1.2;
     let controls = Rect::new(
         panel.x,
         panel.y + panel.h + 12.0,
         panel.w,
-        header + CONTROLS.len() as f32 * CONTROLS_ROW_HEIGHT + PANEL_PADDING,
+        header + rows.len() as f32 * CONTROLS_ROW_HEIGHT + PANEL_PADDING,
     );
     draw_panel(canvas, meshes, controls);
     let left = controls.x + PANEL_PADDING + 28.0;
@@ -1916,7 +1933,7 @@ pub fn draw_options(
         SMALL_TEXT_SIZE * 1.25,
         LABEL_COLOR,
     );
-    for (i, (action, keys)) in CONTROLS.iter().enumerate() {
+    for (i, (action, keys)) in rows.into_iter().enumerate() {
         let y = controls.y + header + i as f32 * CONTROLS_ROW_HEIGHT;
         draw_text(
             canvas,

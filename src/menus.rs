@@ -42,7 +42,7 @@ impl MenuList {
     pub fn options() -> Self {
         Self::new(&[
             "Mode",
-            "Theme",
+            "Song",
             "Background",
             "Blocks",
             "Board",

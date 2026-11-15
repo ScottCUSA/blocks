@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Blocks
+Comment=Falling block puzzle game
+Exec=blocks
+Icon=blocks
+Categories=Game;BlocksGame;
+Terminal=false

@@ -634,6 +634,9 @@ impl BlocksState {
     }
 
     fn hold(&mut self) {
+        if self.mode == Mode::Hard {
+            return;
+        }
         // check to see if the player has used the hold action
         // and they haven't yet locked the previous block they took from hold
         if self.hold_used {
@@ -1034,7 +1037,7 @@ impl BlocksState {
                     canvas,
                     &self.meshes,
                     &self.options_state,
-                    self.mode.name(),
+                    self.mode,
                     self.options_in_game(),
                     MUSIC_THEMES[self.assets.theme].0,
                     self.background.style.name(),
@@ -1141,6 +1144,7 @@ impl BlocksState {
             &self.view_settings,
             self.effects.game_over.as_ref(),
             &self.style,
+            self.mode != Mode::Hard,
         );
         draw::draw_level_progress(
             canvas,
@@ -1163,6 +1167,7 @@ impl BlocksState {
             &self.score_display,
             self.scores.best().max(self.score_display.shown()),
             &self.view_settings,
+            self.mode != Mode::Hard,
         )?;
         if let Some(rect) = screen {
             canvas.set_screen_coordinates(rect);
