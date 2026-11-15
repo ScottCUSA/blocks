@@ -1,0 +1,44 @@
+[graph]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+]
+
+[advisories]
+# all via ggez; revisit when ggez updates
+ignore = [
+    # zip: extract() issues; ggez only reads entries from resources.zip, never extracts
+    { id = "RUSTSEC-2026-0367", reason = "extract() not used" },
+    { id = "RUSTSEC-2026-0368", reason = "extract() not used" },
+    { id = "RUSTSEC-2026-0369", reason = "extract() not used" },
+    { id = "RUSTSEC-2026-0429", reason = "extract() not used" },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser unmaintained, no known vulnerability" },
+]
+
+[licenses]
+# keep in sync with about.toml
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "Zlib",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "0BSD",
+    "Unlicense",
+    "CC0-1.0",
+    "Unicode-3.0",
+    "MPL-2.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

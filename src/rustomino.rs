@@ -528,24 +528,19 @@ pub enum RustominoType {
 }
 
 impl RustominoType {
-    const CYAN: Color = Color::new(0.0, 1.0, 1.0, 1.0);
-    const YELLOW: Color = Color::new(1.0, 1.0, 0.0, 1.0);
-    const PURPLE: Color = Color::new(0.72, 0.01, 0.99, 1.0);
-    const ORANGE: Color = Color::new(1.0, 0.45, 0.03, 1.0);
-    const BLUE: Color = Color::new(0.09, 0.2, 1.0, 1.0);
-    const GREEN: Color = Color::new(0.4, 0.99, 0.0, 1.0);
-    const RED: Color = Color::new(1.0, 0.06, 0.24, 1.0);
+    // piece colors in I O T L J S Z order
+    const PALETTE: [Color; 7] = [
+        Color::new(1.0, 0.45, 0.38, 1.0),  // coral
+        Color::new(0.95, 0.35, 0.72, 1.0), // rose
+        Color::new(1.0, 0.8, 0.25, 1.0),   // gold
+        Color::new(0.62, 0.48, 1.0, 1.0),  // violet
+        Color::new(0.9, 0.84, 0.7, 1.0),   // sand
+        Color::new(0.32, 0.64, 1.0, 1.0),  // sky
+        Color::new(0.15, 0.85, 0.55, 1.0), // emerald
+    ];
 
     pub fn color(&self) -> Color {
-        match self {
-            RustominoType::I => RustominoType::CYAN,
-            RustominoType::O => RustominoType::YELLOW,
-            RustominoType::T => RustominoType::PURPLE,
-            RustominoType::L => RustominoType::ORANGE,
-            RustominoType::J => RustominoType::BLUE,
-            RustominoType::S => RustominoType::GREEN,
-            RustominoType::Z => RustominoType::RED,
-        }
+        RustominoType::PALETTE[*self as usize]
     }
 }
 

@@ -55,12 +55,14 @@ fn main() {
     };
 
     // setup game context
-    let (mut ctx, event_loop) = ContextBuilder::new("Blocks", "Scott Cummings")
+    let mut builder = ContextBuilder::new("Blocks", "Scott Cummings")
         .window_setup(conf::WindowSetup::default().title("Blocks"))
         .window_mode(game::window_mode(screenshot.is_some(), &settings.window))
-        .add_resource_path(resource_dir)
-        .build()
-        .expect("could not create engine context");
+        .add_resource_path(resource_dir);
+    if let Some(dir) = bundle_resource_dir() {
+        builder = builder.add_resource_path(dir);
+    }
+    let (mut ctx, event_loop) = builder.build().expect("could not create engine context");
 
     if screenshot.is_none() {
         game::show_window(&ctx, &settings.window);
@@ -72,4 +74,17 @@ fn main() {
 
     // run game
     event::run(ctx, event_loop, game).expect("game loop error");
+}
+
+// macOS .app bundle: Contents/MacOS/blocks -> Contents/Resources
+fn bundle_resource_dir() -> Option<path::PathBuf> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
+    let dir = env::current_exe()
+        .ok()?
+        .parent()?
+        .parent()?
+        .join("Resources");
+    dir.join("04b30.ttf").exists().then_some(dir)
 }

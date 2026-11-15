@@ -4,6 +4,7 @@ use ggez::{Context, GameResult};
 
 use crate::background::{Background, BackgroundStyle, STAR_FIELDS};
 use crate::effects::{Effects, GameOver};
+use crate::game::Mode;
 use crate::level_progress::LevelProgress;
 use crate::menus::{self, Menu};
 use crate::playfield::{self, LineClear, Playfield, SlotState};
@@ -28,10 +29,6 @@ const PLAYFIELD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 const PREVIEW_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 const HOLD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 // top and bottom of the window per background
-const DRIFT_COLORS: (Color, Color) = (
-    Color::new(0.02, 0.06, 0.14, 1.0),
-    Color::new(0.0, 0.29, 0.38, 1.0),
-);
 const STARS_COLORS: (Color, Color) = (
     Color::new(0.01, 0.01, 0.04, 1.0),
     Color::new(0.06, 0.04, 0.16, 1.0),
@@ -83,7 +80,6 @@ const PROGRESS_GAP: f32 = 6.0; // between the playfield frame and progress frame
 const SCORE_POP_SCALE: f32 = 0.3; // how much the score grows when it increases
 const SCORE_POPUP_OFFSET: f32 = 34.0; // where "+points" starts above the score
 const SCORE_POPUP_RISE: f32 = 40.0; // how far "+points" floats up
-const BACKDROP_PIECES: usize = 42; // per tile
 const CONTROLS: [(&str, &str); 6] = [
     ("Move", "Left/Right  A/D"),
     ("Rotate", "Up/W  Ctrl/Z"),
@@ -121,9 +117,6 @@ const STARS_SPARKLE_CHANCE: f32 = 0.05;
 const STARS_SPARKLE_PERIOD: f32 = 3.0; // seconds
 const STARS_SPARKLE_TIME: f32 = 0.5;
 const FROST_COLOR: Color = Color::new(0.7, 0.85, 1.0, 1.0);
-const FROST_FADE: f32 = 0.8; // seconds per piece
-const FROST_SWEEP: f32 = 1.2; // seconds bottom to top
-const THAW_SWEEP: f32 = 1.0; // seconds bottom to top
 const MELT_ORDER: f32 = 0.6; // of the freeze timing
 const MELT_FADE: f32 = 0.4;
 const CRYSTAL_SEEDS: usize = 6;
@@ -136,13 +129,9 @@ const GLINT_TIME: f32 = 0.5;
 const STAR_COLOR: Color = Color::new(0.8, 0.9, 1.0, 1.0);
 const PLASMA_CELL: f32 = 32.0; // px
 const RING_WIDTH: f32 = 70.0; // px, level up ring
-const RING_PUSH: f32 = 16.0; // px, pieces pushed by the ring
-const RING_GLOW: f32 = 2.0;
 const WARP_STREAK: f32 = 0.4; // flight per px from center
 const WARP_ARRIVE: f32 = 0.35; // new stars start appearing
 const WARP_DOTS: usize = 48; // max per streak
-                             // backgrounds repeat this tile from the view center, so resizing doesn't move them
-const BACKGROUND_TILE: Vec2 = Vec2::new(2048.0, 1024.0);
 const PLASMA_SPEED: f32 = 0.8;
 const TRAIL_ALPHA: f32 = 0.45;
 const IMPACT_ALPHA: f32 = 0.6;
@@ -345,7 +334,6 @@ fn glow_mesh(ctx: &mut Context) -> graphics::Mesh {
 
 fn window_colors(style: BackgroundStyle) -> (Color, Color) {
     match style {
-        BackgroundStyle::Drift => DRIFT_COLORS,
         BackgroundStyle::Stars => STARS_COLORS,
         BackgroundStyle::Plasma => PLASMA_COLORS,
         BackgroundStyle::Off => OFF_COLORS,
@@ -580,6 +568,7 @@ fn draw_playing_backgound(
     meshes: &Meshes,
     view_settings: &ViewSettings,
     board: BoardStyle,
+    hold: bool,
 ) {
     // frames around the staging area and playfield, and the side panels
     let staging = view_settings.staging_rect;
@@ -590,11 +579,11 @@ fn draw_playing_backgound(
         staging.w,
         playfield.y + playfield.h - staging.y,
     );
-    for rect in [
-        play_area,
-        view_settings.preview_rect,
-        view_settings.hold_rect,
-    ] {
+    let hold_rect = hold.then_some(view_settings.hold_rect);
+    for rect in [Some(play_area), Some(view_settings.preview_rect), hold_rect]
+        .into_iter()
+        .flatten()
+    {
         draw_rect(canvas, meshes, frame_rect(rect), FRAME_COLOR);
     }
 
@@ -604,7 +593,10 @@ fn draw_playing_backgound(
         (view_settings.preview_rect, PREVIEW_BACKGROUND_COLOR),
         (view_settings.hold_rect, HOLD_BACKGROUND_COLOR),
     ];
-    for (rect, color) in backgrounds {
+    for (rect, color) in backgrounds
+        .into_iter()
+        .filter(|(rect, _)| hold || *rect != view_settings.hold_rect)
+    {
         draw_rect(canvas, meshes, rect, color);
     }
 
@@ -665,11 +657,13 @@ fn draw_playfield(
     canvas: &mut Canvas,
     meshes: &Meshes,
     playfield: &Playfield,
-    staging_rect: &Rect,
-    playfield_rect: &Rect,
+    view_settings: &ViewSettings,
     game_over: Option<&GameOver>,
     style: BlockStyle,
+    ghost: bool,
 ) {
+    let (staging_rect, playfield_rect) =
+        (&view_settings.staging_rect, &view_settings.playfield_rect);
     // draw the locked blocks
     for (y, slots_x) in playfield.slots.iter().enumerate() {
         let clearing = playfield
@@ -711,7 +705,7 @@ fn draw_playfield(
         }
     }
 
-    if let Some(ghost) = &playfield.ghost_rustomino {
+    if let Some(ghost) = playfield.ghost_rustomino.as_ref().filter(|_| ghost) {
         let color = block_color(ghost.rtype, game_over, PREVIEW_ROW);
         let slots = ghost.playfield_slots();
         if style == BlockStyle::Jelly {
@@ -857,25 +851,28 @@ pub fn draw_playing(
     view_settings: &ViewSettings,
     game_over: Option<&GameOver>,
     style: &Style,
+    assists: bool, // ghost and hold
 ) {
-    draw_playing_backgound(canvas, meshes, view_settings, style.board);
+    draw_playing_backgound(canvas, meshes, view_settings, style.board, assists);
     draw_playfield(
         canvas,
         meshes,
         playfield,
-        &view_settings.staging_rect,
-        &view_settings.playfield_rect,
+        view_settings,
         game_over,
         style.block,
+        assists,
     );
-    draw_preview(
-        canvas,
-        meshes,
-        hold_rustomino,
-        &view_settings.hold_rect,
-        game_over,
-        style.block,
-    );
+    if assists {
+        draw_preview(
+            canvas,
+            meshes,
+            hold_rustomino,
+            &view_settings.hold_rect,
+            game_over,
+            style.block,
+        );
+    }
     draw_preview(
         canvas,
         meshes,
@@ -984,6 +981,7 @@ pub fn draw_playing_text(
     score: &ScoreDisplay,
     best: usize,
     view_settings: &ViewSettings,
+    hold_shown: bool,
 ) -> GameResult {
     let label_size = UI_FONT_SIZE * 0.75;
     let label_offset = Vec2::new(0.0, -(label_size + FRAME_WIDTH + 8.0));
@@ -991,13 +989,15 @@ pub fn draw_playing_text(
     let preview = view_settings.preview_rect;
 
     draw_piece_colored(canvas, "Blocks!", view_settings.title_pos, UI_FONT_SIZE);
-    draw_text(
-        canvas,
-        "Hold",
-        Vec2::new(hold.x, hold.y) + label_offset,
-        label_size,
-        LABEL_COLOR,
-    );
+    if hold_shown {
+        draw_text(
+            canvas,
+            "Hold",
+            Vec2::new(hold.x, hold.y) + label_offset,
+            label_size,
+            LABEL_COLOR,
+        );
+    }
     draw_text(
         canvas,
         "Next",
@@ -1064,25 +1064,6 @@ fn hash(i: usize, n: f32) -> f32 {
         .abs()
 }
 
-/// top left corners of background tiles covering the view, centered on it
-fn background_tiles(view_rect: &Rect) -> Vec<Vec2> {
-    let center = Vec2::new(
-        view_rect.x + view_rect.w / 2.0,
-        view_rect.y + view_rect.h / 2.0,
-    );
-    // one extra tile each way for items crossing tile edges
-    let nx = (view_rect.w / 2.0 / BACKGROUND_TILE.x).ceil() as i32 + 1;
-    let ny = (view_rect.h / 2.0 / BACKGROUND_TILE.y).ceil() as i32 + 1;
-    let origin = center - BACKGROUND_TILE / 2.0;
-    let mut tiles = Vec::new();
-    for ty in -ny..=ny {
-        for tx in -nx..=nx {
-            tiles.push(origin + Vec2::new(tx as f32, ty as f32) * BACKGROUND_TILE);
-        }
-    }
-    tiles
-}
-
 fn smoothstep(from: f32, to: f32, x: f32) -> f32 {
     let t = ((x - from) / (to - from)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
@@ -1104,16 +1085,6 @@ fn level_ring(background: &Background, view_rect: &Rect, point: Vec2) -> (f32, V
     ((-x * x).exp() * (1.0 - p), offset.normalize_or_zero())
 }
 
-/// game over frost at a height, bottom first, 0.0 to 1.0
-fn frost_at(background: &Background, view_rect: &Rect, y: f32) -> f32 {
-    let Some(t) = background.frozen() else {
-        return 0.0;
-    };
-    let up = ((view_rect.y + view_rect.h - y) / view_rect.h).clamp(0.0, 1.0);
-    let thaw = smoothstep(0.0, FROST_FADE, background.thawed() - up * THAW_SWEEP);
-    smoothstep(0.0, FROST_FADE, t - up * FROST_SWEEP) * (1.0 - thaw)
-}
-
 /// drain a color to icy gray
 fn frost(color: Color, amount: f32) -> Color {
     let ice = mix_color(util::rgb_to_grayscale(color), FROST_COLOR, 0.4);
@@ -1124,52 +1095,6 @@ fn overlaps(a: Rect, b: &Rect) -> bool {
     a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 }
 
-fn draw_falling_pieces(
-    canvas: &mut Canvas,
-    meshes: &Meshes,
-    view_rect: &Rect,
-    background: &Background,
-) {
-    let (time, glow) = (background.time, 1.0 + background.energy);
-    let types: Vec<RustominoType> = RustominoType::iter().collect();
-    let tiles = background_tiles(view_rect);
-    for i in 0..BACKDROP_PIECES {
-        let random = |n: f32| hash(i, n);
-        let size = snap(16.0 + random(1.0) * 14.0);
-        let block = size - snap(2.0);
-        let speed = 20.0 + random(2.0) * 40.0;
-        // wrapping on the tile height keeps neighbouring tiles seamless
-        let x = random(3.0) * (BACKGROUND_TILE.x - size * 4.0);
-        let y = (random(4.0) * BACKGROUND_TILE.y + time * speed) % BACKGROUND_TILE.y;
-        let rtype = types[i % types.len()];
-        let alpha = (0.12 + random(5.0) * 0.1) * glow;
-        let blocks = Rustomino::new(rtype).blocks;
-        for tile in &tiles {
-            let (px, py) = (tile.x + x, tile.y + y);
-            let bounds = Rect::new(px, py - size * 3.0, size * 4.0, size * 4.0);
-            if !overlaps(bounds, view_rect) {
-                continue;
-            }
-            let (wave, out) =
-                level_ring(background, view_rect, Vec2::new(px + size * 2.0, py - size));
-            let push = out * RING_PUSH * wave;
-            let (px, py) = (snap(px + push.x), snap(py + push.y));
-            let color = mix_color(rtype.color(), Color::WHITE, wave * 0.4);
-            let color = frost(color, frost_at(background, view_rect, py));
-            let color = with_alpha(color, (alpha * (1.0 + RING_GLOW * wave)).min(1.0));
-            for pos in blocks {
-                let rect = Rect::new(
-                    px + pos.x as f32 * size,
-                    py - pos.y as f32 * size,
-                    block,
-                    block,
-                );
-                draw_rect(canvas, meshes, rect, color);
-            }
-        }
-    }
-}
-
 /// animated background for the selected style
 pub fn draw_background_animation(
     canvas: &mut Canvas,
@@ -1178,7 +1103,6 @@ pub fn draw_background_animation(
     view_rect: &Rect,
 ) {
     match background.style {
-        BackgroundStyle::Drift => draw_falling_pieces(canvas, meshes, view_rect, background),
         BackgroundStyle::Stars => draw_stars(canvas, meshes, view_rect, background),
         BackgroundStyle::Plasma => draw_plasma(canvas, meshes, view_rect, background),
         BackgroundStyle::Off => {}
@@ -1784,7 +1708,7 @@ pub fn draw_options(
     canvas: &mut Canvas,
     meshes: &Meshes,
     menu: &menus::MenuList,
-    mode: &str,
+    mode: Mode,
     mode_locked: bool, // during a game
     theme: &str,
     background: &str,
@@ -1848,7 +1772,7 @@ pub fn draw_options(
             | menus::OPTION_BOARD => {
                 let locked = i == menus::OPTION_MODE && mode_locked;
                 let value = match i {
-                    menus::OPTION_MODE => mode,
+                    menus::OPTION_MODE => mode.name(),
                     menus::OPTION_THEME => theme,
                     menus::OPTION_BACKGROUND => background,
                     menus::OPTION_BLOCKS => style.block.name(),
@@ -1898,13 +1822,17 @@ pub fn draw_options(
         }
     }
 
-    // controls reference
+    // controls reference, no hold in hard mode
+    let rows: Vec<_> = CONTROLS
+        .iter()
+        .filter(|(action, _)| mode != Mode::Hard || *action != "Hold")
+        .collect();
     let header = PANEL_PADDING + CONTROLS_ROW_HEIGHT * 1.2;
     let controls = Rect::new(
         panel.x,
         panel.y + panel.h + 12.0,
         panel.w,
-        header + CONTROLS.len() as f32 * CONTROLS_ROW_HEIGHT + PANEL_PADDING,
+        header + rows.len() as f32 * CONTROLS_ROW_HEIGHT + PANEL_PADDING,
     );
     draw_panel(canvas, meshes, controls);
     let left = controls.x + PANEL_PADDING + 28.0;
@@ -1916,7 +1844,7 @@ pub fn draw_options(
         SMALL_TEXT_SIZE * 1.25,
         LABEL_COLOR,
     );
-    for (i, (action, keys)) in CONTROLS.iter().enumerate() {
+    for (i, (action, keys)) in rows.into_iter().enumerate() {
         let y = controls.y + header + i as f32 * CONTROLS_ROW_HEIGHT;
         draw_text(
             canvas,

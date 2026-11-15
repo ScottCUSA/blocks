@@ -380,7 +380,7 @@ fn save_png(ctx: &Context, image: &Image, path: &Path) -> GameResult {
     match image.format() {
         ImageFormat::Rgba8Unorm | ImageFormat::Rgba8UnormSrgb => {}
         ImageFormat::Bgra8Unorm | ImageFormat::Bgra8UnormSrgb => {
-            for pixel in pixels.chunks_exact_mut(4) {
+            for pixel in pixels.as_chunks_mut::<4>().0 {
                 pixel.swap(0, 2);
             }
         }
