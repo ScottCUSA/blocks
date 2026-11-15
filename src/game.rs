@@ -692,6 +692,7 @@ impl BlocksState {
     /// leave the game over screen for name entry or the score board
     fn end_game_over(&mut self) {
         self.assets.end_game_over();
+        self.background.thaw();
         self.highlight = None;
         self.scores_from_game = true;
         if self.scores.qualifies(self.score) {

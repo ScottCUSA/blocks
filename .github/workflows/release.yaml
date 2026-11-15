@@ -48,7 +48,7 @@ jobs:
         dir="$APP-$VERSION-linux-x86_64"
         mkdir -p "dist/$dir"
         cp "target/release/$APP" "dist/$dir/"
-        cp -r resources README.md LICENSE "dist/$dir/"
+        cp -r resources README.md LICENSE THIRD_PARTY_LICENSES.md "dist/$dir/"
         tar -C dist -czf "dist/$dir.tar.gz" "$dir"
 
     - name: Package AppImage
@@ -72,6 +72,8 @@ jobs:
         cp packaging/blocks.desktop "$appdir/"
         cp packaging/blocks.png "$appdir/usr/share/icons/hicolor/256x256/apps/"
         cp packaging/blocks.png "$appdir/"
+        mkdir -p "$appdir/usr/share/doc/$APP"
+        cp LICENSE THIRD_PARTY_LICENSES.md "$appdir/usr/share/doc/$APP/"
         ln -s "usr/bin/$APP" "$appdir/AppRun"
         "$tools/appimagetool" --runtime-file "$tools/runtime" "$appdir" "dist/$APP-$VERSION-linux-x86_64.AppImage"
 
@@ -103,7 +105,7 @@ jobs:
         dir="$APP-$VERSION-windows-x86_64"
         mkdir -p "dist/$dir"
         cp "target/release/$APP.exe" "dist/$dir/"
-        cp -r resources README.md LICENSE "dist/$dir/"
+        cp -r resources README.md LICENSE THIRD_PARTY_LICENSES.md "dist/$dir/"
         cd dist && 7z a -tzip "$dir.zip" "$dir"
 
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -141,6 +143,7 @@ jobs:
         mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
         mv "dist/$APP" "$app/Contents/MacOS/"
         cp -r resources/ "$app/Contents/Resources/"
+        cp LICENSE THIRD_PARTY_LICENSES.md "$app/Contents/Resources/"
         sed "s|@VERSION@|$VERSION|g" packaging/Info.plist > "$app/Contents/Info.plist"
 
         iconset=dist/blocks.iconset
@@ -153,7 +156,8 @@ jobs:
         rm -r "$iconset"
 
         # ad-hoc signature; required to launch on Apple silicon
-        codesign --force --deep --sign - "$app"
+        codesign --force --sign - "$app"
+        codesign --verify --strict --verbose=2 "$app"
 
     - name: Package dmg
       run: |

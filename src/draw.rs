@@ -29,10 +29,6 @@ const PLAYFIELD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 const PREVIEW_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 const HOLD_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 // top and bottom of the window per background
-const DRIFT_COLORS: (Color, Color) = (
-    Color::new(0.02, 0.06, 0.14, 1.0),
-    Color::new(0.0, 0.29, 0.38, 1.0),
-);
 const STARS_COLORS: (Color, Color) = (
     Color::new(0.01, 0.01, 0.04, 1.0),
     Color::new(0.06, 0.04, 0.16, 1.0),
@@ -84,7 +80,6 @@ const PROGRESS_GAP: f32 = 6.0; // between the playfield frame and progress frame
 const SCORE_POP_SCALE: f32 = 0.3; // how much the score grows when it increases
 const SCORE_POPUP_OFFSET: f32 = 34.0; // where "+points" starts above the score
 const SCORE_POPUP_RISE: f32 = 40.0; // how far "+points" floats up
-const BACKDROP_PIECES: usize = 42; // per tile
 const CONTROLS: [(&str, &str); 6] = [
     ("Move", "Left/Right  A/D"),
     ("Rotate", "Up/W  Ctrl/Z"),
@@ -122,9 +117,6 @@ const STARS_SPARKLE_CHANCE: f32 = 0.05;
 const STARS_SPARKLE_PERIOD: f32 = 3.0; // seconds
 const STARS_SPARKLE_TIME: f32 = 0.5;
 const FROST_COLOR: Color = Color::new(0.7, 0.85, 1.0, 1.0);
-const FROST_FADE: f32 = 0.8; // seconds per piece
-const FROST_SWEEP: f32 = 1.2; // seconds bottom to top
-const THAW_SWEEP: f32 = 1.0; // seconds bottom to top
 const MELT_ORDER: f32 = 0.6; // of the freeze timing
 const MELT_FADE: f32 = 0.4;
 const CRYSTAL_SEEDS: usize = 6;
@@ -137,13 +129,9 @@ const GLINT_TIME: f32 = 0.5;
 const STAR_COLOR: Color = Color::new(0.8, 0.9, 1.0, 1.0);
 const PLASMA_CELL: f32 = 32.0; // px
 const RING_WIDTH: f32 = 70.0; // px, level up ring
-const RING_PUSH: f32 = 16.0; // px, pieces pushed by the ring
-const RING_GLOW: f32 = 2.0;
 const WARP_STREAK: f32 = 0.4; // flight per px from center
 const WARP_ARRIVE: f32 = 0.35; // new stars start appearing
 const WARP_DOTS: usize = 48; // max per streak
-                             // backgrounds repeat this tile from the view center, so resizing doesn't move them
-const BACKGROUND_TILE: Vec2 = Vec2::new(2048.0, 1024.0);
 const PLASMA_SPEED: f32 = 0.8;
 const TRAIL_ALPHA: f32 = 0.45;
 const IMPACT_ALPHA: f32 = 0.6;
@@ -346,7 +334,6 @@ fn glow_mesh(ctx: &mut Context) -> graphics::Mesh {
 
 fn window_colors(style: BackgroundStyle) -> (Color, Color) {
     match style {
-        BackgroundStyle::Drift => DRIFT_COLORS,
         BackgroundStyle::Stars => STARS_COLORS,
         BackgroundStyle::Plasma => PLASMA_COLORS,
         BackgroundStyle::Off => OFF_COLORS,
@@ -1077,25 +1064,6 @@ fn hash(i: usize, n: f32) -> f32 {
         .abs()
 }
 
-/// top left corners of background tiles covering the view, centered on it
-fn background_tiles(view_rect: &Rect) -> Vec<Vec2> {
-    let center = Vec2::new(
-        view_rect.x + view_rect.w / 2.0,
-        view_rect.y + view_rect.h / 2.0,
-    );
-    // one extra tile each way for items crossing tile edges
-    let nx = (view_rect.w / 2.0 / BACKGROUND_TILE.x).ceil() as i32 + 1;
-    let ny = (view_rect.h / 2.0 / BACKGROUND_TILE.y).ceil() as i32 + 1;
-    let origin = center - BACKGROUND_TILE / 2.0;
-    let mut tiles = Vec::new();
-    for ty in -ny..=ny {
-        for tx in -nx..=nx {
-            tiles.push(origin + Vec2::new(tx as f32, ty as f32) * BACKGROUND_TILE);
-        }
-    }
-    tiles
-}
-
 fn smoothstep(from: f32, to: f32, x: f32) -> f32 {
     let t = ((x - from) / (to - from)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
@@ -1117,16 +1085,6 @@ fn level_ring(background: &Background, view_rect: &Rect, point: Vec2) -> (f32, V
     ((-x * x).exp() * (1.0 - p), offset.normalize_or_zero())
 }
 
-/// game over frost at a height, bottom first, 0.0 to 1.0
-fn frost_at(background: &Background, view_rect: &Rect, y: f32) -> f32 {
-    let Some(t) = background.frozen() else {
-        return 0.0;
-    };
-    let up = ((view_rect.y + view_rect.h - y) / view_rect.h).clamp(0.0, 1.0);
-    let thaw = smoothstep(0.0, FROST_FADE, background.thawed() - up * THAW_SWEEP);
-    smoothstep(0.0, FROST_FADE, t - up * FROST_SWEEP) * (1.0 - thaw)
-}
-
 /// drain a color to icy gray
 fn frost(color: Color, amount: f32) -> Color {
     let ice = mix_color(util::rgb_to_grayscale(color), FROST_COLOR, 0.4);
@@ -1137,52 +1095,6 @@ fn overlaps(a: Rect, b: &Rect) -> bool {
     a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 }
 
-fn draw_falling_pieces(
-    canvas: &mut Canvas,
-    meshes: &Meshes,
-    view_rect: &Rect,
-    background: &Background,
-) {
-    let (time, glow) = (background.time, 1.0 + background.energy);
-    let types: Vec<RustominoType> = RustominoType::iter().collect();
-    let tiles = background_tiles(view_rect);
-    for i in 0..BACKDROP_PIECES {
-        let random = |n: f32| hash(i, n);
-        let size = snap(16.0 + random(1.0) * 14.0);
-        let block = size - snap(2.0);
-        let speed = 20.0 + random(2.0) * 40.0;
-        // wrapping on the tile height keeps neighbouring tiles seamless
-        let x = random(3.0) * (BACKGROUND_TILE.x - size * 4.0);
-        let y = (random(4.0) * BACKGROUND_TILE.y + time * speed) % BACKGROUND_TILE.y;
-        let rtype = types[i % types.len()];
-        let alpha = (0.12 + random(5.0) * 0.1) * glow;
-        let blocks = Rustomino::new(rtype).blocks;
-        for tile in &tiles {
-            let (px, py) = (tile.x + x, tile.y + y);
-            let bounds = Rect::new(px, py - size * 3.0, size * 4.0, size * 4.0);
-            if !overlaps(bounds, view_rect) {
-                continue;
-            }
-            let (wave, out) =
-                level_ring(background, view_rect, Vec2::new(px + size * 2.0, py - size));
-            let push = out * RING_PUSH * wave;
-            let (px, py) = (snap(px + push.x), snap(py + push.y));
-            let color = mix_color(rtype.color(), Color::WHITE, wave * 0.4);
-            let color = frost(color, frost_at(background, view_rect, py));
-            let color = with_alpha(color, (alpha * (1.0 + RING_GLOW * wave)).min(1.0));
-            for pos in blocks {
-                let rect = Rect::new(
-                    px + pos.x as f32 * size,
-                    py - pos.y as f32 * size,
-                    block,
-                    block,
-                );
-                draw_rect(canvas, meshes, rect, color);
-            }
-        }
-    }
-}
-
 /// animated background for the selected style
 pub fn draw_background_animation(
     canvas: &mut Canvas,
@@ -1191,7 +1103,6 @@ pub fn draw_background_animation(
     view_rect: &Rect,
 ) {
     match background.style {
-        BackgroundStyle::Drift => draw_falling_pieces(canvas, meshes, view_rect, background),
         BackgroundStyle::Stars => draw_stars(canvas, meshes, view_rect, background),
         BackgroundStyle::Plasma => draw_plasma(canvas, meshes, view_rect, background),
         BackgroundStyle::Off => {}

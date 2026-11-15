@@ -81,6 +81,10 @@ fn bundle_resource_dir() -> Option<path::PathBuf> {
     if !cfg!(target_os = "macos") {
         return None;
     }
-    let dir = env::current_exe().ok()?.parent()?.parent()?.join("Resources");
+    let dir = env::current_exe()
+        .ok()?
+        .parent()?
+        .parent()?
+        .join("Resources");
     dir.join("04b30.ttf").exists().then_some(dir)
 }

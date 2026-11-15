@@ -1,14 +1,12 @@
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BackgroundStyle {
-    Drift,
     Stars,
     Plasma,
     Off,
 }
 
 impl BackgroundStyle {
-    pub const ALL: [BackgroundStyle; 4] = [
-        BackgroundStyle::Drift,
+    pub const ALL: [BackgroundStyle; 3] = [
         BackgroundStyle::Stars,
         BackgroundStyle::Plasma,
         BackgroundStyle::Off,
@@ -16,7 +14,6 @@ impl BackgroundStyle {
 
     pub fn name(self) -> &'static str {
         match self {
-            BackgroundStyle::Drift => "Drift",
             BackgroundStyle::Stars => "Stars",
             BackgroundStyle::Plasma => "Plasma",
             BackgroundStyle::Off => "Off",
@@ -53,7 +50,7 @@ pub struct Background {
 impl Background {
     pub fn new() -> Self {
         Self {
-            style: BackgroundStyle::Drift,
+            style: BackgroundStyle::Stars,
             time: 0.0,
             energy: 0.0,
             level_up: None,
