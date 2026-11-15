@@ -8,6 +8,19 @@ Install Rust using https://rustup.rs. Clone or download this repo, and run using
 
 > \> cargo run
 
+# package
+Each script builds a release and writes the package to `target/dist`.
+Pushing a `v*` tag runs the same scripts in CI and publishes a GitHub release.
+
+| Package | Script | Run on |
+|---|---|---|
+| Linux AppImage | `tools/build_appimage.sh` | Linux |
+| Linux tarball | `tools/build_tarball.sh` | Linux |
+| Windows zip | `tools/build_windows_zip.sh` | Windows (Git Bash) |
+| macOS dmg | `tools/build_macos_dmg.sh` | macOS |
+
+Optional arguments: `[version] [out_dir]`.
+
 # license
 Blocks is licensed under the [Mozilla Public License 2.0](LICENSE).
 

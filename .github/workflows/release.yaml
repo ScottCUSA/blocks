@@ -14,11 +14,6 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  APP: blocks
-  APPIMAGETOOL_URL: https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
-  APPIMAGETOOL_SHA256: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
-  APPIMAGE_RUNTIME_URL: https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
-  APPIMAGE_RUNTIME_SHA256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
 
 # actions pinned to commit SHAs; no build cache, so release builds start clean
 jobs:
@@ -40,42 +35,11 @@ jobs:
     - name: Version
       run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-    - name: Build
-      run: cargo build --release --locked
-
     - name: Package tarball
-      run: |
-        dir="$APP-$VERSION-linux-x86_64"
-        mkdir -p "dist/$dir"
-        cp "target/release/$APP" "dist/$dir/"
-        cp -r resources README.md LICENSE THIRD_PARTY_LICENSES.md "dist/$dir/"
-        tar -C dist -czf "dist/$dir.tar.gz" "$dir"
+      run: tools/build_tarball.sh "$VERSION" dist
 
     - name: Package AppImage
-      env:
-        APPIMAGE_EXTRACT_AND_RUN: 1
-        ARCH: x86_64
-      run: |
-        tools="$RUNNER_TEMP/appimage"
-        mkdir -p "$tools"
-        curl -fsSL -o "$tools/appimagetool" "$APPIMAGETOOL_URL"
-        curl -fsSL -o "$tools/runtime" "$APPIMAGE_RUNTIME_URL"
-        echo "$APPIMAGETOOL_SHA256  $tools/appimagetool" | sha256sum -c -
-        echo "$APPIMAGE_RUNTIME_SHA256  $tools/runtime" | sha256sum -c -
-        chmod +x "$tools/appimagetool"
-
-        appdir=dist/AppDir
-        mkdir -p "$appdir/usr/bin" "$appdir/usr/share/applications" "$appdir/usr/share/icons/hicolor/256x256/apps"
-        cp "target/release/$APP" "$appdir/usr/bin/"
-        cp -r resources "$appdir/usr/bin/"
-        cp packaging/blocks.desktop "$appdir/usr/share/applications/"
-        cp packaging/blocks.desktop "$appdir/"
-        cp packaging/blocks.png "$appdir/usr/share/icons/hicolor/256x256/apps/"
-        cp packaging/blocks.png "$appdir/"
-        mkdir -p "$appdir/usr/share/doc/$APP"
-        cp LICENSE THIRD_PARTY_LICENSES.md "$appdir/usr/share/doc/$APP/"
-        ln -s "usr/bin/$APP" "$appdir/AppRun"
-        "$tools/appimagetool" --runtime-file "$tools/runtime" "$appdir" "dist/$APP-$VERSION-linux-x86_64.AppImage"
+      run: tools/build_appimage.sh "$VERSION" dist
 
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
@@ -97,16 +61,8 @@ jobs:
     - name: Version
       run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-    - name: Build
-      run: cargo build --release --locked
-
     - name: Package zip
-      run: |
-        dir="$APP-$VERSION-windows-x86_64"
-        mkdir -p "dist/$dir"
-        cp "target/release/$APP.exe" "dist/$dir/"
-        cp -r resources README.md LICENSE THIRD_PARTY_LICENSES.md "dist/$dir/"
-        cd dist && 7z a -tzip "$dir.zip" "$dir"
+      run: tools/build_windows_zip.sh "$VERSION" dist
 
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
@@ -127,46 +83,8 @@ jobs:
     - name: Version
       run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-    - name: Build universal binary
-      run: |
-        export MACOSX_DEPLOYMENT_TARGET=11.0
-        cargo build --release --locked --target aarch64-apple-darwin
-        cargo build --release --locked --target x86_64-apple-darwin
-        mkdir -p dist
-        lipo -create -output "dist/$APP" \
-          "target/aarch64-apple-darwin/release/$APP" \
-          "target/x86_64-apple-darwin/release/$APP"
-
-    - name: Package app bundle
-      run: |
-        app="dist/Blocks.app"
-        mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-        mv "dist/$APP" "$app/Contents/MacOS/"
-        cp -r resources/ "$app/Contents/Resources/"
-        cp LICENSE THIRD_PARTY_LICENSES.md "$app/Contents/Resources/"
-        sed "s|@VERSION@|$VERSION|g" packaging/Info.plist > "$app/Contents/Info.plist"
-
-        iconset=dist/blocks.iconset
-        mkdir -p "$iconset"
-        for s in 16 32 128 256 512; do
-          sips -z $s $s packaging/blocks.png --out "$iconset/icon_${s}x${s}.png" >/dev/null
-          sips -z $((s*2)) $((s*2)) packaging/blocks.png --out "$iconset/icon_${s}x${s}@2x.png" >/dev/null
-        done
-        iconutil -c icns "$iconset" -o "$app/Contents/Resources/blocks.icns"
-        rm -r "$iconset"
-
-        # ad-hoc signature; required to launch on Apple silicon
-        codesign --force --sign - "$app"
-        codesign --verify --strict --verbose=2 "$app"
-
     - name: Package dmg
-      run: |
-        staging=dist/dmg
-        mkdir -p "$staging"
-        mv dist/Blocks.app "$staging/"
-        ln -s /Applications "$staging/Applications"
-        hdiutil create -volname Blocks -srcfolder "$staging" -ov -format UDZO \
-          "dist/$APP-$VERSION-macos-universal.dmg"
+      run: tools/build_macos_dmg.sh "$VERSION" dist
 
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
