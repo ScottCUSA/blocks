@@ -1,11 +1,12 @@
 use ggez::graphics::{Color, Rect};
-use ggez::GameResult;
+use ggez::{Context, GameResult};
 
 use crate::draw::*;
 
 pub(super) const DEBUG_ROW_HEIGHT: f32 = 26.0;
 pub(super) const DEBUG_PANEL_GAP: f32 = 24.0; // below the hold and next previews
-pub(super) const DEBUG_HINTS: [&str; 12] = [
+const COMPACT_ROW_HEIGHT: f32 = 18.0; // the corner fps panel
+pub(super) const DEBUG_HINTS: [&str; 13] = [
     "Up/Down: pick",
     "Enter: restart",
     "R: replay on/off",
@@ -17,6 +18,7 @@ pub(super) const DEBUG_HINTS: [&str; 12] = [
     "H: hide panels",
     "F/Shift F: fps",
     "C: record frames",
+    "T: benchmark",
     "Esc: back",
 ];
 
@@ -27,10 +29,11 @@ pub struct FrameStats {
     pub scene_ms: f32,    // building the draw list
     pub encode_ms: f32,   // ggez turning it into gpu commands
     pub gpu_wait_ms: f32, // blocked on the last frame's gpu work, near 0 when the gpu keeps up
+    pub fps: f32,
+    pub frame_ms: f32,
 }
 
 /// animation viewer list and controls
-/// animation viewer controls
 pub struct DebugScreen<'a> {
     pub names: &'a [&'a str],
     pub selected: usize,
@@ -41,6 +44,7 @@ pub struct DebugScreen<'a> {
     pub fps: u32,
     pub stats: Option<FrameStats>, // None until the first window is averaged
     pub recording: bool,
+    pub stats_only: bool, // a benchmark shows just the frame cost
 }
 
 impl Layer for DebugScreen<'_> {
@@ -55,6 +59,7 @@ impl Layer for DebugScreen<'_> {
             fps,
             stats,
             recording,
+            stats_only,
         } = *self;
         let ctx = frame.ctx;
         let meshes = frame.meshes;
@@ -62,6 +67,27 @@ impl Layer for DebugScreen<'_> {
         let style = frame.block;
         let view = &view_settings.view_rect;
         let top = view_settings.preview_rect.bottom() + DEBUG_PANEL_GAP;
+
+        // frame cost, small in the top left corner
+        let at = Rect::new(PANEL_PADDING, PANEL_PADDING, view_settings.hold_rect.w, 0.0);
+        if let Some(stats) = stats {
+            let mut lines = vec![
+                format!("{:.0} fps  {:.2}ms", stats.fps, stats.frame_ms),
+                format!("scene {:.2} enc {:.2}", stats.scene_ms, stats.encode_ms),
+            ];
+            if !stats_only {
+                lines.push(if recording {
+                    format!("{} draws  REC", stats.draws)
+                } else {
+                    format!("{} draws", stats.draws)
+                });
+                lines.push(format!("GPU wait {:.2}ms", stats.gpu_wait_ms));
+            }
+            draw_lines(ctx, canvas, meshes, at, &lines, COMPACT_ROW_HEIGHT, 0.6)?;
+        }
+        if stats_only {
+            return Ok(());
+        }
 
         // animations, right of the playfield
         let left = view_settings.preview_rect.x;
@@ -118,33 +144,31 @@ impl Layer for DebugScreen<'_> {
             let text = ui_text(hint, SMALL_TEXT_SIZE * 0.75);
             draw_text_centered(ctx, canvas, &text, row.center().into(), LABEL_COLOR)?;
         }
-
-        // frame cost, under the controls
-        let Some(stats) = stats else {
-            return Ok(());
-        };
-        let lines = [
-            if recording {
-                format!("{} draws  REC", stats.draws)
-            } else {
-                format!("{} draws", stats.draws)
-            },
-            format!("CPU {:.2}ms", stats.scene_ms + stats.encode_ms),
-            format!("scene {:.2} enc {:.2}", stats.scene_ms, stats.encode_ms),
-            format!("GPU wait {:.2}ms", stats.gpu_wait_ms),
-        ];
-        let panel = Rect::new(
-            panel.x,
-            panel.bottom() + DEBUG_PANEL_GAP,
-            panel.w,
-            lines.len() as f32 * DEBUG_ROW_HEIGHT + 2.0 * PANEL_PADDING,
-        );
-        draw_panel(canvas, meshes, panel);
-        for (i, line) in lines.iter().enumerate() {
-            let row = menu_row_rect(panel, i, DEBUG_ROW_HEIGHT);
-            let text = ui_text(line, SMALL_TEXT_SIZE * 0.75);
-            draw_text_centered(ctx, canvas, &text, row.center().into(), LABEL_COLOR)?;
-        }
         Ok(())
     }
+}
+
+/// a panel of text lines, `at` gives its top left and width
+fn draw_lines(
+    ctx: &Context,
+    canvas: &mut Painter,
+    meshes: &Meshes,
+    at: Rect,
+    lines: &[String],
+    row_height: f32,
+    text_scale: f32,
+) -> GameResult {
+    let panel = Rect::new(
+        at.x,
+        at.y,
+        at.w,
+        lines.len() as f32 * row_height + 2.0 * PANEL_PADDING,
+    );
+    draw_panel(canvas, meshes, panel);
+    for (i, line) in lines.iter().enumerate() {
+        let row = menu_row_rect(panel, i, row_height);
+        let text = ui_text(line, SMALL_TEXT_SIZE * text_scale);
+        draw_text_centered(ctx, canvas, &text, row.center().into(), LABEL_COLOR)?;
+    }
+    Ok(())
 }

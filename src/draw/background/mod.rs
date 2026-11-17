@@ -1,8 +1,10 @@
 mod plasma;
 mod stars;
 mod storm;
+mod title;
 
 pub use storm::{storm_strike_time, StrikeKind};
+pub use title::{draw_title_backdrop, title_clear_color};
 
 use plasma::*;
 use stars::*;

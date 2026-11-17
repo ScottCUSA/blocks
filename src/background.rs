@@ -61,6 +61,7 @@ pub struct Background {
     pub sea: f32,
     pub bolt: f32,     // lightning clock, strikes come faster as the storm builds
     pub whiteout: f32, // 0.0 to 1.0 past a full storm, rain and spray blot out the view
+    pub title: f32,    // title backdrop clock
 }
 
 impl Background {
@@ -83,6 +84,7 @@ impl Background {
             sea: 0.0,
             bolt: 0.0,
             whiteout: 0.0,
+            title: 0.0,
         }
     }
 
@@ -98,6 +100,7 @@ impl Background {
 
     pub fn update(&mut self, delta_time: f64, level: usize) {
         let dt = delta_time as f32;
+        self.title += dt;
         let speed = self.speed(level);
         let before = self.time;
         self.time += dt
