@@ -457,7 +457,10 @@ impl BlocksState {
             vsync: bench.as_ref().is_none_or(|b| b.vsync),
         };
         s.apply_settings();
-        s.background.start_calm();
+        // screenshots are of game scenes
+        if s.screenshot.is_none() {
+            s.background.start_calm();
+        }
         if s.screenshot.is_none() {
             s.assets.music().play();
         }
@@ -798,10 +801,12 @@ impl BlocksState {
         self.hold_used = false;
     }
 
-    /// the chosen theme in games, the demo and the audio options
+    /// the chosen theme in games through name entry, the demo and the audio options
     fn game_music(&self) -> bool {
         match self.state {
-            GameState::Playing | GameState::Paused | GameState::GameOver => true,
+            GameState::Playing | GameState::Paused | GameState::GameOver | GameState::NameEntry => {
+                true
+            }
             GameState::Options => self.options_in_game() || self.audio_open,
             GameState::Debug => self.debug.in_game(),
             _ => false,
