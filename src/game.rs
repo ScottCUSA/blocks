@@ -724,6 +724,10 @@ impl BlocksState {
 
     fn game_over(&mut self) {
         log::info!("Game Over! Score: {}", self.score);
+        // the viewer's demo ends on the next blocked spawn
+        if self.state == GameState::Debug {
+            return;
+        }
         self.controls.clear_inputs();
         self.effects.game_over();
         self.background.freeze(self.level);
@@ -799,7 +803,7 @@ impl BlocksState {
         match self.state {
             GameState::Playing | GameState::Paused | GameState::GameOver => true,
             GameState::Options => self.options_in_game() || self.audio_open,
-            GameState::Debug => self.debug.view == GameState::Playing,
+            GameState::Debug => self.debug.in_game(),
             _ => false,
         }
     }
@@ -809,7 +813,7 @@ impl BlocksState {
         let in_game = match self.state {
             GameState::Playing | GameState::Paused => true,
             GameState::Options => self.options_in_game(),
-            GameState::Debug => self.debug.view == GameState::Playing,
+            GameState::Debug => self.debug.in_game(),
             _ => false,
         };
         if in_game {
@@ -1344,13 +1348,13 @@ impl EventHandler for BlocksState {
     fn update(&mut self, ctx: &mut ggez::Context) -> GameResult {
         // cap the loop at the tick rate, 15fps in the background
         // paced here, not in draw: no frame is drawn while the window is occluded
-        let frame = if self.focused {
+        let frame = if self.focused || self.bench.is_some() {
             Duration::from_secs_f64(1.0 / self.debug.fps() as f64)
         } else {
             UNFOCUSED_FRAME
         };
-        // a benchmark draws uncapped
-        let uncapped = self.bench.is_some() && self.focused;
+        // a benchmark draws uncapped, focused or not
+        let uncapped = self.bench.is_some();
         if let Some(wait) = (self.last_frame + frame)
             .checked_duration_since(Instant::now())
             .filter(|_| !uncapped)
@@ -1636,6 +1640,8 @@ impl EventHandler for BlocksState {
     }
 
     fn quit_event(&mut self, ctx: &mut Context) -> Result<bool, ggez::GameError> {
+        // closing the window still prints and saves a benchmark
+        self.finish_bench(false);
         if self.screenshot.is_none() {
             self.store_window_state(ctx);
             self.save_settings();

@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use super::debug::{Animation, Recording, RunInfo};
-use super::{BlocksState, GameState};
+use super::{attract, BlocksState, GameState};
 use crate::background::{Background, BackgroundStyle};
 use crate::style::BlockStyle;
 
@@ -62,6 +62,7 @@ fn cases() -> Vec<Case> {
             case(Animation::Background, TOP_LEVEL);
         }
         case(Animation::GameOver, TOP_LEVEL);
+        case(Animation::Demo, attract::DEMO_LEVEL);
     }
     // the other block styles, over the heaviest background
     for block in &BlockStyle::ALL[1..] {

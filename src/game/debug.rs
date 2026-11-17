@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use ggez::input::keyboard::KeyCode;
 
-use super::{gravity_delay, BlocksState, GameState, Sfx, LINES_PER_LEVEL};
+use super::{attract, gravity_delay, BlocksState, GameState, Sfx, LINES_PER_LEVEL};
 use crate::{
     background::{BackgroundStyle, FREEZE_TIME, LEVEL_UP_TIME, THAW_TIME},
     controls::Control,
@@ -14,7 +14,7 @@ use crate::{
     effects::Effects,
     level_progress::LevelProgress,
     playfield::{Playfield, TranslationDirection, PLAYFIELD_SLOTS},
-    rustomino::{Rotation, Rustomino, RustominoType},
+    rustomino::{Rotation, Rustomino, RustominoBag, RustominoType},
     score_display::ScoreDisplay,
     scores::{Initials, ScoreBoard},
     style::{self, BlockStyle, Style},
@@ -64,10 +64,11 @@ pub enum Animation {
     NewHighScore,
     HighScores,
     Background,
+    Demo,
 }
 
 impl Animation {
-    pub const ALL: [Animation; 13] = [
+    pub const ALL: [Animation; 14] = [
         Animation::Gravity,
         Animation::SoftDrop,
         Animation::HardDrop,
@@ -81,6 +82,7 @@ impl Animation {
         Animation::NewHighScore,
         Animation::HighScores,
         Animation::Background,
+        Animation::Demo,
     ];
 
     pub fn name(self) -> &'static str {
@@ -98,6 +100,7 @@ impl Animation {
             Animation::NewHighScore => "New High Score",
             Animation::HighScores => "High Scores",
             Animation::Background => "Background",
+            Animation::Demo => "Demo",
         }
     }
 
@@ -114,6 +117,7 @@ impl Animation {
             Animation::HighScores => 2.0,
             // calm, a surge per clear size, level up, game over freeze, thaw
             Animation::Background => background_cue(SURGES + 3) + THAW_TIME as f64 + THAW_GAP,
+            Animation::Demo => attract::DEMO_TIME,
         }
     }
 
@@ -327,6 +331,11 @@ impl Recording {
 }
 
 impl DebugView {
+    /// game music and speed, the background alone included
+    pub(super) fn in_game(&self) -> bool {
+        matches!(self.view, GameState::Playing | GameState::Debug)
+    }
+
     pub fn new() -> Self {
         Self {
             selected: 0,
@@ -511,6 +520,17 @@ impl BlocksState {
             }
             // background alone
             Animation::Background => self.debug.view = GameState::Debug,
+            Animation::Demo => {
+                self.playfield = Playfield::new();
+                self.next_rustomino = None;
+                self.held_rustomino = None;
+                self.rustomino_bag = RustominoBag::new();
+                self.score = 0;
+                self.score_display = ScoreDisplay::new(0);
+                self.level_progress = LevelProgress::new(LINES_PER_LEVEL, 0);
+                self.total_lines_cleared = (self.level - 1) * LINES_PER_LEVEL;
+                self.attract.reset(attract::Phase::Off);
+            }
         }
     }
 
@@ -554,8 +574,7 @@ impl BlocksState {
     }
 
     pub(super) fn debug_update(&mut self, delta_time: f64) {
-        // replays restart audio, hold while unfocused
-        if self.debug.paused || !self.focused {
+        if self.debug.paused {
             return;
         }
         let dt = delta_time * self.debug.speed();
@@ -583,6 +602,19 @@ impl BlocksState {
             }
         }
         let mut length = self.debug.animation().length();
+        // the computer plays until the time is up, or it tops out
+        if self.debug.animation() == Animation::Demo && !self.playfield.is_clearing_lines() {
+            if self.playfield.ready_for_next() {
+                let piece = self.get_next_rustomino();
+                if !self.spawn(piece) {
+                    self.debug.time = self.debug.time.max(length);
+                }
+            }
+            if self.playfield.active_rustomino.is_some() {
+                self.computer(dt);
+                self.playing_update(dt);
+            }
+        }
         if self.debug.animation().falls() {
             if self.playfield.active_rustomino.is_some() {
                 if self.debug.animation() == Animation::SoftDrop {

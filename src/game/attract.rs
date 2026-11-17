@@ -13,12 +13,12 @@ use crate::rustomino::{Rotation, Rustomino};
 use crate::score_display::ScoreDisplay;
 
 const IDLE_TIME: f64 = 30.0; // at the menu before a demo
-const DEMO_TIME: f64 = 30.0; // longest demo game
+pub(super) const DEMO_TIME: f64 = 30.0; // longest demo game
 const GAME_OVER_TIME: f64 = 3.0; // game over shown, once the overlay is in
 const SCORES_TIME: f64 = 10.0; // high scores shown after a demo
 const MOVE_TIME: f64 = 0.11; // between moves, at slow gravity
 const THINK_TIME: f64 = 0.25; // before the first move
-const DEMO_LEVEL: usize = 7;
+pub(super) const DEMO_LEVEL: usize = 7;
 /// by lines cleared, toward bigger clears
 const CLEAR_BONUS: [f64; 5] = [0.0, -60.0, 0.0, 150.0, 400.0];
 const WELL_FORGIVEN: u32 = 10; // 1 + 2 + 3 + 4
@@ -70,7 +70,7 @@ impl Attract {
     }
 
     /// back to idle, keeping the rng
-    fn reset(&mut self, phase: Phase) {
+    pub(super) fn reset(&mut self, phase: Phase) {
         *self = Attract {
             phase,
             rng: self.rng.clone(),
@@ -158,7 +158,7 @@ impl BlocksState {
     }
 
     /// the computer's moves, quicker as gravity speeds up
-    fn computer(&mut self, delta_time: f64) {
+    pub(super) fn computer(&mut self, delta_time: f64) {
         if self.playfield.is_clearing_lines() {
             return;
         }
