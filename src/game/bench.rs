@@ -6,7 +6,7 @@ use bevy::app::AppExit;
 use bevy::prelude::*;
 
 use super::debug::{self, Animation, DebugView, Recording, RunInfo};
-use super::Viewer;
+use super::{attract, Viewer};
 use crate::background::{Background, BackgroundStyle};
 use crate::draw::ViewSettings;
 use crate::style::{BlockStyle, Style};
@@ -66,6 +66,7 @@ fn cases() -> Vec<Case> {
             case(Animation::Background, TOP_LEVEL);
         }
         case(Animation::GameOver, TOP_LEVEL);
+        case(Animation::Demo, attract::DEMO_LEVEL);
     }
     // the other block styles, over the heaviest background
     for block in &BlockStyle::ALL[1..] {

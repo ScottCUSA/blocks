@@ -7,6 +7,9 @@ use std::time::{Duration, SystemTime};
 use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
 
+use rand_xoshiro::Xoshiro256PlusPlus;
+
+use super::attract;
 use super::board::{gravity_delay, Board, Mode, Play, Score};
 use super::input::{HandleKeys, Keys};
 use super::screenshot::{fill_rows, setup_board, setup_sample_scores, setup_tall_stack};
@@ -71,10 +74,11 @@ pub enum Animation {
     NewHighScore,
     HighScores,
     Background,
+    Demo,
 }
 
 impl Animation {
-    pub const ALL: [Animation; 13] = [
+    pub const ALL: [Animation; 14] = [
         Animation::Gravity,
         Animation::SoftDrop,
         Animation::HardDrop,
@@ -88,6 +92,7 @@ impl Animation {
         Animation::NewHighScore,
         Animation::HighScores,
         Animation::Background,
+        Animation::Demo,
     ];
 
     pub fn name(self) -> &'static str {
@@ -105,6 +110,7 @@ impl Animation {
             Animation::NewHighScore => "New High Score",
             Animation::HighScores => "High Scores",
             Animation::Background => "Background",
+            Animation::Demo => "Demo",
         }
     }
 
@@ -121,6 +127,7 @@ impl Animation {
             Animation::HighScores => 2.0,
             // calm, a surge per clear size, level up, game over freeze, thaw
             Animation::Background => background_cue(SURGES + 3) + THAW_TIME as f64 + THAW_GAP,
+            Animation::Demo => attract::DEMO_TIME,
         }
     }
 
@@ -578,6 +585,13 @@ pub(super) fn start_animation(world: &mut World) {
         }
         // background alone
         Animation::Background => view = Screen::Backdrop,
+        // the computer plays from an empty board
+        Animation::Demo => {
+            let mut score = world.resource_mut::<Score>();
+            score.lines = (level - 1) * LINES_PER_LEVEL;
+            score.level_progress = LevelProgress::new(LINES_PER_LEVEL, 0);
+            *world.resource_mut::<attract::Attract>() = attract::Attract::default();
+        }
     }
     world.resource_mut::<DebugView>().view = view;
     world.resource_mut::<NextState<Screen>>().set(view);
@@ -637,6 +651,8 @@ fn step(
     mut debug: ResMut<DebugView>,
     mut background: ResMut<Background>,
     mut play: Play,
+    mut attract: ResMut<attract::Attract>,
+    mut rng: Local<Option<Xoshiro256PlusPlus>>,
 ) {
     // paused
     if dt == 0.0 {
@@ -657,6 +673,19 @@ fn step(
         }
     }
     let mut length = debug.animation().length();
+    // the computer plays until the time is up, or it tops out
+    if debug.animation() == Animation::Demo && !play.board.playfield.is_clearing_lines() {
+        if play.board.playfield.ready_for_next() {
+            let piece = play.get_next_rustomino();
+            if !play.spawn(piece) {
+                debug.time = debug.time.max(length);
+            }
+        }
+        if play.board.playfield.active_rustomino.is_some() {
+            attract::computer_moves(&mut attract, &mut play, dt, &mut rng);
+            play.playing_update(dt);
+        }
+    }
     if debug.animation().falls() {
         if play.board.playfield.active_rustomino.is_some() {
             if debug.animation() == Animation::SoftDrop {

@@ -257,7 +257,7 @@ impl Play<'_> {
     }
 
     /// the next piece, refilling the preview from the bag
-    fn get_next_rustomino(&mut self) -> Rustomino {
+    pub(super) fn get_next_rustomino(&mut self) -> Rustomino {
         let board = &mut *self.board;
         let next = match board.next.take() {
             Some(rustomino) => rustomino,

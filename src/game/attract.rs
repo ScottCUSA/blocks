@@ -18,12 +18,12 @@ use crate::rustomino::{Rotation, Rustomino};
 use crate::score_display::ScoreDisplay;
 
 const IDLE_TIME: f64 = 30.0; // at the menu before a demo
-const DEMO_TIME: f64 = 30.0; // longest demo game
+pub(super) const DEMO_TIME: f64 = 30.0; // longest demo game
 const GAME_OVER_TIME: f64 = 3.0; // game over shown, once the overlay is in
 const SCORES_TIME: f64 = 10.0; // high scores shown after a demo
 const MOVE_TIME: f64 = 0.11; // between moves, at slow gravity
 const THINK_TIME: f64 = 0.25; // before the first move
-const DEMO_LEVEL: usize = 7;
+pub(super) const DEMO_LEVEL: usize = 7;
 /// by lines cleared, toward bigger clears
 const CLEAR_BONUS: [f64; 5] = [0.0, -60.0, 0.0, 150.0, 400.0];
 const WELL_FORGIVEN: u32 = 10; // 1 + 2 + 3 + 4
@@ -170,14 +170,26 @@ fn start_level(board: &mut Board, score: &mut Score, mode: Mode) {
     board.gravity_delay = gravity_delay(DEMO_LEVEL, mode);
 }
 
-/// the computer's moves, quicker as gravity speeds up
+/// the computer plays the demo
 fn computer(
     time: Res<Time>,
     mut attract: ResMut<Attract>,
     mut play: Play,
     mut rng: Local<Option<Xoshiro256PlusPlus>>,
 ) {
-    if !attract.demo() || play.board.topped_out {
+    if attract.demo() {
+        computer_moves(&mut attract, &mut play, time.delta_secs_f64(), &mut rng);
+    }
+}
+
+/// the computer's moves, quicker as gravity speeds up
+pub(super) fn computer_moves(
+    attract: &mut Attract,
+    play: &mut Play,
+    dt: f64,
+    rng: &mut Option<Xoshiro256PlusPlus>,
+) {
+    if play.board.topped_out {
         return;
     }
     let Some(active) = play.board.playfield.active_rustomino.clone() else {
@@ -197,7 +209,7 @@ fn computer(
     }
     attract.piece_y = y;
     let step = MOVE_TIME.min(play.board.gravity_delay);
-    attract.wait -= time.delta_secs_f64();
+    attract.wait -= dt;
     while attract.wait <= 0.0 {
         attract.wait += step;
         let Some(plan) = attract.plan.as_mut() else {
