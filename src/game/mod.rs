@@ -16,7 +16,7 @@ mod tests;
 pub use input::RequestQuit;
 pub use screenshot::{save_png, Screenshot};
 
-use crate::audio::{AudioSettings, MusicCue, MusicTempo, MUSIC_THEMES, VOLUME_LEVELS};
+use crate::audio::{AudioSettings, GameMusic, MusicCue, MusicTempo, MUSIC_THEMES, VOLUME_LEVELS};
 use crate::background::{Background, BackgroundStyle};
 use crate::controls::GameControls;
 use crate::draw::{Meshes, ViewSettings};
@@ -109,7 +109,14 @@ impl Plugin for GamePlugin {
             .init_resource::<Score>()
             .init_resource::<Mode>()
             .insert_resource(Style::default())
-            .insert_resource(Background::new())
+            .insert_resource({
+                // the game opens calm at the menu, screenshots are of game scenes
+                let mut background = Background::new();
+                if self.screenshot.is_none() {
+                    background.start_calm();
+                }
+                background
+            })
             .insert_resource(GameControls::default())
             .init_resource::<Menus>()
             .insert_resource(OptionsFrom(Screen::Menu))
@@ -152,6 +159,7 @@ impl Plugin for GamePlugin {
                         sim_dt.pipe(update_displays).run_if(displays_run),
                         sim_dt.pipe(step_background),
                         music_tempo,
+                        game_music,
                     )
                         .in_set(Sim::Animate),
                 ),
@@ -224,7 +232,7 @@ fn background_events(mut events: MessageReader<BoardEvent>, mut background: ResM
     }
 }
 
-/// background at the game's level, calm outside a game
+/// background at the game's level, calmed behind the title screens
 fn step_background(
     In(dt): In<f64>,
     mut background: ResMut<Background>,
@@ -233,11 +241,20 @@ fn step_background(
     viewer: Res<State<Viewer>>,
     options_from: Res<OptionsFrom>,
 ) {
-    let level = if *viewer.get() == Viewer::On || in_game(*screen.get(), *options_from) {
+    let viewer = *viewer.get() == Viewer::On;
+    let level = if viewer || in_game(*screen.get(), *options_from) {
         score.level
     } else {
         1
     };
+    // the menu and the screens opened from it
+    let title = !viewer
+        && match screen.get() {
+            Screen::Menu | Screen::HighScores => true,
+            Screen::Options => !options_from.in_game(),
+            _ => false,
+        };
+    background.set_calm(title);
     background.update(dt, level);
 }
 
@@ -263,6 +280,25 @@ fn music_tempo(
         1.0
     };
     tempo.set_if_neq(MusicTempo(speed));
+}
+
+/// the chosen theme in games through name entry, the demo and the audio options, the title theme elsewhere
+fn game_music(
+    screen: Res<State<Screen>>,
+    options_from: Res<OptionsFrom>,
+    menus: Res<Menus>,
+    mut music: ResMut<GameMusic>,
+) {
+    let game = match screen.get() {
+        Screen::Playing
+        | Screen::Paused
+        | Screen::GameOver
+        | Screen::NameEntry
+        | Screen::Backdrop => true,
+        Screen::Options => options_from.in_game() || menus.audio_open,
+        _ => false,
+    };
+    music.set_if_neq(GameMusic(game));
 }
 
 /// music playback rate for the shown level

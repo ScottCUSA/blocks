@@ -22,6 +22,7 @@ pub const MUSIC_THEMES: [(&str, &str); 6] = [
     ("Storms", "music_storms.ogg"),
     ("Shanty", "music_shanty.ogg"),
 ];
+const TITLE_THEME: usize = 0; // Dance, outside of games
 pub const VOLUME_LEVELS: u8 = 10; // steps on the options volume sliders
 pub const DEFAULT_VOLUME_LEVEL: u8 = 5;
 const MUSIC_VOL_MAX: f32 = 0.2;
@@ -112,6 +113,10 @@ impl Default for AudioSettings {
     }
 }
 
+/// the chosen theme in games, the title theme elsewhere
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Default)]
+pub struct GameMusic(pub bool);
+
 /// music playback rate the game wants, eased toward
 #[derive(Resource, Debug, Clone, Copy, PartialEq)]
 pub struct MusicTempo(pub f32);
@@ -133,6 +138,7 @@ impl Plugin for AudioPlugin {
             .add_message::<MusicCue>()
             .init_resource::<AudioSettings>()
             .init_resource::<MusicTempo>()
+            .init_resource::<GameMusic>()
             .add_systems(
                 PreStartup,
                 move |mut commands: Commands, resources: Res<Resources>| {
@@ -144,6 +150,7 @@ impl Plugin for AudioPlugin {
                 Update,
                 (
                     apply_settings.run_if(resource_changed::<AudioSettings>),
+                    select_track,
                     focus,
                     music_cues,
                     play_sfx,
@@ -160,7 +167,8 @@ struct Audio {
     _device: Option<rodio::MixerDeviceSink>, // output stops when dropped
     silent: bool,
     music: Vec<music::Track>,
-    theme: usize,
+    theme: usize, // chosen for games
+    track: usize, // playing
     speed: f32,
     game_over: music::Jingle,
     sfx: HashMap<Sfx, sfx::Effect>,
@@ -205,6 +213,7 @@ impl Audio {
             silent,
             music,
             theme: 0,
+            track: TITLE_THEME,
             speed: 1.0,
             game_over,
             sfx,
@@ -215,12 +224,12 @@ impl Audio {
     }
 
     fn music(&self) -> &music::Track {
-        &self.music[self.theme]
+        &self.music[self.track]
     }
 
     fn music_mut(&mut self) -> &mut music::Track {
-        let theme = self.theme;
-        &mut self.music[theme]
+        let track = self.track;
+        &mut self.music[track]
     }
 
     fn apply_speed(&self) {
@@ -229,17 +238,8 @@ impl Audio {
 }
 
 fn apply_settings(settings: Res<AudioSettings>, mut audio: ResMut<Audio>) {
-    let theme = settings.theme.min(audio.music.len() - 1);
-    if theme != audio.theme {
-        // a new theme starts from the top
-        let playing = !audio.music().stopped();
-        audio.music_mut().stop();
-        audio.theme = theme;
-        audio.apply_speed();
-        if playing && !audio.silent {
-            audio.music_mut().play();
-        }
-    }
+    // select_track switches to it
+    audio.theme = settings.theme.min(audio.music.len() - 1);
     for track in &mut audio.music {
         track.set_volume(volume(settings.music_level, MUSIC_VOL_MAX));
     }
@@ -249,6 +249,21 @@ fn apply_settings(settings: Res<AudioSettings>, mut audio: ResMut<Audio>) {
     audio
         .game_over
         .set_volume(volume(settings.sound_level, JINGLE_VOL_MAX));
+}
+
+/// switch to the chosen theme in games, the title theme elsewhere, from the top
+fn select_track(game: Res<GameMusic>, settings: Res<AudioSettings>, mut audio: ResMut<Audio>) {
+    let track = if game.0 { audio.theme } else { TITLE_THEME };
+    if track == audio.track {
+        return;
+    }
+    audio.music_mut().stop();
+    audio.track = track;
+    audio.speed = 1.0;
+    audio.apply_speed();
+    if !audio.silent && (audio.focused || settings.play_unfocused) {
+        audio.music_mut().play();
+    }
 }
 
 /// music and the game over jingle stop while unfocused, unless set to keep playing

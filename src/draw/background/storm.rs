@@ -15,6 +15,8 @@ pub(super) const SEA_LAYERS: [(Color, f32, f32); 3] = [
     (Color::new(0.025, 0.055, 0.09, 1.0), 0.5, 24.0),
 ];
 pub(super) const SEA_SPEED: f32 = 0.9;
+pub(super) const CALM_SEA_DROP: f32 = 100.0; // px past the bottom, clears the tallest waves
+pub(super) const CALM_RAIN: f32 = 0.5; // drops lost when calm
 pub(super) const SEA_SURGE: f32 = 1.2; // extra wave height at full energy
 pub(super) const CREST_COLOR: Color = Color::new(0.55, 0.68, 0.78, 1.0);
 pub(super) const FOAM_SLOPE: f32 = 0.9; // steeper crests break white
@@ -157,10 +159,13 @@ impl Scenery for Storm {
 
 fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, background: &Background) {
     let (x0, w, h) = (view_rect.x, view_rect.w, view_rect.h);
-    let sea_top = view_rect.y + h * SEA_LEVEL;
+    // calm, the sea sinks out of view
+    let calm = background.calm;
+    let sea_top = view_rect.y + h * SEA_LEVEL + calm * (h * (1.0 - SEA_LEVEL) + CALM_SEA_DROP);
     let sea_h = view_rect.y + h - sea_top;
     let strike = storm_strike(background.bolt)
-        .map(|(k, bright)| (k, bright, strike_kind(k, background.storm)));
+        .map(|(k, bright)| (k, bright * (1.0 - calm), strike_kind(k, background.storm)))
+        .filter(|(_, bright, _)| *bright > 0.0);
     // line clears light up the clouds too
     // level up: a white-out flash at the start, then a barrage of strikes
     let level_up = background.wave();
@@ -325,7 +330,8 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
     let whiteout = background.whiteout;
     let slant = RAIN_SLANT.0 + (RAIN_SLANT.1 - RAIN_SLANT.0) * storm + gust + 0.4 * whiteout;
     let drops = ((RAIN_DROPS.0 + ((RAIN_DROPS.1 - RAIN_DROPS.0) as f32 * storm) as usize) as f32
-        * (1.0 + 3.0 * whiteout)) as usize;
+        * (1.0 + 3.0 * whiteout)
+        * (1.0 - CALM_RAIN * calm)) as usize;
     let rain_alpha =
         ((0.18 + 0.1 * storm + 0.15 * whiteout) + 0.12 * background.energy) * (1.0 + flash);
 
