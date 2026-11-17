@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Song, Music and Sound moved to a new Audio page in the options.
 
+### Fixed
+
+- A 15–40 ms stutter whenever the music changed or the game over jingle
+  stopped.
+
 ## [0.5.1] - 2026-11-15
 
 ### Changed

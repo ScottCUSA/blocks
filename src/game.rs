@@ -1,5 +1,4 @@
 use ggez::{
-    audio::{self, SoundSource},
     conf,
     event::EventHandler,
     glam::IVec2,
@@ -163,7 +162,7 @@ pub struct Assets {
     theme: usize, // chosen for games
     track: usize, // playing
     music_speed: f32,
-    game_over: audio::Source,
+    game_over: music::Track,
     sfx: HashMap<Sfx, sfx::Effect>,
     // sources paused on focus loss
     music_suspended: bool,
@@ -175,11 +174,11 @@ impl Assets {
         // load background music
         let mut music = Vec::new();
         for (_, path) in MUSIC_THEMES {
-            let track = music::Track::new(ctx, path)?;
+            let mut track = music::Track::new(ctx, path)?;
             track.set_volume(volume(DEFAULT_VOLUME_LEVEL, MUSIC_VOL_MAX));
             music.push(track);
         }
-        let mut game_over = audio::Source::new(ctx, "/game_over_8bit.ogg")?;
+        let mut game_over = music::Track::plain(ctx, "/game_over_8bit.ogg")?;
         game_over.set_volume(volume(DEFAULT_VOLUME_LEVEL, JINGLE_VOL_MAX));
         // load game sound effects
         let mut sfx = HashMap::new();
@@ -210,31 +209,34 @@ impl Assets {
         &self.music[self.track]
     }
 
+    fn music_mut(&mut self) -> &mut music::Track {
+        &mut self.music[self.track]
+    }
+
     /// switch to the chosen theme in games, the title theme elsewhere
     fn select_track(&mut self, game: bool, play: bool) {
         let track = if game { self.theme } else { TITLE_THEME };
         if track == self.track {
             return;
         }
-        self.music().stop();
+        self.music_mut().stop();
         self.track = track;
         self.music_speed = 1.0;
         self.apply_music_speed();
         if play {
-            self.music().play();
+            self.music_mut().play();
         }
     }
 
     fn set_music_level(&mut self, level: u8) {
-        for track in &self.music {
+        for track in &mut self.music {
             track.set_volume(volume(level, MUSIC_VOL_MAX));
         }
     }
 
     /// pause the music for the game over jingle
-    fn play_game_over(&self) {
+    fn play_game_over(&mut self) {
         self.music().pause();
-        self.game_over.stop();
         self.game_over.play();
     }
 
@@ -258,7 +260,7 @@ impl Assets {
         if self.music().paused() {
             self.music_speed = 1.0;
             self.apply_music_speed();
-            self.music().play();
+            self.music_mut().play();
         }
     }
 
@@ -462,7 +464,7 @@ impl BlocksState {
             s.background.start_calm();
         }
         if s.screenshot.is_none() {
-            s.assets.music().play();
+            s.assets.music_mut().play();
         }
         if let Some(scene) = s.screenshot.as_ref().map(|screenshot| screenshot.scene) {
             s.setup_scene(scene);
@@ -1378,7 +1380,7 @@ impl EventHandler for BlocksState {
         self.assets.select_track(self.game_music(), play);
         // loop the music, rodio 0.22 repeat is silent for vorbis
         if play && self.assets.music().stopped() {
-            self.assets.music().play();
+            self.assets.music_mut().play();
         }
 
         // fixed rate ticks, drawn at the display rate
