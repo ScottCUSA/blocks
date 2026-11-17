@@ -24,6 +24,9 @@ const SCORES_TIME: f64 = 10.0; // high scores shown after a demo
 const MOVE_TIME: f64 = 0.11; // between moves, at slow gravity
 const THINK_TIME: f64 = 0.25; // before the first move
 const DEMO_LEVEL: usize = 7;
+/// by lines cleared, toward bigger clears
+const CLEAR_BONUS: [f64; 5] = [0.0, -60.0, 0.0, 150.0, 400.0];
+const WELL_FORGIVEN: u32 = 10; // 1 + 2 + 3 + 4
 const SLIP_CHANCE: f64 = 0.1; // of a worse placement
 const SLIP_RANK: usize = 3; // worst placement ranked from the best
 
@@ -376,7 +379,7 @@ fn place(slots: &PlayfieldSlots, piece: &Rustomino) -> (PlayfieldSlots, Placed) 
         0.0
     };
     let landing = (low + high) as f64 / 2.0;
-    let moves = -12.63 * landing + 6.60 * eroded as f64 + above;
+    let moves = -12.63 * landing + 6.60 * eroded as f64 + CLEAR_BONUS[full.len()] + above;
     let placed = Placed {
         moves,
         lines: full.len(),
@@ -399,6 +402,7 @@ fn evaluate(board: &PlayfieldSlots) -> f64 {
     }
     let (mut column_transitions, mut holes, mut hole_depth, mut wells) = (0, 0, 0, 0);
     let mut hole_rows = [false; H];
+    let mut deepest = 0; // one column's wells, kept open for a big clear
     for x in 0..W as i32 {
         // up from the floor
         let mut last = true;
@@ -409,6 +413,7 @@ fn evaluate(board: &PlayfieldSlots) -> f64 {
         }
         let mut above = 0;
         let mut well = 0;
+        let mut column_wells = 0;
         for y in (0..H).rev() {
             let now = filled(x, y);
             if now {
@@ -420,12 +425,16 @@ fn evaluate(board: &PlayfieldSlots) -> f64 {
             }
             if !now && filled(x - 1, y) && filled(x + 1, y) {
                 well += 1;
-                wells += well;
+                column_wells += well;
             } else {
                 well = 0;
             }
         }
+        wells += column_wells;
+        deepest = deepest.max(column_wells);
     }
+    // up to four deep
+    wells -= deepest.min(WELL_FORGIVEN);
     let rows_with_holes = hole_rows.iter().filter(|&&h| h).count();
     -9.22 * row_transitions as f64
         - 19.77 * column_transitions as f64
@@ -448,6 +457,7 @@ mod tests {
         let (mut piece, mut next) = (bag.get_next(), bag.get_next());
         let mut rng = rand::make_rng();
         let mut lines = 0;
+        let mut clears = [0; 5];
         for _ in 0..1000 {
             assert!(
                 !collides(&slots, piece.playfield_slots()),
@@ -460,8 +470,12 @@ mod tests {
             let (board, placed) = place(&slots, &dropped);
             slots = board;
             lines += placed.lines;
+            clears[placed.lines] += 1;
             piece = std::mem::replace(&mut next, bag.get_next());
         }
         assert!(lines >= 390, "{lines} lines");
+        // more multi-line clears than singles
+        let multi: usize = clears[2..].iter().sum();
+        assert!(multi > clears[1], "clears {:?}", &clears[1..]);
     }
 }
