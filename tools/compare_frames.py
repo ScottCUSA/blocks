@@ -15,7 +15,7 @@ import sys
 
 SCENE = ("animation", "background", "block", "board", "level")
 # header fields that should match for a fair comparison
-COMPARABLE = ("profile", "os", "drawable", "fps_cap", "format")
+COMPARABLE = ("profile", "os", "drawable", "fps_cap", "vsync", "format")
 
 
 def load(path):
@@ -62,7 +62,7 @@ def name(scene):
 
 def summary(info, grouped):
     print(f"commit {info.get('commit', '?')}  {info.get('profile', '?')}  "
-          f"{info.get('drawable', '?')}  cap {info.get('fps_cap', '?')}")
+          f"{info.get('drawable', '?')}  cap {info.get('fps_cap', '?')}  vsync {info.get('vsync', '?')}")
     print(f"{'scene':<52} {'n':>5} {'draws':>6} {'scene ms':>8} {'p95':>7} {'frame ms':>9} {'p95':>7}")
     for scene in sorted(grouped):
         s = grouped[scene]

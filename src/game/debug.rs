@@ -138,7 +138,8 @@ impl Animation {
 pub struct DebugView {
     pub selected: usize,
     speed: usize,
-    fps: usize, // kept after closing, for the session
+    fps: usize,      // kept after closing, for the session
+    pub vsync: bool, // the viewer's, kept like fps
     pub paused: bool,
     pub replay: bool,     // loop with sound, or play once
     pub hidden: bool,     // hud off
@@ -217,6 +218,7 @@ pub struct RunInfo {
     pub drawable: (f32, f32), // physical pixels
     pub scale: f32,           // physical pixels per view unit
     pub fps_cap: u32,
+    pub vsync: bool,
     pub kind: &'static str, // names the file
 }
 
@@ -306,7 +308,7 @@ impl Recording {
             "# drawable={}x{} scale={}",
             run.drawable.0, run.drawable.1, run.scale
         )?;
-        writeln!(out, "# fps_cap={}", run.fps_cap)?;
+        writeln!(out, "# fps_cap={} vsync={}", run.fps_cap, run.vsync)?;
         writeln!(out, "{RECORDING_COLUMNS}")?;
         let ms = |d: Duration| d.as_secs_f64() * 1000.0;
         let mut time = Duration::ZERO;
@@ -348,6 +350,7 @@ impl DebugView {
             selected: 0,
             speed: 0,
             fps: 0,
+            vsync: false,
             paused: false,
             replay: true,
             hidden: false,
@@ -635,7 +638,7 @@ fn step(
     mut background: ResMut<Background>,
     mut play: Play,
 ) {
-    // paused or unfocused
+    // paused
     if dt == 0.0 {
         return;
     }
@@ -733,6 +736,7 @@ fn keys(
                     drawable: (view.view_rect.w * view.scale, view.view_rect.h * view.scale),
                     scale: view.scale,
                     fps_cap: debug.fps_cap().unwrap_or(0),
+                    vsync: debug.vsync,
                     kind: "frames",
                 };
                 debug.toggle_recording(run);
@@ -745,6 +749,7 @@ fn keys(
                     (debug.fps + 1) % count
                 };
             }
+            KeyCode::KeyV if !repeated => debug.vsync = !debug.vsync,
             KeyCode::KeyT if !repeated && !bench_running => {
                 commands.insert_resource(super::bench::StartBench {
                     hold: super::bench::DEFAULT_HOLD,

@@ -186,6 +186,7 @@ impl SceneData<'_> {
                 replay: debug.replay,
                 level: debug.level,
                 fps: debug.fps_cap(),
+                vsync: debug.vsync,
                 stats: debug.stats.shown,
                 recording: debug.recording.is_some(),
                 stats_only: debug.stats_only,

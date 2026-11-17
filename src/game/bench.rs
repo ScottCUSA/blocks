@@ -142,6 +142,7 @@ fn start(world: &mut World) {
         drawable: (view.view_rect.w * view.scale, view.view_rect.h * view.scale),
         scale: view.scale,
         fps_cap: 0,
+        vsync: false,
         kind: "bench",
     };
     let mut debug = world.resource_mut::<DebugView>();

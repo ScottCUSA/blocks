@@ -5,8 +5,8 @@ use crate::draw::*;
 
 pub(super) const DEBUG_ROW_HEIGHT: f32 = 26.0;
 pub(super) const DEBUG_PANEL_GAP: f32 = 24.0; // below the hold and next previews
-const COMPACT_ROW_HEIGHT: f32 = 18.0; // the benchmark's fps panel
-pub(super) const DEBUG_HINTS: [&str; 13] = [
+const COMPACT_ROW_HEIGHT: f32 = 18.0; // the corner fps panel
+pub(super) const DEBUG_HINTS: [&str; 14] = [
     "Up/Down: pick",
     "Enter: restart",
     "R: replay on/off",
@@ -17,6 +17,7 @@ pub(super) const DEBUG_HINTS: [&str; 13] = [
     "B/S: styles",
     "H: hide panels",
     "F/Shift F: fps",
+    "V: vsync",
     "C: record frames",
     "T: benchmark",
     "Esc: back",
@@ -41,7 +42,8 @@ pub struct DebugScreen<'a> {
     pub paused: bool,
     pub replay: bool,
     pub level: usize,
-    pub fps: Option<u32>,          // cap, None unlocked
+    pub fps: Option<u32>, // cap, None unlocked
+    pub vsync: bool,
     pub stats: Option<FrameStats>, // None until the first window is averaged
     pub recording: bool,
     pub stats_only: bool, // a benchmark shows just the frame cost
@@ -57,6 +59,7 @@ impl Layer for DebugScreen<'_> {
             replay,
             level,
             fps,
+            vsync,
             stats,
             recording,
             stats_only,
@@ -76,41 +79,36 @@ impl Layer for DebugScreen<'_> {
             width,
             DEBUG_HINTS.len() as f32 * DEBUG_ROW_HEIGHT + 2.0 * PANEL_PADDING,
         );
-        let Some(stats) = stats else {
-            return Ok(());
-        };
+        // small, in the top left corner, as in a benchmark
+        let at = Rect::new(PANEL_PADDING, PANEL_PADDING, view_settings.hold_rect.w, 0.0);
         if stats_only {
-            // small, in the top left corner on every screen
-            let hold = view_settings.hold_rect;
+            let Some(stats) = stats else {
+                return Ok(());
+            };
             let lines = [
                 format!("{:.0} fps  {:.2}ms", stats.fps, stats.frame_ms),
                 format!("scene {:.2}ms", stats.scene_ms),
             ];
-            let at = Rect::new(PANEL_PADDING, PANEL_PADDING, hold.w, 0.0);
             return draw_lines(canvas, meshes, at, &lines, COMPACT_ROW_HEIGHT, 0.6);
         }
-        let lines = [
-            if recording {
-                format!("{} draws  REC", stats.draws)
-            } else {
-                format!("{} draws", stats.draws)
-            },
-            format!("{} vertices", stats.vertices),
-            format!("{:.0} fps  {:.2}ms", stats.fps, stats.frame_ms),
-            format!("scene {:.2}ms", stats.scene_ms),
-        ];
-        let at = Rect::new(
-            controls.x,
-            controls.bottom() + DEBUG_PANEL_GAP,
-            controls.w,
-            0.0,
-        );
-        draw_lines(canvas, meshes, at, &lines, DEBUG_ROW_HEIGHT, 0.75)?;
+        if let Some(stats) = stats {
+            let lines = [
+                format!("{:.0} fps  {:.2}ms", stats.fps, stats.frame_ms),
+                format!("scene {:.2}ms", stats.scene_ms),
+                if recording {
+                    format!("{} draws  REC", stats.draws)
+                } else {
+                    format!("{} draws", stats.draws)
+                },
+                format!("{} vertices", stats.vertices),
+            ];
+            draw_lines(canvas, meshes, at, &lines, COMPACT_ROW_HEIGHT, 0.6)?;
+        }
 
         // animations, right of the playfield
         let left = view_settings.preview_rect.x;
         let width = (view.w - left - PANEL_PADDING).max(view_settings.preview_rect.w);
-        let rows = names.len() + 4;
+        let rows = names.len() + 5;
         let panel = Rect::new(
             left,
             top,
@@ -141,11 +139,12 @@ impl Layer for DebugScreen<'_> {
             Some(fps) => format!("Level {level}  {fps} FPS"),
             None => format!("Level {level}  Unlocked"),
         };
-        for (i, line) in [status.as_str(), replay, level.as_str()]
+        let vsync = if vsync { "Vsync On" } else { "Vsync Off" };
+        for (i, line) in [status.as_str(), replay, level.as_str(), vsync]
             .into_iter()
             .enumerate()
         {
-            let row = menu_row_rect(panel, rows - 3 + i, DEBUG_ROW_HEIGHT);
+            let row = menu_row_rect(panel, rows - 4 + i, DEBUG_ROW_HEIGHT);
             let text = ui_text(line, SMALL_TEXT_SIZE);
             draw_text_centered(canvas, &text, row.center(), LABEL_COLOR)?;
         }

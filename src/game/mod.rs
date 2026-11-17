@@ -164,19 +164,12 @@ impl Plugin for GamePlugin {
 }
 
 /// seconds this tick simulates, scaled and paused by the viewer
-pub fn sim_dt(
-    time: Res<Time>,
-    viewer: Res<State<Viewer>>,
-    debug: Res<DebugView>,
-    focused: Res<Focused>,
-    bench: Option<Res<bench::Bench>>,
-) -> f64 {
+pub fn sim_dt(time: Res<Time>, viewer: Res<State<Viewer>>, debug: Res<DebugView>) -> f64 {
     let dt = time.delta_secs_f64();
     if *viewer.get() == Viewer::Off {
         return dt;
     }
-    // replays restart audio, hold while unfocused
-    if debug.paused || !(focused.0 || bench.is_some()) {
+    if debug.paused {
         0.0
     } else {
         dt * debug.speed()
@@ -255,7 +248,8 @@ fn music_tempo(
     mut tempo: ResMut<MusicTempo>,
 ) {
     let in_game = match screen.get() {
-        Screen::Playing => true,
+        // the viewer's background alone keeps the level's tempo
+        Screen::Playing | Screen::Backdrop => true,
         _ if *viewer.get() == Viewer::On => false,
         Screen::Paused => true,
         Screen::Options => options_from.in_game(),

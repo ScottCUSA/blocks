@@ -182,40 +182,58 @@ fn setup_camera(mut commands: Commands, target: Option<Res<ScreenshotTarget>>) {
     }
 }
 
+const SPIN: Duration = Duration::from_micros(250); // before a frame is due
+
 /// cap the frame rate at the tick rate, 15fps in the background
-/// unlocked in the viewer and for a benchmark
+/// the viewer sets its own cap and vsync, a benchmark runs uncapped without vsync
 fn pace(
     debug: Res<DebugView>,
     viewer: Res<State<Viewer>>,
     focused: Res<Focused>,
     bench: Option<Res<Bench>>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
-    mut last: Local<Option<Instant>>,
+    mut next: Local<Option<Instant>>,
     mut fixed: ResMut<Time<Fixed>>,
 ) {
-    let unlocked = bench.is_some() || (*viewer.get() == Viewer::On && debug.fps_cap().is_none());
-    let present = if unlocked {
-        PresentMode::AutoNoVsync
-    } else {
+    let viewing = *viewer.get() == Viewer::On;
+    let unlocked = bench.is_some() || (viewing && debug.fps_cap().is_none());
+    let vsync = bench.is_none() && (!viewing || debug.vsync);
+    let present = if vsync {
         PresentMode::AutoVsync
+    } else {
+        PresentMode::AutoNoVsync
     };
     if let Ok(mut window) = windows.single_mut() {
         if window.present_mode != present {
             window.present_mode = present;
         }
     }
-    let frame = if unlocked {
-        Duration::ZERO
-    } else if focused.0 {
-        Duration::from_secs_f64(1.0 / debug.tick_rate() as f64)
-    } else {
+    // unfocused wins over unlocked, but not over a benchmark
+    let frame = if !focused.0 && bench.is_none() {
         game::UNFOCUSED_FRAME
+    } else if unlocked {
+        Duration::ZERO
+    } else {
+        Duration::from_secs_f64(1.0 / debug.tick_rate() as f64)
     };
-    if let Some(wait) = last.and_then(|last| (last + frame).checked_duration_since(Instant::now()))
-    {
-        std::thread::sleep(wait);
+    // against a running deadline, so a late wake is made up next frame
+    let now = Instant::now();
+    if frame.is_zero() {
+        *next = None;
+    } else {
+        // over a frame behind, start again from now
+        let due = next.filter(|due| *due + frame > now).unwrap_or(now);
+        if let Some(wait) = due.checked_duration_since(now) {
+            // sleep wakes late, spin the rest
+            if let Some(sleep) = wait.checked_sub(SPIN) {
+                std::thread::sleep(sleep);
+            }
+            while Instant::now() < due {
+                std::hint::spin_loop();
+            }
+        }
+        *next = Some(due + frame);
     }
-    *last = Some(Instant::now());
     // the viewer changes the tick rate
     let step = Duration::from_secs_f64(1.0 / debug.tick_rate() as f64);
     if fixed.timestep() != step {
