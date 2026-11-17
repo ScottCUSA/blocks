@@ -22,6 +22,7 @@ pub(super) const GLINT_TIME: f32 = 0.5;
 pub(super) const PLASMA_CELL: f32 = 32.0; // px
 pub(super) const RING_WIDTH: f32 = 70.0; // px, level up ring
 pub(super) const PLASMA_SPEED: f32 = 0.8;
+pub(super) const PLASMA_CALM_TWINKLE: f32 = 0.6; // twinkle depth when calm
 
 /// level up ring strength at a point, 0.0 to 1.0
 pub(super) fn level_ring(background: &Background, view_rect: &Rect, point: Vec2) -> (f32, Vec2) {
@@ -137,7 +138,13 @@ fn draw_plasma(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgrou
             let shift = (wave * 2.0) as usize;
             let color = colors[(index + shift) % colors.len()];
             let color = mix_color(color, Color::WHITE, wave * 0.3);
-            let alpha = ((0.01 + 0.04 * n * n) * glow + 0.15 * wave).min(1.0);
+            // calm, still cells twinkle
+            let calm = background.calm;
+            let twinkle = (background.twinkle * (1.5 + 2.0 * hash(cell, 5.0))
+                + hash(cell, 6.0) * std::f32::consts::TAU)
+                .sin();
+            let shimmer = 1.0 + calm * PLASMA_CALM_TWINKLE * twinkle;
+            let alpha = ((0.01 + 0.04 * n * n) * glow * shimmer + 0.15 * wave).min(1.0);
             draw_rect(canvas, meshes, rect, with_alpha(color, alpha * melt));
         }
     }

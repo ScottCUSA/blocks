@@ -1,10 +1,8 @@
 mod plasma;
 mod stars;
 mod storm;
-mod title;
 
 pub use storm::{storm_strike_time, StrikeKind};
-pub use title::{draw_title_backdrop, title_clear_color};
 
 use plasma::*;
 use stars::*;
@@ -33,6 +31,8 @@ pub(super) const OFF_COLORS: (Color, Color) = (
     Color::new(0.06, 0.07, 0.09, 1.0),
     Color::new(0.16, 0.18, 0.22, 1.0),
 );
+
+const CALM_DIM: f32 = 0.45; // darkening behind the title
 
 /// a background style's gradient and animation, statically dispatched
 pub(super) trait Scenery {
@@ -103,6 +103,14 @@ fn paint<S: Scenery>(
             .color(top),
     );
     scenery.draw(canvas, meshes, view_rect, background);
+    if background.calm > 0.0 {
+        draw_rect(
+            canvas,
+            meshes,
+            *view_rect,
+            Color::new(0.0, 0.0, 0.0, CALM_DIM * background.calm),
+        );
+    }
 }
 
 pub(super) fn smoothstep(from: f32, to: f32, x: f32) -> f32 {

@@ -457,6 +457,7 @@ impl BlocksState {
             vsync: bench.as_ref().is_none_or(|b| b.vsync),
         };
         s.apply_settings();
+        s.background.start_calm();
         if s.screenshot.is_none() {
             s.assets.music().play();
         }
@@ -1015,22 +1016,12 @@ impl BlocksState {
         let mut painter = batch.begin(ctx, canvas);
         let canvas = &mut painter;
         draw::set_pixel_scale(self.view_settings.scale);
-        if self.title_backdrop() {
-            draw::draw_title_backdrop(
-                canvas,
-                &self.meshes,
-                &self.view_settings.view_rect,
-                self.background.title,
-                self.style.block,
-            );
-        } else {
-            draw::draw_background(
-                canvas,
-                &self.meshes,
-                &self.view_settings.view_rect,
-                &self.background,
-            );
-        }
+        draw::draw_background(
+            canvas,
+            &self.meshes,
+            &self.view_settings.view_rect,
+            &self.background,
+        );
 
         let frame = draw::Frame {
             ctx,
@@ -1128,9 +1119,8 @@ impl BlocksState {
         Ok(())
     }
 
-    /// the screen being drawn, the viewer shows the screen of its animation
-    /// the title screens have their own backdrop
-    fn title_backdrop(&self) -> bool {
+    /// main menu and the screens opened from it, the background is calm behind them
+    fn title_screen(&self) -> bool {
         match self.shown_state() {
             GameState::Menu | GameState::HighScores => true,
             GameState::Options => !self.options_in_game(),
@@ -1138,6 +1128,7 @@ impl BlocksState {
         }
     }
 
+    /// the screen being drawn, the viewer shows the screen of its animation
     fn shown_state(&self) -> GameState {
         if self.state == GameState::Debug {
             self.debug.view
@@ -1390,6 +1381,7 @@ impl EventHandler for BlocksState {
         while ctx.time.check_update_time(tick_rate) {
             let delta_time = 1.0 / (tick_rate as f64);
             self.attract_update(delta_time);
+            self.background.set_calm(self.title_screen());
             // handle the game states
             match self.state {
                 GameState::Playing => {
@@ -1451,12 +1443,8 @@ impl EventHandler for BlocksState {
             Duration::ZERO
         };
         let start = Instant::now();
-        let clear = if self.title_backdrop() {
-            draw::title_clear_color()
-        } else {
-            draw::clear_color(self.background.style)
-        };
-        let mut canvas = graphics::Canvas::from_frame(ctx, clear);
+        let mut canvas =
+            graphics::Canvas::from_frame(ctx, draw::clear_color(self.background.style));
         self.draw_scene(ctx, &mut canvas)?;
         let scene = start.elapsed();
         canvas.finish(ctx)?;

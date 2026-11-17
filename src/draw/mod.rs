@@ -18,10 +18,7 @@ use paint::*;
 use text::*;
 use widgets::*;
 
-pub use background::{
-    clear_color, draw_background, draw_title_backdrop, storm_strike_time, title_clear_color,
-    StrikeKind,
-};
+pub use background::{clear_color, draw_background, storm_strike_time, StrikeKind};
 pub use batch::{take_draw_count, Batch, Painter};
 pub use board::GameLayer;
 pub use screens::{

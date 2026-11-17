@@ -41,6 +41,7 @@ const WHITEOUT_LEVELS: f32 = 6.0; // levels from the first haze to a near whiteo
 const STORM_RUSH_SEA: f32 = 2.0; // extra wave speed at the height of a level up
 const SEA_LEVEL_UP_RAMP: f32 = 4.0; // how quickly the sea follows the level during a level up, per second
 const STORM_RAMP: f32 = 0.4; // how quickly the storm follows the level, per second
+const CALM_RATE: f32 = 2.5; // how quickly calm follows its target, per second
 
 /// animated background shown behind the game
 pub struct Background {
@@ -61,7 +62,8 @@ pub struct Background {
     pub sea: f32,
     pub bolt: f32,     // lightning clock, strikes come faster as the storm builds
     pub whiteout: f32, // 0.0 to 1.0 past a full storm, rain and spray blot out the view
-    pub title: f32,    // title backdrop clock
+    pub calm: f32,     // 0.0 to 1.0, dimmed and slowed behind the title
+    calm_target: bool,
 }
 
 impl Background {
@@ -84,7 +86,8 @@ impl Background {
             sea: 0.0,
             bolt: 0.0,
             whiteout: 0.0,
-            title: 0.0,
+            calm: 0.0,
+            calm_target: false,
         }
     }
 
@@ -98,9 +101,24 @@ impl Background {
         level_speed * (1.0 + SURGE_SPEED * self.energy)
     }
 
+    /// start out calm, no easing in
+    pub fn start_calm(&mut self) {
+        self.calm = 1.0;
+        self.calm_target = true;
+    }
+
+    /// calm behind the title, leaving it sends off with a level up
+    pub fn set_calm(&mut self, calm: bool) {
+        if self.calm_target && !calm {
+            self.level_up();
+        }
+        self.calm_target = calm;
+    }
+
     pub fn update(&mut self, delta_time: f64, level: usize) {
         let dt = delta_time as f32;
-        self.title += dt;
+        let target = if self.calm_target { 1.0 } else { 0.0 };
+        self.calm += (target - self.calm) * (dt * CALM_RATE).min(1.0);
         let speed = self.speed(level);
         let before = self.time;
         self.time += dt
@@ -108,8 +126,11 @@ impl Background {
                 // plasma cells freeze one by one, see frozen_time
                 (Some(_), BackgroundStyle::Plasma) => self.freeze_rate,
                 (Some(_), _) => self.freeze_rate * (1.0 - self.chill()),
-                (None, BackgroundStyle::Plasma) => speed + RUSH_SPEED * self.rush(),
-                (None, _) => speed,
+                // still when calm
+                (None, BackgroundStyle::Plasma) => {
+                    (speed + RUSH_SPEED * self.rush()) * (1.0 - self.calm)
+                }
+                (None, _) => speed * (1.0 - self.calm),
             };
         self.twinkle += dt * speed;
         // the storm builds with the level, wind, rain and sea speed up with it
@@ -135,7 +156,9 @@ impl Background {
         // a level up heaves the sea
         let rush = self.rush();
         self.wind += step * (1.0 + 3.0 * self.storm);
-        self.rain += step * (1.0 + 0.7 * self.storm + 0.5 * self.whiteout);
+        // rain keeps falling when calm
+        let rain_step = step + dt * speed * self.calm;
+        self.rain += rain_step * (1.0 + 0.7 * self.storm + 0.5 * self.whiteout);
         self.sea += step * (1.0 + 0.9 * self.storm + STORM_RUSH_SEA * rush);
         self.bolt += step * (1.0 + 1.5 * self.storm);
         self.energy = (self.energy - SURGE_DECAY * dt).max(0.0);
