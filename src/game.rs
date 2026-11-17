@@ -14,6 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod attract;
 mod debug;
 mod music;
 mod screenshot;
@@ -324,6 +325,7 @@ pub struct BlocksState {
     scores_from_game: bool,
     screenshot: Option<Screenshot>,
     debug: debug::DebugView,
+    attract: attract::Attract,
 }
 
 /// resizable window, sized in logical pixels so high dpi screens get a larger window
@@ -437,6 +439,7 @@ impl BlocksState {
             scores_from_game: false,
             screenshot,
             debug: debug::DebugView::new(),
+            attract: attract::Attract::new(),
         };
         s.apply_settings();
         if s.screenshot.is_none() {
@@ -586,24 +589,30 @@ impl BlocksState {
         }
     }
 
-    fn translate(&mut self, direction: TranslationDirection) {
+    /// false if blocked
+    fn translate(&mut self, direction: TranslationDirection) -> bool {
         log::debug!("translate called, direction: {:?}", direction);
-        if self.playfield.translate_active(direction) {
+        let moved = self.playfield.translate_active(direction);
+        if moved {
             self.assets.play(Sfx::Move);
             self.increment_lockdown_resets();
         }
         log::trace!("playfield:\n{}", self.playfield);
+        moved
     }
 
-    fn rotate(&mut self, rotation: Rotation) {
+    /// false if blocked
+    fn rotate(&mut self, rotation: Rotation) -> bool {
         log::debug!("rotate called, direction: {:?}", rotation);
-        if self.playfield.rotate_active(rotation) {
+        let rotated = self.playfield.rotate_active(rotation);
+        if rotated {
             self.assets.play(Sfx::Rotate);
             // wall kicks can move the rustomino down
             self.update_lowest_row();
             self.increment_lockdown_resets();
         }
         log::trace!("playfield:\n{}", self.playfield);
+        rotated
     }
 
     // performs a soft drop
@@ -881,16 +890,16 @@ impl BlocksState {
         }
     }
     fn translate_left(&mut self) {
-        self.translate(TranslationDirection::Left);
+        _ = self.translate(TranslationDirection::Left);
     }
     fn translate_right(&mut self) {
-        self.translate(TranslationDirection::Right);
+        _ = self.translate(TranslationDirection::Right);
     }
     fn rotate_cw(&mut self) {
-        self.rotate(Rotation::Cw);
+        _ = self.rotate(Rotation::Cw);
     }
     fn rotate_ccw(&mut self) {
-        self.rotate(Rotation::Ccw);
+        _ = self.rotate(Rotation::Ccw);
     }
     // returns a closure which handles the provided
     // control for the game
@@ -1056,6 +1065,9 @@ impl BlocksState {
             GameState::Quit => {}
         }
 
+        if self.attract.demo() && matches!(self.state, GameState::Playing | GameState::GameOver) {
+            draw::DemoScreen.draw(canvas, &frame)?;
+        }
         if self.state == GameState::Debug && !self.debug.hidden {
             let names = debug::Animation::ALL.map(debug::Animation::name);
             draw::DebugScreen {
@@ -1318,6 +1330,7 @@ impl EventHandler for BlocksState {
         let tick_rate = self.debug.fps();
         while ctx.time.check_update_time(tick_rate) {
             let delta_time = 1.0 / (tick_rate as f64);
+            self.attract_update(delta_time);
             // handle the game states
             match self.state {
                 GameState::Playing => {
@@ -1412,6 +1425,10 @@ impl EventHandler for BlocksState {
         input: KeyInput,
         repeated: bool,
     ) -> GameResult {
+        // any key leaves the demo
+        if self.attract_key() {
+            return Ok(());
+        }
         let keycode = controls::keycode(&input);
         match self.state {
             GameState::Playing => {
@@ -1591,7 +1608,8 @@ impl EventHandler for BlocksState {
             if !self.play_unfocused {
                 self.assets.suspend();
             }
-            if self.state == GameState::Playing {
+            // the demo plays on
+            if self.state == GameState::Playing && !self.attract.demo() {
                 self.pause();
             }
         }

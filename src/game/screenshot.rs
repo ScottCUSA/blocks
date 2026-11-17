@@ -54,10 +54,11 @@ pub enum Scene {
     HighScoresNew,
     ProgressFill,
     LevelUp,
+    Demo,
 }
 
 impl Scene {
-    const ALL: [(&'static str, Scene); 27] = [
+    const ALL: [(&'static str, Scene); 28] = [
         ("menu", Scene::Menu),
         ("playing", Scene::Playing),
         ("line-clear", Scene::LineClear),
@@ -85,6 +86,7 @@ impl Scene {
         ("high-scores-new", Scene::HighScoresNew),
         ("progress-fill", Scene::ProgressFill),
         ("level-up", Scene::LevelUp),
+        ("demo", Scene::Demo),
     ];
 
     fn parse(name: &str) -> Option<Scene> {
@@ -279,6 +281,12 @@ impl BlocksState {
                 self.setup_board();
                 self.setup_active();
                 self.state = GameState::Playing;
+            }
+            Scene::Demo => {
+                self.setup_board();
+                self.setup_active();
+                self.state = GameState::Playing;
+                self.attract.phase = super::attract::Phase::Demo;
             }
             Scene::Playing | Scene::Paused => {
                 self.setup_board();
