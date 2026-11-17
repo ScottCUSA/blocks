@@ -14,7 +14,7 @@ use super::board::{Board, Score};
 use super::{GamePlugin, Screen};
 use crate::audio::AudioPlugin;
 use crate::draw::BoardShown;
-use crate::effects::{BoardFx, EffectsPlugin, Particle};
+use crate::effects::{BoardFx, EffectsPlugin, Fx, Particle};
 use crate::playfield::SlotState;
 use crate::render::Paint;
 use crate::scores::ScoreBoard;
@@ -242,6 +242,51 @@ fn viewer_plays_every_animation() {
     press(&mut app, KeyCode::Escape);
     frames(&mut app, 2);
     assert_eq!(*app.world().resource::<State<Viewer>>().get(), Viewer::Off);
+    assert_eq!(screen(&app), Screen::Menu);
+    assert_eq!(locked(&app), 0);
+}
+
+/// idle at the menu until the demo starts
+fn start_demo(app: &mut App) {
+    frames(app, 1900); // 30 s idle
+    assert_eq!(screen(app), Screen::Playing);
+    assert!(app.world().resource::<super::attract::Attract>().demo());
+    assert!(app.world().resource::<Score>().level >= 7);
+}
+
+#[test]
+fn demo_starts_when_idle_and_any_key_leaves() {
+    let mut app = app();
+    start_demo(&mut app);
+    frames(&mut app, 1000);
+    assert_eq!(screen(&app), Screen::Playing);
+    assert!(app.world().resource::<Score>().score > 0);
+    press(&mut app, KeyCode::KeyQ);
+    frames(&mut app, 2);
+    assert_eq!(screen(&app), Screen::Menu);
+    assert_eq!(locked(&app), 0);
+    assert!(!app.world().resource::<super::attract::Attract>().demo());
+    // the key only left the demo
+    frames(&mut app, 2);
+    assert_eq!(screen(&app), Screen::Menu);
+}
+
+#[test]
+fn demo_shows_scores_then_menu() {
+    let mut app = app();
+    start_demo(&mut app);
+    frames(&mut app, 2000); // past the demo's 30 s
+    assert_eq!(screen(&app), Screen::HighScores);
+    assert!(app.world().resource::<ScoreBoard>().scores.is_empty());
+    // the board's effects cleared
+    frames(&mut app, 1);
+    let world = app.world_mut();
+    assert_eq!(
+        world.query_filtered::<(), With<Fx>>().iter(world).count(),
+        0
+    );
+    assert!(world.resource::<BoardFx>().game_over.is_none());
+    frames(&mut app, 700);
     assert_eq!(screen(&app), Screen::Menu);
     assert_eq!(locked(&app), 0);
 }

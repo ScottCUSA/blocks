@@ -70,7 +70,8 @@ impl Plugin for InputPlugin {
                         name_entry.run_if(in_state(Screen::NameEntry)),
                         high_scores.run_if(in_state(Screen::HighScores)),
                     )
-                        .run_if(in_state(Viewer::Off)),
+                        .run_if(in_state(Viewer::Off))
+                        .run_if(super::attract::player),
                 )
                     .chain()
                     .in_set(HandleKeys),
@@ -102,12 +103,13 @@ pub(super) fn collect_keys(
 }
 
 /// pause a game when the window loses focus
-fn focus(
+pub(super) fn focus(
     mut events: MessageReader<WindowFocused>,
     mut focused: ResMut<Focused>,
     screen: Res<State<Screen>>,
     viewer: Res<State<Viewer>>,
     no_save: Option<Res<NoSave>>,
+    attract: Res<super::attract::Attract>,
     mut play: Play,
 ) {
     for event in events.read() {
@@ -115,7 +117,12 @@ fn focus(
             continue;
         }
         focused.0 = event.focused;
-        if !event.focused && *screen.get() == Screen::Playing && *viewer.get() == Viewer::Off {
+        // a demo plays on
+        if !event.focused
+            && *screen.get() == Screen::Playing
+            && *viewer.get() == Viewer::Off
+            && !attract.demo()
+        {
             play.pause();
         }
     }

@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vsync toggle in the animation viewer (V).
 - `trace` cargo feature for Chrome traces.
 - Headless gameplay tests.
+- Attract mode: after 30 s idle at the menu, the computer plays a demo game
+  from level 7.
 - Storm level up: a white flash, a barrage of six lightning bolts sweeping
   across the sea, and the sea heaving up into the new level's state.
 - Storm background: rain, wind and a three-layer sea under rolling clouds.
@@ -27,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Shanty, a stormy 6/8 sea shanty music theme in D minor with a folk-dance
   bridge, and a jig drum pattern in `tools/make_chiptune.py`.
 - `storm`, `storm-max`, `storm-whiteout` and `options-audio` screenshot scenes.
-- `bench` screenshot scene.
+- `bench` and `demo` screenshot scenes.
 
 ### Changed
 

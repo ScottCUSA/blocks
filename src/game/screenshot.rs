@@ -57,10 +57,11 @@ pub enum Scene {
     ProgressFill,
     LevelUp,
     Bench,
+    Demo,
 }
 
 impl Scene {
-    const ALL: [(&'static str, Scene); 28] = [
+    const ALL: [(&'static str, Scene); 29] = [
         ("menu", Scene::Menu),
         ("playing", Scene::Playing),
         ("line-clear", Scene::LineClear),
@@ -89,6 +90,7 @@ impl Scene {
         ("progress-fill", Scene::ProgressFill),
         ("level-up", Scene::LevelUp),
         ("bench", Scene::Bench),
+        ("demo", Scene::Demo),
     ];
 
     fn parse(name: &str) -> Option<Scene> {
@@ -304,6 +306,11 @@ pub(super) fn setup_scene(world: &mut World, scene: Scene) {
                 fps: 1234.0,
                 frame_ms: 0.81,
             });
+        }
+        Scene::Demo => {
+            setup_board(world);
+            setup_active(world);
+            world.resource_mut::<super::attract::Attract>().phase = super::attract::Phase::Demo;
         }
         Scene::Playing | Scene::Paused => {
             setup_board(world);

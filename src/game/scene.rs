@@ -6,6 +6,7 @@ use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
+use super::attract::Attract;
 use super::board::{Mode, Score};
 use super::debug::{self, DebugView, FrameSample, FrameTiming};
 use super::{in_game, OptionsFrom, ScoreView, Screen, Viewer};
@@ -49,6 +50,7 @@ struct SceneData<'w> {
     score_view: Res<'w, ScoreView>,
     initials: Res<'w, Initials>,
     time: Res<'w, Time<Real>>,
+    attract: Res<'w, Attract>,
 }
 
 impl SceneData<'_> {
@@ -176,6 +178,9 @@ impl SceneData<'_> {
             .draw(canvas, &frame)?,
         }
 
+        if self.attract.demo() && self.shaking() {
+            draw::DemoScreen.draw(canvas, &frame)?;
+        }
         if *self.viewer.get() == Viewer::On && !debug.hidden {
             let names = debug::Animation::ALL.map(debug::Animation::name);
             draw::DebugScreen {

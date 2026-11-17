@@ -1,4 +1,5 @@
 mod debug;
+mod demo;
 mod game_over;
 mod high_scores;
 mod menu;
@@ -7,6 +8,7 @@ mod options;
 mod paused;
 
 pub use debug::{DebugScreen, FrameStats};
+pub use demo::DemoScreen;
 pub use game_over::GameOverScreen;
 pub use high_scores::HighScoresScreen;
 pub use menu::MenuScreen;

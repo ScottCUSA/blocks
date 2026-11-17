@@ -167,8 +167,13 @@ fn adopt_effects(
     for entity in &added {
         commands
             .entity(entity)
-            // reset effects can despawn it first
-            .try_insert((ChildOf(root), Look::default(), Transform::default()));
+            // reset effects can despawn it first; Visibility so the hidden root hides it
+            .try_insert((
+                ChildOf(root),
+                Look::default(),
+                Transform::default(),
+                Visibility::default(),
+            ));
     }
 }
 

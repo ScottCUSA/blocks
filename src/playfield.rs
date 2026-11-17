@@ -7,7 +7,7 @@ pub const PLAYFIELD_SLOTS: [usize; 2] = [10, 22];
 pub const LINE_CLEAR_FADE: f64 = 0.5; // fraction of the line clear each block spends fading
 pub const PLAYFIELD_SIZE: [i32; 2] = [10, 20];
 
-type PlayfieldSlots = [[SlotState; PLAYFIELD_SLOTS[0]]; PLAYFIELD_SLOTS[1]];
+pub type PlayfieldSlots = [[SlotState; PLAYFIELD_SLOTS[0]]; PLAYFIELD_SLOTS[1]];
 
 #[derive(Debug)]
 pub struct LineClear {

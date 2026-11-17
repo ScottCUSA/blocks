@@ -3,6 +3,7 @@
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
+pub mod attract;
 pub mod bench;
 pub mod board;
 pub mod debug;
@@ -125,6 +126,7 @@ impl Plugin for GamePlugin {
                 scene::ScenePlugin,
                 debug::DebugPlugin,
                 bench::BenchPlugin,
+                attract::AttractPlugin,
             ))
             .add_systems(PreStartup, apply_settings)
             .add_systems(OnEnter(Screen::Menu), new_game)

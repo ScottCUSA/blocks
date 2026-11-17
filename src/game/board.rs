@@ -302,20 +302,24 @@ impl Play<'_> {
         }
     }
 
-    pub fn translate(&mut self, direction: TranslationDirection) {
-        if self.board.playfield.translate_active(direction) {
+    pub fn translate(&mut self, direction: TranslationDirection) -> bool {
+        let moved = self.board.playfield.translate_active(direction);
+        if moved {
             self.play(Sfx::Move);
             self.increment_lockdown_resets();
         }
+        moved
     }
 
-    pub fn rotate(&mut self, rotation: Rotation) {
-        if self.board.playfield.rotate_active(rotation) {
+    pub fn rotate(&mut self, rotation: Rotation) -> bool {
+        let turned = self.board.playfield.rotate_active(rotation);
+        if turned {
             self.play(Sfx::Rotate);
             // wall kicks can move the rustomino down
             self.update_lowest_row();
             self.increment_lockdown_resets();
         }
+        turned
     }
 
     pub fn soft_drop(&mut self) {
@@ -473,10 +477,10 @@ impl Play<'_> {
 
     pub fn control(&mut self, control: Control) {
         match control {
-            Control::Left => self.translate(TranslationDirection::Left),
-            Control::Right => self.translate(TranslationDirection::Right),
-            Control::RotateCW => self.rotate(Rotation::Cw),
-            Control::RotateCCW => self.rotate(Rotation::Ccw),
+            Control::Left => _ = self.translate(TranslationDirection::Left),
+            Control::Right => _ = self.translate(TranslationDirection::Right),
+            Control::RotateCW => _ = self.rotate(Rotation::Cw),
+            Control::RotateCCW => _ = self.rotate(Rotation::Ccw),
             Control::SoftDrop => self.soft_drop(),
             Control::HardDrop => self.hard_drop(),
             Control::Hold => self.hold(),
