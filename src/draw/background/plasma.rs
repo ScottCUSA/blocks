@@ -1,5 +1,5 @@
-use ggez::glam::Vec2;
-use ggez::graphics::{Color, Rect};
+use crate::gfx::Vec2;
+use crate::gfx::{Color, Rect};
 
 use crate::background::Background;
 use crate::rustomino::RustominoType;
@@ -32,7 +32,7 @@ pub(super) fn level_ring(background: &Background, view_rect: &Rect, point: Vec2)
         view_rect.x + view_rect.w / 2.0,
         view_rect.y + view_rect.h / 2.0,
     );
-    let reach = center.distance(view_rect.point().into()) + RING_WIDTH * 2.0;
+    let reach = center.distance(view_rect.point()) + RING_WIDTH * 2.0;
     let radius = (1.0 - (1.0 - p).powi(2)) * reach;
     let offset = point - center;
     let x = (offset.length() - radius) / RING_WIDTH;

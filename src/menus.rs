@@ -1,4 +1,4 @@
-use ggez::graphics;
+use crate::gfx as graphics;
 
 // options menu rows
 pub const OPTION_MODE: usize = 0;
@@ -72,5 +72,27 @@ impl Menu for MenuList {
     }
     fn reset_selection(&mut self) {
         self.selected = 0;
+    }
+}
+
+/// every menu's selection
+#[derive(bevy::prelude::Resource)]
+pub struct Menus {
+    pub main: MenuList,
+    pub paused: MenuList,
+    pub options: MenuList,
+    pub audio: MenuList,
+    pub audio_open: bool, // the audio page of the options
+}
+
+impl Default for Menus {
+    fn default() -> Self {
+        Menus {
+            main: MenuList::main(),
+            paused: MenuList::paused(),
+            options: MenuList::options(),
+            audio: MenuList::audio(),
+            audio_open: false,
+        }
     }
 }

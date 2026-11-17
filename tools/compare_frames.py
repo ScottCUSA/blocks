@@ -43,10 +43,9 @@ def scenes(rows, warmup):
         last = scene
         if run < warmup:
             continue
-        sample = grouped.setdefault(scene, {"frame": [], "cpu": [], "gpu_wait": [], "draws": []})
+        sample = grouped.setdefault(scene, {"frame": [], "cpu": [], "draws": []})
         sample["frame"].append(float(row["frame_ms"]))
-        sample["cpu"].append(float(row["scene_ms"]) + float(row["encode_ms"]))
-        sample["gpu_wait"].append(float(row["gpu_wait_ms"]))
+        sample["cpu"].append(float(row["scene_ms"]))
         sample["draws"].append(float(row["draws"]))
     return grouped
 
@@ -64,12 +63,12 @@ def name(scene):
 def summary(info, grouped):
     print(f"commit {info.get('commit', '?')}  {info.get('profile', '?')}  "
           f"{info.get('drawable', '?')}  cap {info.get('fps_cap', '?')}")
-    print(f"{'scene':<52} {'n':>5} {'draws':>6} {'cpu ms':>7} {'p95':>7} {'gpu wait':>9} {'p95':>7}")
+    print(f"{'scene':<52} {'n':>5} {'draws':>6} {'scene ms':>8} {'p95':>7} {'frame ms':>9} {'p95':>7}")
     for scene in sorted(grouped):
         s = grouped[scene]
         print(f"{name(scene):<52} {len(s['cpu']):>5} {statistics.median(s['draws']):>6.0f} "
-              f"{statistics.median(s['cpu']):>7.2f} {p95(s['cpu']):>7.2f} "
-              f"{statistics.median(s['gpu_wait']):>9.2f} {p95(s['gpu_wait']):>7.2f}")
+              f"{statistics.median(s['cpu']):>8.2f} {p95(s['cpu']):>7.2f} "
+              f"{statistics.median(s['frame']):>9.2f} {p95(s['frame']):>7.2f}")
 
 
 def change(a, b):
@@ -84,15 +83,15 @@ def compare(info_a, a, info_b, b):
         print("warning: debug build timings are not representative", file=sys.stderr)
     print(f"A {info_a.get('commit', '?')}  ->  B {info_b.get('commit', '?')}  (medians)")
     print(f"{'scene':<52} {'draws A':>7} {'B':>6} {'cpu A':>6} {'B':>6} {'':>5} "
-          f"{'gpu A':>6} {'B':>6} {'':>5}")
+          f"{'frm A':>6} {'B':>6} {'':>5}")
     shared = sorted(set(a) & set(b))
     for scene in shared:
         sa, sb = a[scene], b[scene]
         med = lambda s, k: statistics.median(s[k])
         print(f"{name(scene):<52} {med(sa, 'draws'):>7.0f} {med(sb, 'draws'):>6.0f} "
               f"{med(sa, 'cpu'):>6.2f} {med(sb, 'cpu'):>6.2f} {change(med(sa, 'cpu'), med(sb, 'cpu')):>5} "
-              f"{med(sa, 'gpu_wait'):>6.2f} {med(sb, 'gpu_wait'):>6.2f} "
-              f"{change(med(sa, 'gpu_wait'), med(sb, 'gpu_wait')):>5}")
+              f"{med(sa, 'frame'):>6.2f} {med(sb, 'frame'):>6.2f} "
+              f"{change(med(sa, 'frame'), med(sb, 'frame')):>5}")
     for label, only in (("A", set(a) - set(b)), ("B", set(b) - set(a))):
         for scene in sorted(only):
             print(f"only in {label}: {name(scene)}")

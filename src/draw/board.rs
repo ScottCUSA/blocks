@@ -1,11 +1,11 @@
-use ggez::glam::{IVec2, Vec2};
-use ggez::graphics::{self, Color, Rect};
-use ggez::{Context, GameResult};
+use crate::gfx::{Color, Rect};
+use crate::gfx::{IVec2, Vec2};
+use crate::GameResult;
 
-use crate::effects::{Effects, GameOver};
+use crate::effects::{BoardFx, GameOver};
 use crate::level_progress::LevelProgress;
-use crate::playfield::{self, LineClear, Playfield, SlotState};
-use crate::rustomino::{Rustomino, RustominoType};
+use crate::playfield::{self, LineClear};
+use crate::rustomino::RustominoType;
 use crate::score_display::ScoreDisplay;
 use crate::style::{BlockStyle, BoardStyle, Style};
 use crate::util;
@@ -143,85 +143,6 @@ pub(super) fn draw_playing_backgound(
     }
 }
 
-pub(super) fn draw_playfield(
-    canvas: &mut Painter,
-    meshes: &Meshes,
-    playfield: &Playfield,
-    view_settings: &ViewSettings,
-    game_over: Option<&GameOver>,
-    style: BlockStyle,
-    ghost: bool,
-) {
-    let (staging_rect, playfield_rect) =
-        (&view_settings.staging_rect, &view_settings.playfield_rect);
-    // draw the locked blocks
-    for (y, slots_x) in playfield.slots.iter().enumerate() {
-        let clearing = playfield
-            .line_clear
-            .as_ref()
-            .filter(|line_clear| line_clear.lines.contains(&y));
-        for (x, slot) in slots_x.iter().enumerate() {
-            if let SlotState::Locked(rtype) = slot {
-                let mut color = block_color(*rtype, game_over, y as i32);
-                if let Some(line_clear) = clearing {
-                    let progress = line_clear.progress() as f32;
-                    let flash = (1.0 - progress * 4.0).max(0.0);
-                    let base = if line_clear.lines.len() >= 4 {
-                        // glint riding the wipe outward
-                        let bottom = line_clear.lines.iter().min().copied().unwrap_or(y);
-                        let peak = line_clear.wipe_start(x) as f32
-                            + QUAD_GLINT_LEAD
-                            + (y - bottom) as f32 * QUAD_GLINT_ROW;
-                        let glint = (1.0 - (progress - peak).abs() / QUAD_GLINT_WIDTH).max(0.0);
-                        mix_color(LINE_CLEAR_COLOR, Color::WHITE, glint * 0.8)
-                    } else {
-                        LINE_CLEAR_COLOR
-                    };
-                    color = mix_color(base, Color::WHITE, flash);
-                    color.a *= line_clear_alpha(line_clear, x);
-                }
-                let rect = playfield_block_rect([x as i32, y as i32], staging_rect, playfield_rect);
-                draw_block(canvas, meshes, rect, color, style);
-            }
-        }
-    }
-
-    // draw the active rustomino over the locked blocks
-    if let Some(active) = &playfield.active_rustomino {
-        for block in active.playfield_slots() {
-            let rect = playfield_block_rect([block[0], block[1]], staging_rect, playfield_rect);
-            let color = block_color(active.rtype, game_over, block[1]);
-            draw_block(canvas, meshes, rect, color, style);
-        }
-    }
-
-    if let Some(ghost) = playfield.ghost_rustomino.as_ref().filter(|_| ghost) {
-        let color = block_color(ghost.rtype, game_over, PREVIEW_ROW);
-        let slots = ghost.playfield_slots();
-        if style == BlockStyle::Jelly {
-            // rounded cells like the blocks
-            for block in &slots {
-                let rect = playfield_block_rect([block[0], block[1]], staging_rect, playfield_rect);
-                draw_rounded(canvas, meshes, rect, with_alpha(color, GHOST_FILL_ALPHA));
-                let param = graphics::DrawParam::default()
-                    .dest(Vec2::new(rect.x, rect.y))
-                    .scale(Vec2::new(rect.w / BLOCK_SIZE, rect.h / BLOCK_SIZE))
-                    .color(with_alpha(color, GHOST_OUTLINE_ALPHA));
-                draw_mesh(canvas, &meshes.rounded_outline, param);
-            }
-            return;
-        }
-        for block in &slots {
-            let rect = playfield_block_rect([block[0], block[1]], staging_rect, playfield_rect);
-            draw_rect(canvas, meshes, rect, with_alpha(color, GHOST_FILL_ALPHA));
-        }
-        let outline = with_alpha(color, GHOST_OUTLINE_ALPHA);
-        for rect in ghost_outline(&slots, staging_rect, playfield_rect) {
-            draw_rect(canvas, meshes, rect, outline);
-        }
-    }
-}
-
 /// fixed width outline inside the ghost piece's boundary, as non-overlapping rects
 pub(super) fn ghost_outline(
     slots: &[IVec2],
@@ -292,89 +213,6 @@ pub(super) fn ghost_outline(
         }
     }
     rects
-}
-
-pub(super) fn draw_preview(
-    canvas: &mut Painter,
-    meshes: &Meshes,
-    rustomino: &Option<Rustomino>,
-    preview_rect: &Rect,
-    game_over: Option<&GameOver>,
-    style: BlockStyle,
-) {
-    if let Some(rustomino) = rustomino {
-        // center the piece's bounding box in the panel
-        let cell = BLOCK_SIZE + BLOCK_PADDING;
-        let min = rustomino
-            .blocks
-            .iter()
-            .fold(rustomino.blocks[0], |a, b| a.min(*b));
-        let max = rustomino
-            .blocks
-            .iter()
-            .fold(rustomino.blocks[0], |a, b| a.max(*b));
-        let width = (max.x - min.x + 1) as f32 * cell - BLOCK_PADDING;
-        let height = (max.y - min.y + 1) as f32 * cell - BLOCK_PADDING;
-        let left = snap(preview_rect.x + (preview_rect.w - width) / 2.0);
-        let top = snap(preview_rect.y + (preview_rect.h - height) / 2.0);
-        for block in rustomino.blocks {
-            let rect = Rect::new(
-                left + (block.x - min.x) as f32 * cell,
-                top + (max.y - block.y) as f32 * cell,
-                block_size(),
-                block_size(),
-            );
-            draw_block(
-                canvas,
-                meshes,
-                rect,
-                block_color(rustomino.rtype, game_over, PREVIEW_ROW),
-                style,
-            );
-        }
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn draw_playing(
-    canvas: &mut Painter,
-    meshes: &Meshes,
-    playfield: &Playfield,
-    next_rustomino: &Option<Rustomino>,
-    hold_rustomino: &Option<Rustomino>,
-    view_settings: &ViewSettings,
-    game_over: Option<&GameOver>,
-    style: &Style,
-    assists: bool, // ghost and hold
-) {
-    draw_playing_backgound(canvas, meshes, view_settings, style.board, assists);
-    draw_playfield(
-        canvas,
-        meshes,
-        playfield,
-        view_settings,
-        game_over,
-        style.block,
-        assists,
-    );
-    if assists {
-        draw_preview(
-            canvas,
-            meshes,
-            hold_rustomino,
-            &view_settings.hold_rect,
-            game_over,
-            style.block,
-        );
-    }
-    draw_preview(
-        canvas,
-        meshes,
-        next_rustomino,
-        &view_settings.preview_rect,
-        game_over,
-        style.block,
-    );
 }
 
 pub(super) fn draw_playing_text(
@@ -481,6 +319,8 @@ pub(super) fn draw_level_progress(
     let (top, height) = (snap(bar.y + BLOCK_PADDING), snap(PROGRESS_HEIGHT));
     let center_y = top + height / 2.0;
     let pulse = progress.pulse();
+    // blocks after all the rects, jelly blocks would split the batch per segment
+    let mut blocks = Vec::with_capacity(per_level);
     for i in 0..per_level {
         let rect = Rect::new(left + i as f32 * pitch, top, pitch - gap, height);
         draw_rect(canvas, meshes, rect, SLIDER_EMPTY_COLOR);
@@ -521,8 +361,10 @@ pub(super) fn draw_level_progress(
                 with_alpha(ACCENT_COLOR, look.glow * alpha),
             );
         }
-        let color = mix_color(ACCENT_COLOR, Color::WHITE, look.heat);
-        draw_block(canvas, meshes, sized, color, style);
+        blocks.push((sized, mix_color(ACCENT_COLOR, Color::WHITE, look.heat)));
+    }
+    for (rect, color) in blocks {
+        draw_block(canvas, meshes, rect, color, style);
     }
 
     for spark in &progress.sparks {
@@ -543,83 +385,43 @@ pub(super) fn draw_level_progress(
     }
 }
 
-/// particles, playfield flash and line clear callout
-pub(super) fn draw_effects(
-    ctx: &Context,
+/// line clear callout
+pub(super) fn draw_callout(
     canvas: &mut Painter,
-    meshes: &Meshes,
-    effects: &Effects,
+    fx: &BoardFx,
     view_settings: &ViewSettings,
 ) -> GameResult {
     let playfield = view_settings.playfield_rect;
-    let flash = effects.flash();
-    if flash > 0.0 {
-        draw_rect(canvas, meshes, playfield, with_alpha(Color::WHITE, flash));
-    }
     let cell = BLOCK_SIZE + BLOCK_PADDING;
-    let left = view_settings.staging_rect.x + 1.0;
     let bottom = playfield.y + playfield.h - 1.0;
-    for trail in &effects.trails {
-        let fade = trail.fade();
-        let x = left + trail.x * cell;
-        let length = trail.from - trail.to;
-        for i in 0..TRAIL_SEGMENTS {
-            let t = i as f32 / TRAIL_SEGMENTS as f32;
-            let y0 = trail.to + length * t;
-            let h = length / TRAIL_SEGMENTS as f32 * cell;
-            let rect = snap_edges(Rect::new(x, bottom - y0 * cell - h, cell, h));
-            let alpha = TRAIL_ALPHA * trail.strength * fade * (1.0 - t);
-            draw_rect(canvas, meshes, rect, with_alpha(trail.color, alpha));
-        }
-    }
-    if let Some(impact) = &effects.impact {
-        let color = with_alpha(Color::WHITE, IMPACT_ALPHA * impact.strength * impact.fade());
-        for block in impact.blocks {
-            let rect =
-                playfield_block_rect([block.x, block.y], &view_settings.staging_rect, &playfield);
-            draw_rect(canvas, meshes, rect, color);
-        }
-    }
-    for particle in effects.particles.iter().filter(|p| p.visible()) {
-        let fade = particle.fade();
-        let size = BLOCK_SIZE * particle.size * (0.4 + 0.6 * fade);
-        let center = Vec2::new(left + particle.pos.x * cell, bottom - particle.pos.y * cell);
-        let rect = Rect::new(center.x - size / 2.0, center.y - size / 2.0, size, size);
-        draw_rect(
-            canvas,
-            meshes,
-            snap_rect(rect),
-            with_alpha(particle.color, fade),
-        );
-    }
-
-    if let Some(callout) = &effects.callout {
-        let t = callout.progress();
-        let quad = callout.lines >= 4;
-        let base = if quad {
-            CALLOUT_QUAD_SIZE
-        } else {
-            CALLOUT_SIZE
-        };
-        let mut size = base * (1.0 + CALLOUT_POP_SCALE * callout.pop());
-        let width = ui_text(callout.text(), size).measure_ui(ctx)?.x;
-        size *= ((playfield.w - 2.0 * PANEL_PADDING) / width).min(1.0);
-        let alpha = ((1.0 - t) / 0.4).min(1.0);
-        let center = Vec2::new(
-            playfield.x + playfield.w / 2.0,
-            bottom - (callout.row + t) * cell,
-        );
-        if quad {
-            let (text, shadow) = piece_colored_text_alpha(callout.text(), size, alpha);
-            let dims = text.measure_ui(ctx)?;
-            let pos = center - Vec2::new(dims.x / 2.0, dims.y / 2.0);
-            let param = text_param();
-            draw(canvas, &shadow, param.dest(pos + Vec2::splat(3.0)));
-            draw(canvas, &text, param.dest(pos));
-        } else {
-            let color = with_alpha(LINE_CLEAR_COLOR, alpha);
-            draw_text_centered(ctx, canvas, &ui_text(callout.text(), size), center, color)?;
-        }
+    let Some(callout) = &fx.callout else {
+        return Ok(());
+    };
+    let t = callout.progress();
+    let quad = callout.lines >= 4;
+    let base = if quad {
+        CALLOUT_QUAD_SIZE
+    } else {
+        CALLOUT_SIZE
+    };
+    let mut size = base * (1.0 + CALLOUT_POP_SCALE * callout.pop());
+    let width = ui_text(callout.text(), size).measure_ui().x;
+    size *= ((playfield.w - 2.0 * PANEL_PADDING) / width).min(1.0);
+    let alpha = ((1.0 - t) / 0.4).min(1.0);
+    let center = Vec2::new(
+        playfield.x + playfield.w / 2.0,
+        bottom - (callout.row + t) * cell,
+    );
+    if quad {
+        let (text, shadow) = piece_colored_text_alpha(callout.text(), size, alpha);
+        let dims = text.measure_ui();
+        let pos = center - Vec2::new(dims.x / 2.0, dims.y / 2.0);
+        let param = text_param();
+        draw(canvas, &shadow, param.dest(pos + Vec2::splat(3.0)));
+        draw(canvas, &text, param.dest(pos));
+    } else {
+        let color = with_alpha(LINE_CLEAR_COLOR, alpha);
+        draw_text_centered(canvas, &ui_text(callout.text(), size), center, color)?;
     }
     Ok(())
 }
@@ -639,16 +441,12 @@ pub(super) fn playfield_block_rect(
     Rect::new(snap(x), snap(y), block_size(), block_size())
 }
 
-/// the board with its previews, progress, effects and text
+/// the board's frames, progress and text, around the board sprites
 pub struct GameLayer<'a> {
-    pub playfield: &'a Playfield,
-    pub next: &'a Option<Rustomino>,
-    pub held: &'a Option<Rustomino>,
-    pub game_over: Option<&'a GameOver>,
     pub style: &'a Style,
     pub assists: bool, // ghost and hold
     pub level_progress: &'a LevelProgress,
-    pub effects: &'a Effects,
+    pub fx: &'a BoardFx,
     pub level_display: &'a ScoreDisplay,
     pub score_display: &'a ScoreDisplay,
     pub best: usize,
@@ -664,17 +462,15 @@ impl Layer for GameLayer<'_> {
                 Rect::new(rect.x - shake.x, rect.y - shake.y, rect.w, rect.h),
             );
         }
-        draw_playing(
+        draw_playing_backgound(
             canvas,
             frame.meshes,
-            self.playfield,
-            self.next,
-            self.held,
             frame.view,
-            self.game_over,
-            self.style,
+            self.style.board,
             self.assists,
         );
+        // the board sprites go between
+        set_layer(canvas, crate::gfx::Depth::Front);
         draw_level_progress(
             canvas,
             frame.meshes,
@@ -682,7 +478,7 @@ impl Layer for GameLayer<'_> {
             frame.view,
             self.style.block,
         );
-        draw_effects(frame.ctx, canvas, frame.meshes, self.effects, frame.view)?;
+        draw_callout(canvas, self.fx, frame.view)?;
         draw_playing_text(
             canvas,
             self.level_display,

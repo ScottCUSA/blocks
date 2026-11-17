@@ -1,4 +1,4 @@
-use ggez::GameResult;
+use crate::GameResult;
 
 use crate::menus::{self, Menu};
 
@@ -13,13 +13,13 @@ pub struct MenuScreen<'a> {
 impl Layer for MenuScreen<'_> {
     fn draw(&self, canvas: &mut Painter, frame: &Frame) -> GameResult {
         let Self { menu } = *self;
-        let ctx = frame.ctx;
+        let time = frame.time;
         let meshes = frame.meshes;
         let view_settings = frame.view;
         let style = frame.block;
         let view_rect = &view_settings.view_rect;
         draw_title(
-            ctx,
+            time,
             canvas,
             "Blocks!",
             view_rect.h * 0.16,
@@ -34,7 +34,7 @@ impl Layer for MenuScreen<'_> {
             MENU_ROW_HEIGHT,
         );
         draw_panel(canvas, meshes, panel);
-        draw_menu_list(ctx, canvas, meshes, menu, panel, style)?;
-        draw_hint(ctx, canvas, "Up/Down: select   Enter: choose", view_rect)
+        draw_menu_list(time, canvas, meshes, menu, panel, style)?;
+        draw_hint(canvas, "Up/Down: select   Enter: choose", view_rect)
     }
 }

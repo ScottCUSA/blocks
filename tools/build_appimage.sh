@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a Linux AppImage of the release binary.
+# Build a Linux AppImage of the shipping binary.
 # usage: tools/build_appimage.sh [version] [out_dir]
 #   version: name suffix (default: Cargo.toml version)
 #   out_dir: where the AppImage goes (default: target/dist)
@@ -33,13 +33,13 @@ fetch "$APPIMAGETOOL_URL" "$APPIMAGETOOL_SHA256" "$TOOLS/appimagetool"
 fetch "$RUNTIME_URL" "$RUNTIME_SHA256" "$TOOLS/runtime"
 chmod +x "$TOOLS/appimagetool"
 
-cargo build --release --locked
+cargo build --profile ship --locked
 
-# resources sit next to the binary, where ggez looks for them
+# resources sit next to the binary, where the game looks for them
 rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" \
     "$APPDIR/usr/share/icons/hicolor/256x256/apps" "$APPDIR/usr/share/doc/$APP"
-cp "target/release/$APP" "$APPDIR/usr/bin/"
+cp "target/ship/$APP" "$APPDIR/usr/bin/"
 cp -r resources "$APPDIR/usr/bin/"
 cp packaging/blocks.desktop "$APPDIR/usr/share/applications/"
 cp packaging/blocks.desktop "$APPDIR/"

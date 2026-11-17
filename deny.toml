@@ -21,6 +21,7 @@ ignore = [
 # keep in sync with about.toml
 allow = [
     "MIT",
+    "MIT-0",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
     "Zlib",

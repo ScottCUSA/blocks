@@ -1,8 +1,12 @@
-use ggez::glam::{IVec2, Vec2};
-use ggez::graphics::Color;
+//! board effects: particles, trails and impacts as entities, flash, shake and the game over
+//! curtain in a resource, all set off by board events
+
+use bevy::prelude::*;
 use rand::{RngExt, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 
+use crate::game::board::{Board, BoardEvent};
+use crate::gfx::{Color, IVec2, Vec2};
 use crate::playfield::{Playfield, SlotState, PLAYFIELD_SLOTS};
 
 const GRAVITY: f32 = 30.0; // cells per second squared
@@ -43,6 +47,12 @@ const COUNT_START: f32 = 0.7; // after the overlay starts
 const COUNT_TIME: f32 = 0.8;
 const READY_TIME: f32 = 0.4; // after the overlay starts
 
+/// an effect entity, cleared with the board
+#[derive(Component, Default)]
+pub struct Fx;
+
+#[derive(Component)]
+#[require(Fx)]
 pub struct Trail {
     pub x: f32, // playfield cells, y up
     pub from: f32,
@@ -59,6 +69,8 @@ impl Trail {
     }
 }
 
+#[derive(Component)]
+#[require(Fx)]
 pub struct Impact {
     pub blocks: [IVec2; 4],
     pub strength: f32,
@@ -150,6 +162,8 @@ impl Callout {
     }
 }
 
+#[derive(Component)]
+#[require(Fx)]
 pub struct Particle {
     pub pos: Vec2, // playfield cells, y up
     vel: Vec2,
@@ -171,11 +185,10 @@ impl Particle {
     }
 }
 
-pub struct Effects {
-    pub particles: Vec<Particle>,
+/// whole board effects
+#[derive(Resource)]
+pub struct BoardFx {
     pub callout: Option<Callout>,
-    pub trails: Vec<Trail>,
-    pub impact: Option<Impact>,
     pub game_over: Option<GameOver>,
     flash: f32,
     flash_time: f32,
@@ -187,13 +200,10 @@ pub struct Effects {
     rng: Xoshiro256PlusPlus,
 }
 
-impl Effects {
-    pub fn new() -> Self {
+impl Default for BoardFx {
+    fn default() -> Self {
         Self {
-            particles: Vec::new(),
             callout: None,
-            trails: Vec::new(),
-            impact: None,
             game_over: None,
             flash: 0.0,
             flash_time: FLASH_TIME,
@@ -205,166 +215,9 @@ impl Effects {
             rng: Xoshiro256PlusPlus::seed_from_u64(0x5eed),
         }
     }
+}
 
-    /// burst the blocks of the lines being cleared
-    pub fn line_clear(&mut self, playfield: &Playfield) {
-        let Some(line_clear) = &playfield.line_clear else {
-            return;
-        };
-        let tier = line_clear.lines.len().clamp(1, TIERS.len()) - 1;
-        let (count, speed, gold, flash, shake, shake_duration) = TIERS[tier];
-        let duration = line_clear.duration as f32;
-        for &y in &line_clear.lines {
-            for (x, slot) in playfield.slots[y].iter().enumerate() {
-                let SlotState::Locked(rtype) = slot else {
-                    continue;
-                };
-                let delay = line_clear.wipe_start(x) as f32 * duration + 0.05;
-                let away = (x as f32 - line_clear.origin(x) as f32).signum();
-                for _ in 0..count {
-                    let color = if self.rng.random_bool(0.2) {
-                        Color::WHITE
-                    } else {
-                        mix(rtype.color(), LINE_CLEAR_GOLD, gold)
-                    };
-                    let vel = Vec2::new(
-                        away * self.rng.random_range(0.0..6.0) + self.rng.random_range(-3.0..3.0),
-                        self.rng.random_range(4.0..12.0),
-                    ) * speed;
-                    self.particles.push(Particle {
-                        pos: Vec2::new(
-                            x as f32 + self.rng.random_range(0.2..0.8),
-                            y as f32 + self.rng.random_range(0.2..0.8),
-                        ),
-                        vel,
-                        color,
-                        size: self.rng.random_range(0.15..0.35),
-                        delay,
-                        age: 0.0,
-                        life: self.rng.random_range(0.5..1.0),
-                    });
-                }
-            }
-        }
-        let lines = line_clear.lines.len();
-        self.callout = (lines >= 2).then(|| Callout {
-            lines,
-            row: line_clear
-                .lines
-                .iter()
-                .max()
-                .map_or(0.0, |&top| top as f32 + 1.5),
-            time: 0.0,
-        });
-        if flash > 0.0 {
-            self.flash = flash;
-            self.flash_time = 0.0;
-        }
-        if shake > 0.0 {
-            self.shake = shake;
-            self.shake_time = 0.0;
-            self.shake_duration = shake_duration;
-        }
-    }
-
-    /// trail, landing flash, dust and bump for a hard drop
-    pub fn hard_drop(&mut self, from: &[IVec2; 4], to: &[IVec2; 4], color: Color) {
-        let rows = (from[0].y - to[0].y) as f32;
-        self.drop_trails(from, to, color, 1.0);
-        for x in columns(to) {
-            let bottom = to
-                .iter()
-                .filter(|b| b.x == x)
-                .map(|b| b.y)
-                .min()
-                .unwrap_or(0);
-            self.dust(x, bottom, color, DUST_PER_COLUMN);
-        }
-        self.impact = Some(Impact {
-            blocks: *to,
-            strength: 1.0,
-            time: 0.0,
-        });
-        self.bump = (BUMP_MIN + rows * BUMP_PER_ROW).min(BUMP_MAX);
-        self.bump_time = 0.0;
-    }
-
-    /// streak over rows skipped by one gravity tick
-    pub fn gravity_drop(&mut self, from: &[IVec2; 4], to: &[IVec2; 4], color: Color) {
-        self.drop_trails(from, to, color, GRAVITY_TRAIL);
-    }
-
-    /// one trail per column from the old top to the new top
-    fn drop_trails(&mut self, from: &[IVec2; 4], to: &[IVec2; 4], color: Color, strength: f32) {
-        if from[0].y <= to[0].y {
-            return;
-        }
-        for x in columns(to) {
-            let top = |blocks: &[IVec2; 4]| blocks.iter().filter(|b| b.x == x).map(|b| b.y).max();
-            if let (Some(from_top), Some(to_top)) = (top(from), top(to)) {
-                self.trails.push(Trail {
-                    x: x as f32,
-                    from: from_top as f32 + 1.0,
-                    to: to_top as f32 + 1.0,
-                    color,
-                    strength,
-                    time: 0.0,
-                });
-            }
-        }
-    }
-
-    /// short streak above a piece moved down one row
-    pub fn soft_drop(&mut self, to: &[IVec2; 4], color: Color) {
-        for x in columns(to) {
-            let Some(top) = to.iter().filter(|b| b.x == x).map(|b| b.y).max() else {
-                continue;
-            };
-            self.trails.push(Trail {
-                x: x as f32,
-                from: top as f32 + 2.0,
-                to: top as f32 + 1.0,
-                color,
-                strength: SOFT_TRAIL,
-                time: 0.0,
-            });
-        }
-    }
-
-    /// soft flash, dust and bump for a normal lock
-    pub fn lock(&mut self, blocks: &[IVec2; 4], color: Color) {
-        for x in columns(blocks) {
-            if let Some(bottom) = blocks.iter().filter(|b| b.x == x).map(|b| b.y).min() {
-                self.dust(x, bottom, color, LOCK_DUST_PER_COLUMN);
-            }
-        }
-        self.impact = Some(Impact {
-            blocks: *blocks,
-            strength: LOCK_FLASH,
-            time: 0.0,
-        });
-        self.bump = LOCK_BUMP;
-        self.bump_time = 0.0;
-    }
-
-    fn dust(&mut self, x: i32, bottom: i32, color: Color, count: usize) {
-        for _ in 0..count {
-            let side = if self.rng.random_bool(0.5) { 1.0 } else { -1.0 };
-            self.particles.push(Particle {
-                pos: Vec2::new(x as f32 + self.rng.random_range(0.1..0.9), bottom as f32),
-                vel: Vec2::new(
-                    side * self.rng.random_range(2.0..6.0),
-                    self.rng.random_range(1.0..4.0),
-                ),
-                color: mix(color, Color::WHITE, 0.6),
-                size: self.rng.random_range(0.08..0.18),
-                delay: 0.0,
-                age: 0.0,
-                life: self.rng.random_range(0.2..0.4),
-            });
-        }
-    }
-
+impl BoardFx {
     /// top out shake and curtain
     pub fn game_over(&mut self) {
         self.game_over = Some(GameOver { time: 0.0 });
@@ -373,45 +226,15 @@ impl Effects {
         self.shake_duration = TOPOUT_SHAKE_TIME;
     }
 
-    pub fn game_over_ready(&self) -> bool {
-        self.game_over.as_ref().is_none_or(GameOver::ready)
+    /// game over curtain already this far along
+    pub fn set_game_over_time(&mut self, time: f32) {
+        if let Some(game_over) = &mut self.game_over {
+            game_over.time = time;
+        }
     }
 
-    pub fn update(&mut self, delta_time: f64) {
-        let dt = delta_time as f32;
-        if let Some(game_over) = &mut self.game_over {
-            game_over.time += dt;
-        }
-        self.flash_time += dt;
-        self.shake_time += dt;
-        self.bump_time += dt;
-        for trail in &mut self.trails {
-            trail.time += dt;
-        }
-        self.trails.retain(|trail| trail.time < TRAIL_TIME);
-        if let Some(impact) = &mut self.impact {
-            impact.time += dt;
-            if impact.time >= IMPACT_TIME {
-                self.impact = None;
-            }
-        }
-        for particle in &mut self.particles {
-            if particle.delay > 0.0 {
-                particle.delay -= dt;
-                continue;
-            }
-            particle.age += dt;
-            particle.vel.y -= GRAVITY * dt;
-            particle.pos += particle.vel * dt;
-        }
-        self.particles
-            .retain(|particle| particle.age < particle.life);
-        if let Some(callout) = &mut self.callout {
-            callout.time += dt;
-            if callout.time >= CALLOUT_TIME {
-                self.callout = None;
-            }
-        }
+    pub fn game_over_ready(&self) -> bool {
+        self.game_over.as_ref().is_none_or(GameOver::ready)
     }
 
     /// playfield flash alpha
@@ -443,6 +266,290 @@ impl Effects {
             0.0,
             (self.bump_time * 40.0).cos() * self.bump * decay * decay,
         )
+    }
+
+    fn update(&mut self, dt: f32) {
+        if let Some(game_over) = &mut self.game_over {
+            game_over.time += dt;
+        }
+        self.flash_time += dt;
+        self.shake_time += dt;
+        self.bump_time += dt;
+        if let Some(callout) = &mut self.callout {
+            callout.time += dt;
+            if callout.time >= CALLOUT_TIME {
+                self.callout = None;
+            }
+        }
+    }
+}
+
+/// sets off effects, spawning their entities
+struct Spawner<'a, 'w, 's> {
+    fx: &'a mut BoardFx,
+    commands: &'a mut Commands<'w, 's>,
+    impacts: Vec<Entity>, // replaced by a new impact
+}
+
+impl Spawner<'_, '_, '_> {
+    fn particle(&mut self, particle: Particle) {
+        self.commands.spawn(particle);
+    }
+
+    fn impact(&mut self, impact: Impact) {
+        for entity in self.impacts.drain(..) {
+            self.commands.entity(entity).despawn();
+        }
+        let entity = self.commands.spawn(impact).id();
+        self.impacts.push(entity);
+    }
+
+    /// burst the blocks of the lines being cleared
+    fn line_clear(&mut self, playfield: &Playfield) {
+        let Some(line_clear) = &playfield.line_clear else {
+            return;
+        };
+        let tier = line_clear.lines.len().clamp(1, TIERS.len()) - 1;
+        let (count, speed, gold, flash, shake, shake_duration) = TIERS[tier];
+        let duration = line_clear.duration as f32;
+        for &y in &line_clear.lines {
+            for (x, slot) in playfield.slots[y].iter().enumerate() {
+                let SlotState::Locked(rtype) = slot else {
+                    continue;
+                };
+                let delay = line_clear.wipe_start(x) as f32 * duration + 0.05;
+                let away = (x as f32 - line_clear.origin(x) as f32).signum();
+                for _ in 0..count {
+                    let rng = &mut self.fx.rng;
+                    let color = if rng.random_bool(0.2) {
+                        Color::WHITE
+                    } else {
+                        mix(rtype.color(), LINE_CLEAR_GOLD, gold)
+                    };
+                    let vel = Vec2::new(
+                        away * rng.random_range(0.0..6.0) + rng.random_range(-3.0..3.0),
+                        rng.random_range(4.0..12.0),
+                    ) * speed;
+                    let particle = Particle {
+                        pos: Vec2::new(
+                            x as f32 + rng.random_range(0.2..0.8),
+                            y as f32 + rng.random_range(0.2..0.8),
+                        ),
+                        vel,
+                        color,
+                        size: rng.random_range(0.15..0.35),
+                        delay,
+                        age: 0.0,
+                        life: rng.random_range(0.5..1.0),
+                    };
+                    self.particle(particle);
+                }
+            }
+        }
+        let lines = line_clear.lines.len();
+        self.fx.callout = (lines >= 2).then(|| Callout {
+            lines,
+            row: line_clear
+                .lines
+                .iter()
+                .max()
+                .map_or(0.0, |&top| top as f32 + 1.5),
+            time: 0.0,
+        });
+        if flash > 0.0 {
+            self.fx.flash = flash;
+            self.fx.flash_time = 0.0;
+        }
+        if shake > 0.0 {
+            self.fx.shake = shake;
+            self.fx.shake_time = 0.0;
+            self.fx.shake_duration = shake_duration;
+        }
+    }
+
+    /// trail, landing flash, dust and bump for a hard drop
+    fn hard_drop(&mut self, from: &[IVec2; 4], to: &[IVec2; 4], color: Color) {
+        let rows = (from[0].y - to[0].y) as f32;
+        self.drop_trails(from, to, color, 1.0);
+        for x in columns(to) {
+            let bottom = to
+                .iter()
+                .filter(|b| b.x == x)
+                .map(|b| b.y)
+                .min()
+                .unwrap_or(0);
+            self.dust(x, bottom, color, DUST_PER_COLUMN);
+        }
+        self.impact(Impact {
+            blocks: *to,
+            strength: 1.0,
+            time: 0.0,
+        });
+        self.fx.bump = (BUMP_MIN + rows * BUMP_PER_ROW).min(BUMP_MAX);
+        self.fx.bump_time = 0.0;
+    }
+
+    /// streak over rows skipped by one gravity tick
+    fn gravity_drop(&mut self, from: &[IVec2; 4], to: &[IVec2; 4], color: Color) {
+        self.drop_trails(from, to, color, GRAVITY_TRAIL);
+    }
+
+    /// one trail per column from the old top to the new top
+    fn drop_trails(&mut self, from: &[IVec2; 4], to: &[IVec2; 4], color: Color, strength: f32) {
+        if from[0].y <= to[0].y {
+            return;
+        }
+        for x in columns(to) {
+            let top = |blocks: &[IVec2; 4]| blocks.iter().filter(|b| b.x == x).map(|b| b.y).max();
+            if let (Some(from_top), Some(to_top)) = (top(from), top(to)) {
+                self.commands.spawn(Trail {
+                    x: x as f32,
+                    from: from_top as f32 + 1.0,
+                    to: to_top as f32 + 1.0,
+                    color,
+                    strength,
+                    time: 0.0,
+                });
+            }
+        }
+    }
+
+    /// short streak above a piece moved down one row
+    fn soft_drop(&mut self, to: &[IVec2; 4], color: Color) {
+        for x in columns(to) {
+            let Some(top) = to.iter().filter(|b| b.x == x).map(|b| b.y).max() else {
+                continue;
+            };
+            self.commands.spawn(Trail {
+                x: x as f32,
+                from: top as f32 + 2.0,
+                to: top as f32 + 1.0,
+                color,
+                strength: SOFT_TRAIL,
+                time: 0.0,
+            });
+        }
+    }
+
+    /// soft flash, dust and bump for a normal lock
+    fn lock(&mut self, blocks: &[IVec2; 4], color: Color) {
+        for x in columns(blocks) {
+            if let Some(bottom) = blocks.iter().filter(|b| b.x == x).map(|b| b.y).min() {
+                self.dust(x, bottom, color, LOCK_DUST_PER_COLUMN);
+            }
+        }
+        self.impact(Impact {
+            blocks: *blocks,
+            strength: LOCK_FLASH,
+            time: 0.0,
+        });
+        self.fx.bump = LOCK_BUMP;
+        self.fx.bump_time = 0.0;
+    }
+
+    fn dust(&mut self, x: i32, bottom: i32, color: Color, count: usize) {
+        for _ in 0..count {
+            let rng = &mut self.fx.rng;
+            let side = if rng.random_bool(0.5) { 1.0 } else { -1.0 };
+            let particle = Particle {
+                pos: Vec2::new(x as f32 + rng.random_range(0.1..0.9), bottom as f32),
+                vel: Vec2::new(
+                    side * rng.random_range(2.0..6.0),
+                    rng.random_range(1.0..4.0),
+                ),
+                color: mix(color, Color::WHITE, 0.6),
+                size: rng.random_range(0.08..0.18),
+                delay: 0.0,
+                age: 0.0,
+                life: rng.random_range(0.2..0.4),
+            };
+            self.particle(particle);
+        }
+    }
+}
+
+pub struct EffectsPlugin;
+
+impl Plugin for EffectsPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<BoardFx>();
+    }
+}
+
+/// set off the effects for what happened on the board
+pub fn on_board_events(
+    mut events: MessageReader<BoardEvent>,
+    mut commands: Commands,
+    mut fx: ResMut<BoardFx>,
+    board: Res<Board>,
+    impacts: Query<Entity, With<Impact>>,
+) {
+    let mut spawner = Spawner {
+        fx: &mut fx,
+        commands: &mut commands,
+        impacts: impacts.iter().collect(),
+    };
+    for event in events.read() {
+        match *event {
+            BoardEvent::Locked { blocks, color } => spawner.lock(&blocks, color),
+            BoardEvent::HardDropped { from, to, color } => spawner.hard_drop(&from, &to, color),
+            BoardEvent::GravityDropped { from, to, color } => {
+                spawner.gravity_drop(&from, &to, color)
+            }
+            BoardEvent::SoftDropped { blocks, color } => spawner.soft_drop(&blocks, color),
+            BoardEvent::LinesCleared { .. } => spawner.line_clear(&board.playfield),
+            BoardEvent::ToppedOut { .. } => spawner.fx.game_over(),
+            BoardEvent::LevelUp => {}
+        }
+    }
+}
+
+/// age the effects by dt seconds
+pub fn step_effects(
+    In(dt): In<f32>,
+    mut commands: Commands,
+    mut fx: ResMut<BoardFx>,
+    mut particles: Query<(Entity, &mut Particle)>,
+    mut trails: Query<(Entity, &mut Trail)>,
+    mut impacts: Query<(Entity, &mut Impact)>,
+) {
+    fx.update(dt);
+    for (entity, mut trail) in &mut trails {
+        trail.time += dt;
+        if trail.time >= TRAIL_TIME {
+            commands.entity(entity).despawn();
+        }
+    }
+    for (entity, mut impact) in &mut impacts {
+        impact.time += dt;
+        if impact.time >= IMPACT_TIME {
+            commands.entity(entity).despawn();
+        }
+    }
+    for (entity, mut particle) in &mut particles {
+        if particle.delay > 0.0 {
+            particle.delay -= dt;
+            continue;
+        }
+        particle.age += dt;
+        particle.vel.y -= GRAVITY * dt;
+        let vel = particle.vel;
+        particle.pos += vel * dt;
+        if particle.age >= particle.life {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
+/// clear every effect, for a new board
+pub fn reset_effects(
+    mut commands: Commands,
+    mut fx: ResMut<BoardFx>,
+    entities: Query<Entity, With<Fx>>,
+) {
+    *fx = BoardFx::default();
+    for entity in &entities {
+        commands.entity(entity).despawn();
     }
 }
 

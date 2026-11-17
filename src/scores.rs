@@ -14,7 +14,7 @@ pub struct HighScore {
 }
 
 /// best scores, highest first
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, bevy::prelude::Resource)]
 #[serde(default)]
 pub struct ScoreBoard {
     pub scores: Vec<HighScore>,
@@ -63,7 +63,7 @@ impl ScoreBoard {
 }
 
 /// arcade style initials being entered, up to MAX_INITIALS letters
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, bevy::prelude::Resource)]
 pub struct Initials {
     pub letters: Vec<u8>,
     pub cursor: usize,

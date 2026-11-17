@@ -11,6 +11,11 @@ opt-level = 3
 [profile.release]
 split-debuginfo = "true"
 strip = "symbols"
+lto = "thin"
+
+# packages: smallest binary, slow to build
+[profile.ship]
+inherits = "release"
 lto = "fat"
 codegen-units = 1
 opt-level = "s"

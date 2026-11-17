@@ -55,7 +55,7 @@ impl BoardStyle {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, bevy::prelude::Resource)]
 pub struct Style {
     pub block: BlockStyle,
     pub board: BoardStyle,

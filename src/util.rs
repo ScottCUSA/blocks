@@ -1,4 +1,4 @@
-use ggez::graphics::Color;
+use crate::gfx::Color;
 
 pub fn fast_wobble(time: f32) -> f32 {
     f32::sin(time * 6.0)

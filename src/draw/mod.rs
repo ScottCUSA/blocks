@@ -1,30 +1,31 @@
-use ggez::glam::Vec2;
-use ggez::graphics::{self, Color, DrawMode, Rect};
-use ggez::{Context, GameResult};
+use crate::gfx::{Color, Mesh, Rect, Vec2, Vertex};
+use crate::GameResult;
 
 use crate::playfield;
 use crate::style::BlockStyle;
 
 mod background;
-mod batch;
 mod board;
 mod paint;
+mod painter;
 mod screens;
+mod sprites;
 mod text;
 mod widgets;
 
-use batch::*;
 use paint::*;
+use painter::*;
 use text::*;
 use widgets::*;
 
 pub use background::{clear_color, draw_background, storm_strike_time, StrikeKind};
-pub use batch::{take_draw_count, Batch, Painter};
 pub use board::GameLayer;
+pub use painter::Painter;
 pub use screens::{
     DebugScreen, FrameStats, GameOverScreen, HighScoresScreen, MenuScreen, NameEntryScreen,
     OptionRow, OptionsScreen, PausedScreen,
 };
+pub use sprites::{BoardShown, BoardSprites, SpritesPlugin};
 pub use text::set_pixel_scale;
 pub use widgets::Overlay;
 
@@ -59,7 +60,7 @@ const LINE_CLEAR_COLOR: Color = Color::new(1.0, 0.92, 0.72, 1.0); // soft gold
 
 /// what every layer draws with
 pub struct Frame<'a> {
-    pub ctx: &'a Context,
+    pub time: f32, // seconds since start
     pub meshes: &'a Meshes,
     pub view: &'a ViewSettings,
     pub block: BlockStyle,
@@ -70,7 +71,7 @@ pub trait Layer {
     fn draw(&self, canvas: &mut Painter, frame: &Frame) -> GameResult;
 }
 
-#[derive(Debug)]
+#[derive(Debug, bevy::prelude::Resource)]
 pub struct ViewSettings {
     pub scale: f32, // physical pixels per view unit
     pub view_rect: Rect,
@@ -155,60 +156,33 @@ impl ViewSettings {
 }
 
 /// meshes reused every frame
+#[derive(bevy::prelude::Resource)]
 pub struct Meshes {
-    rect: graphics::Mesh,            // unit rectangle, scaled and colored per draw
-    background: graphics::Mesh,      // unit rectangle fading out downward, tinted per draw
-    rounded: graphics::Mesh,         // BLOCK_SIZE rounded square, scaled per draw
-    rounded_outline: graphics::Mesh, // jelly ghost cell
-    glow: graphics::Mesh,            // unit disc fading to clear at the rim
+    rect: Mesh,       // unit rectangle, scaled and colored per draw
+    background: Mesh, // unit rectangle fading out downward, tinted per draw
+    rounded: Mesh,    // BLOCK_SIZE rounded square, scaled per draw
+    glow: Mesh,       // unit disc fading to clear at the rim
 }
 
 impl Meshes {
-    pub fn new(ctx: &mut Context) -> GameResult<Self> {
+    pub fn new() -> Self {
         let unit = Rect::new(0.0, 0.0, 1.0, 1.0);
-        let vertex = |x: f32, y: f32, color: Color| graphics::Vertex {
-            position: [x, y],
-            uv: [x, y],
-            color: [color.r, color.g, color.b, color.a],
-        };
-        Ok(Self {
-            rect: graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), unit, Color::WHITE)?,
-            rounded: graphics::Mesh::new_rounded_rectangle(
-                ctx,
-                DrawMode::fill(),
-                Rect::new(0.0, 0.0, BLOCK_SIZE, BLOCK_SIZE),
-                JELLY_RADIUS,
-                Color::WHITE,
-            )?,
-            rounded_outline: graphics::Mesh::new_rounded_rectangle(
-                ctx,
-                DrawMode::stroke(GHOST_OUTLINE_WIDTH),
-                inset(
-                    Rect::new(0.0, 0.0, BLOCK_SIZE, BLOCK_SIZE),
-                    GHOST_OUTLINE_WIDTH / 2.0,
-                ),
-                JELLY_RADIUS - GHOST_OUTLINE_WIDTH / 2.0,
-                Color::WHITE,
-            )?,
-            background: graphics::Mesh::from_data(
-                ctx,
-                graphics::MeshData {
-                    vertices: &[
-                        vertex(0.0, 0.0, Color::WHITE),
-                        vertex(1.0, 0.0, Color::WHITE),
-                        vertex(1.0, 1.0, Color::new(1.0, 1.0, 1.0, 0.0)),
-                        vertex(0.0, 1.0, Color::new(1.0, 1.0, 1.0, 0.0)),
-                    ],
-                    indices: &[0, 1, 2, 0, 2, 3],
-                },
-            ),
-            glow: glow_mesh(ctx),
-        })
+        let block = Rect::new(0.0, 0.0, BLOCK_SIZE, BLOCK_SIZE);
+        let mut background = Mesh::rect(unit, Color::WHITE);
+        for v in &mut background.vertices[2..] {
+            v.color = Color::new(1.0, 1.0, 1.0, 0.0);
+        }
+        Self {
+            rect: Mesh::rect(unit, Color::WHITE),
+            rounded: Mesh::rounded_rect(block, JELLY_RADIUS, Color::WHITE),
+            background,
+            glow: glow_mesh(),
+        }
     }
 }
 
 /// soft disc, rings of falling alpha
-fn glow_mesh(ctx: &mut Context) -> graphics::Mesh {
+fn glow_mesh() -> Mesh {
     const RINGS: [(f32, f32); 4] = [(0.0, 1.0), (0.35, 0.6), (0.7, 0.2), (1.0, 0.0)];
     const SEGMENTS: u32 = 48;
     let mut vertices = Vec::new();
@@ -216,11 +190,9 @@ fn glow_mesh(ctx: &mut Context) -> graphics::Mesh {
         let count = if radius == 0.0 { 1 } else { SEGMENTS };
         for k in 0..count {
             let a = k as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
-            let (x, y) = (a.cos() * radius, a.sin() * radius);
-            vertices.push(graphics::Vertex {
-                position: [x, y],
-                uv: [x, y],
-                color: [1.0, 1.0, 1.0, alpha],
+            vertices.push(Vertex {
+                position: Vec2::new(a.cos() * radius, a.sin() * radius),
+                color: Color::new(1.0, 1.0, 1.0, alpha),
             });
         }
     }
@@ -234,11 +206,5 @@ fn glow_mesh(ctx: &mut Context) -> graphics::Mesh {
             indices.extend([a, c, d, a, d, b]);
         }
     }
-    graphics::Mesh::from_data(
-        ctx,
-        graphics::MeshData {
-            vertices: &vertices,
-            indices: &indices,
-        },
-    )
+    Mesh { vertices, indices }
 }

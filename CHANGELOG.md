@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A benchmark: `--bench [filter] [seconds]` on the command line, or T in the
+  animation viewer. It plays the viewer's animations at levels 1 to 20 over
+  each background, uncapped and without vsync. It prints a per-case table
+  (mean, p99 and max frame time, plus frames over the 120 fps budget) and
+  saves the frames as a CSV. A small FPS panel shows in the corner while it
+  runs.
+- A `trace` cargo feature that writes a Chrome trace of every system.
+- A `bench` screenshot scene.
+- Headless tests that play the game through its Bevy systems: dropping,
+  gravity, pausing, topping out, the options and the animation viewer.
 - Storm level up: a white flash, a barrage of six lightning bolts sweeping
   across the sea, and the sea heaving up into the new level's state.
 - Storm background: rain, wind and a three-layer sea under rolling clouds.
@@ -25,7 +35,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The animation viewer starts with the frame rate unlocked and vsync off.
+  The game keeps its 240 fps cap.
 - Song, Music and Sound moved to a new Audio page in the options.
+- Switched the game engine from ggez to Bevy 0.20, built from plugins for
+  audio, effects, drawing and the game. Screens and the animation viewer are
+  Bevy states, the board, score and options are separate resources, and the
+  game ticks in Bevy's fixed timestep. Board changes go out as messages that
+  the effects, background and sound react to.
+- Blocks, the ghost piece, particles, trails and impacts are Bevy sprite
+  entities. Backgrounds, text and menus are drawn by a small immediate mode
+  painter on Bevy 2D meshes. Jelly blocks have smooth edges.
+- Screenshots now include `storm-max` and `storm-whiteout`.
+- Release builds use thin LTO so they build faster. Packages are built with
+  the new `ship` profile (fat LTO, one codegen unit, size optimization).
+- The debug viewer's frame stats show Bevy's FPS and frame time, the draw
+  list's runs and vertices, and the time to build it. Frame stat recordings
+  are format v2.
+- strum, rand and ab_glyph are built without their default features.
+
+### Fixed
+
+- A 20 ms stall when a new game started after a game over: stopping the
+  music or jingle waited on the audio thread.
 
 ## [0.5.1] - 2026-11-15
 

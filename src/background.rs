@@ -43,6 +43,7 @@ const SEA_LEVEL_UP_RAMP: f32 = 4.0; // how quickly the sea follows the level dur
 const STORM_RAMP: f32 = 0.4; // how quickly the storm follows the level, per second
 
 /// animated background shown behind the game
+#[derive(bevy::prelude::Resource)]
 pub struct Background {
     pub style: BackgroundStyle,
     pub time: f32,         // animation clock, runs faster with level and energy

@@ -1,5 +1,5 @@
-use ggez::graphics::{Color, Rect};
-use ggez::{Context, GameResult};
+use crate::gfx::{Color, Rect};
+use crate::GameResult;
 
 use crate::menus::Menu;
 use crate::style::BlockStyle;
@@ -62,18 +62,18 @@ pub(super) fn menu_row_rect(panel: Rect, row: usize, row_height: f32) -> Rect {
 
 /// highlight bar with a bobbing gold block at each end
 pub(super) fn draw_selection(
-    ctx: &Context,
+    time: f32,
     canvas: &mut Painter,
     meshes: &Meshes,
     row: Rect,
     style: BlockStyle,
 ) {
-    draw_selection_around(ctx, canvas, meshes, row, None, style);
+    draw_selection_around(time, canvas, meshes, row, None, style);
 }
 
 /// selection bar, with the bobbing blocks at its ends or hugging a centered word
 pub(super) fn draw_selection_around(
-    ctx: &Context,
+    time: f32,
     canvas: &mut Painter,
     meshes: &Meshes,
     row: Rect,
@@ -81,7 +81,7 @@ pub(super) fn draw_selection_around(
     style: BlockStyle,
 ) {
     draw_rect(canvas, meshes, row, HIGHLIGHT_COLOR);
-    let bob = util::fast_wobble(ctx.time.time_since_start().as_secs_f32()) * 3.0;
+    let bob = util::fast_wobble(time) * 3.0;
     let size = row.h * 0.3;
     let y = row.y + row.h / 2.0 - size / 2.0;
     let (left, right) = match word_width {
@@ -107,7 +107,7 @@ pub(super) fn draw_selection_around(
 }
 
 pub(super) fn draw_menu_list<T: Menu>(
-    ctx: &Context,
+    time: f32,
     canvas: &mut Painter,
     meshes: &Meshes,
     menu: &T,
@@ -118,13 +118,13 @@ pub(super) fn draw_menu_list<T: Menu>(
         let row = menu_row_rect(panel, i, MENU_ROW_HEIGHT);
         let selected = menu.selected() == i;
         let mut text = item.clone();
-        text.set_font("04b30").set_scale(px(MENU_ITEM_SIZE));
+        text.set_scale(px(MENU_ITEM_SIZE));
         if selected {
-            let width = text.measure_ui(ctx)?.x;
-            draw_selection_around(ctx, canvas, meshes, row, Some(width), style);
+            let width = text.measure_ui().x;
+            draw_selection_around(time, canvas, meshes, row, Some(width), style);
         }
         let color = if selected { ACCENT_COLOR } else { Color::WHITE };
-        draw_text_centered(ctx, canvas, &text, row.center().into(), color)?;
+        draw_text_centered(canvas, &text, row.center(), color)?;
     }
     Ok(())
 }

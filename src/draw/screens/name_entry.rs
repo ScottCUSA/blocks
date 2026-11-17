@@ -1,6 +1,6 @@
-use ggez::glam::Vec2;
-use ggez::graphics::{Color, Rect};
-use ggez::GameResult;
+use crate::gfx::Vec2;
+use crate::gfx::{Color, Rect};
+use crate::GameResult;
 
 use crate::scores::{Initials, MAX_INITIALS};
 use crate::util;
@@ -26,7 +26,7 @@ pub struct NameEntryScreen<'a> {
 impl Layer for NameEntryScreen<'_> {
     fn draw(&self, canvas: &mut Painter, frame: &Frame) -> GameResult {
         let Self { initials, score } = *self;
-        let ctx = frame.ctx;
+        let time = frame.time;
         let meshes = frame.meshes;
         let view_rect = &frame.view.view_rect;
         let style = frame.block;
@@ -39,17 +39,13 @@ impl Layer for NameEntryScreen<'_> {
             height,
         );
         draw_panel(canvas, meshes, panel);
-        let time = ctx.time.time_since_start().as_secs_f32();
         draw_sparkles(canvas, meshes, panel, time);
 
         // title shrunk to fit the panel
         let title = "New High Score!";
-        let width = piece_colored_text(title, NAME_TITLE_SIZE)
-            .0
-            .measure_ui(ctx)?
-            .x;
+        let width = piece_colored_text(title, NAME_TITLE_SIZE).0.measure_ui().x;
         let size = NAME_TITLE_SIZE * ((panel.w - 2.0 * PANEL_PADDING) / width).min(1.0);
-        let dims = piece_colored_text(title, size).0.measure_ui(ctx)?;
+        let dims = piece_colored_text(title, size).0.measure_ui();
         let wobble = util::slow_wobble(time) * 3.0;
         let title_center = Vec2::new(view_rect.w / 2.0, panel.y + PANEL_PADDING + 30.0 + wobble);
         draw_piece_colored(
@@ -59,7 +55,6 @@ impl Layer for NameEntryScreen<'_> {
             size,
         );
         draw_text_centered(
-            ctx,
             canvas,
             &ui_text(&score.to_string(), UI_FONT_SIZE * 1.2),
             Vec2::new(view_rect.w / 2.0, panel.y + PANEL_PADDING + 90.0),
@@ -87,7 +82,7 @@ impl Layer for NameEntryScreen<'_> {
             draw_rect(canvas, meshes, cell, fill);
             if let Some(&letter) = initials.letters.get(i) {
                 let text = ui_text(&(letter as char).to_string(), NAME_LETTER_SIZE);
-                draw_text_centered(ctx, canvas, &text, cell.center().into(), color)?;
+                draw_text_centered(canvas, &text, cell.center(), color)?;
             }
             if selected {
                 let arrow_x = cell.x + (cell.w - NAME_ARROW) / 2.0;
@@ -98,7 +93,6 @@ impl Layer for NameEntryScreen<'_> {
             }
         }
         draw_hint(
-            ctx,
             canvas,
             "Up/Down: letter   Left/Right: move   Backspace: delete   Enter: done",
             view_rect,

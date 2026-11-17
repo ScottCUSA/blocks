@@ -20,14 +20,14 @@ ICONSET="$OUT_DIR/blocks.iconset"
 
 export MACOSX_DEPLOYMENT_TARGET=11.0
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
-cargo build --release --locked --target aarch64-apple-darwin
-cargo build --release --locked --target x86_64-apple-darwin
+cargo build --profile ship --locked --target aarch64-apple-darwin
+cargo build --profile ship --locked --target x86_64-apple-darwin
 
 rm -rf "$STAGING" "$ICONSET" "$OUT_DIR/$NAME.dmg"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 lipo -create -output "$BUNDLE/Contents/MacOS/$APP" \
-    "target/aarch64-apple-darwin/release/$APP" \
-    "target/x86_64-apple-darwin/release/$APP"
+    "target/aarch64-apple-darwin/ship/$APP" \
+    "target/x86_64-apple-darwin/ship/$APP"
 
 # game loads resources from Contents/Resources, see bundle_resource_dir
 cp -r resources/ "$BUNDLE/Contents/Resources/"

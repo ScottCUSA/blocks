@@ -1,24 +1,22 @@
-use ggez::{audio::SoundData, Context, GameResult};
-use std::io::Cursor;
+use std::{io::Cursor, sync::Arc};
 
 /// sound effect, a replay cuts off the last one
-/// ggez Source::play blocks until the audio thread drops the playing sound (~14ms),
-/// so each play gets its own player and the last is dropped, which only flags it to stop
+/// each play gets its own player and the last is dropped, which only flags it to stop
 pub struct Effect {
-    data: SoundData,
+    data: Arc<[u8]>,
     mixer: rodio::mixer::Mixer,
     volume: f32,
     voice: Option<rodio::Player>,
 }
 
 impl Effect {
-    pub fn new(ctx: &Context, path: &str) -> GameResult<Self> {
-        Ok(Effect {
-            data: SoundData::new(ctx, path)?,
-            mixer: ctx.audio.device().mixer().clone(),
+    pub fn new(mixer: &rodio::mixer::Mixer, data: Arc<[u8]>) -> Self {
+        Effect {
+            data,
+            mixer: mixer.clone(),
             volume: 1.0,
             voice: None,
-        })
+        }
     }
 
     pub fn play(&mut self) {

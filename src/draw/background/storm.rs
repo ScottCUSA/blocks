@@ -1,5 +1,5 @@
-use ggez::glam::Vec2;
-use ggez::graphics::{self, Color, Rect};
+use crate::gfx::Vec2;
+use crate::gfx::{BlendMode, Color, DrawParam, Rect};
 
 use crate::background::Background;
 
@@ -188,7 +188,7 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
         draw_mesh(
             canvas,
             &meshes.glow,
-            graphics::DrawParam::default()
+            DrawParam::default()
                 .dest(Vec2::new(x, y))
                 .scale(Vec2::new(radius, radius * (0.35 + 0.2 * n(5.0))))
                 .color(with_alpha(CLOUD_COLOR, 0.55 + 0.3 * n(6.0))),
@@ -218,19 +218,11 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
     if let Some((k, bright, kind)) = strike {
         let cloud_base = view_rect.y + h * 0.18;
         let start_x = |seed: usize| x0 + w * (0.12 + 0.76 * hash(seed, 23.0));
-        set_blend_mode(canvas, graphics::BlendMode::ADD);
+        set_blend_mode(canvas, BlendMode::Add);
+        let mut bolts = Bolts::default();
         match kind {
             StrikeKind::Fork => {
-                draw_fork(
-                    canvas,
-                    meshes,
-                    k,
-                    start_x(k),
-                    cloud_base,
-                    sea_top,
-                    w,
-                    bright,
-                );
+                draw_fork(&mut bolts, k, start_x(k), cloud_base, sea_top, w, bright);
             }
             StrikeKind::Double => {
                 let first = start_x(k);
@@ -238,10 +230,9 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
                 let second = x0
                     + (first - x0 + w * (0.3 + 0.4 * hash(k, 31.0))).rem_euclid(w * 0.8)
                     + w * 0.1;
-                draw_fork(canvas, meshes, k, first, cloud_base, sea_top, w, bright);
+                draw_fork(&mut bolts, k, first, cloud_base, sea_top, w, bright);
                 draw_fork(
-                    canvas,
-                    meshes,
+                    &mut bolts,
                     k + 7_919,
                     second,
                     cloud_base,
@@ -262,7 +253,7 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
                     draw_mesh(
                         canvas,
                         &meshes.glow,
-                        graphics::DrawParam::default()
+                        DrawParam::default()
                             .dest(at)
                             .scale(Vec2::new(w * 0.22, w * 0.09))
                             .color(with_alpha(FLASH_COLOR, 0.4 * pulse)),
@@ -278,8 +269,7 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
                     y + h * (hash(k, 37.0) - 0.5) * 0.08,
                 );
                 let path = draw_bolt(
-                    canvas,
-                    meshes,
+                    &mut bolts,
                     from,
                     to,
                     22,
@@ -296,8 +286,7 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
                             h * (0.05 + 0.06 * hash(k * 3 + t, 39.0)),
                         );
                     draw_bolt(
-                        canvas,
-                        meshes,
+                        &mut bolts,
                         at,
                         to,
                         5,
@@ -314,8 +303,7 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
                 let from = Vec2::new(x, view_rect.y + h * 0.3);
                 let to = Vec2::new(x + (hash(k, 40.0) - 0.5) * w * 0.05, sea_top);
                 draw_bolt(
-                    canvas,
-                    meshes,
+                    &mut bolts,
                     from,
                     to,
                     9,
@@ -326,7 +314,8 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
                 );
             }
         }
-        set_blend_mode(canvas, graphics::BlendMode::ALPHA);
+        bolts.draw(canvas, meshes);
+        set_blend_mode(canvas, BlendMode::Alpha);
     }
 
     // three layers of rain, each falling into its own layer of sea:
@@ -467,7 +456,7 @@ pub(super) fn draw_whiteout(
         draw_mesh(
             canvas,
             &meshes.glow,
-            graphics::DrawParam::default()
+            DrawParam::default()
                 .dest(Vec2::new(x, y))
                 .scale(Vec2::new(size, size * 0.35))
                 .color(with_alpha(
@@ -498,7 +487,7 @@ pub(super) fn draw_whiteout(
     draw_mesh(
         canvas,
         &meshes.background,
-        graphics::DrawParam::default()
+        DrawParam::default()
             .dest_rect(Rect::new(x0, sea_top, w, -h * 0.12))
             .color(with_alpha(color, over_sea)),
     );
@@ -523,9 +512,10 @@ pub(super) fn draw_level_up_storm(
         *view_rect,
         with_alpha(Color::WHITE, LEVEL_UP_WHITE * flash),
     );
-    set_blend_mode(canvas, graphics::BlendMode::ADD);
+    set_blend_mode(canvas, BlendMode::Add);
     let cloud_base = view_rect.y + h * 0.18;
     let seed = background.stars * 131;
+    let mut bolts = Bolts::default();
     for b in 0..LEVEL_UP_BOLTS {
         // each bolt strikes a beat after the last, sweeping across the view
         let age = p - b as f32 * LEVEL_UP_STAGGER;
@@ -537,18 +527,10 @@ pub(super) fn draw_level_up_storm(
         let bright = ((1.0 - t).powi(2) * flicker).clamp(0.0, 1.0);
         let lane = (b as f32 + 0.5) / LEVEL_UP_BOLTS as f32;
         let x = x0 + w * (0.05 + 0.9 * lane) + (hash(seed + b, 50.0) - 0.5) * w * 0.08;
-        draw_fork(
-            canvas,
-            meshes,
-            seed + b * 7,
-            x,
-            cloud_base,
-            sea_top,
-            w,
-            bright,
-        );
+        draw_fork(&mut bolts, seed + b * 7, x, cloud_base, sea_top, w, bright);
     }
-    set_blend_mode(canvas, graphics::BlendMode::ALPHA);
+    bolts.draw(canvas, meshes);
+    set_blend_mode(canvas, BlendMode::Alpha);
 }
 
 /// what every rain layer shares
@@ -592,7 +574,7 @@ pub(super) fn draw_rain_layer(
         draw_mesh(
             canvas,
             &meshes.rect,
-            graphics::DrawParam::default()
+            DrawParam::default()
                 .dest(Vec2::new(x, y))
                 .rotation(lean)
                 .scale(Vec2::new(width, len))
@@ -601,11 +583,38 @@ pub(super) fn draw_rain_layer(
     }
 }
 
+/// bolt glows and dots, sent as one run of each
+/// bolts blend additively so the order between them doesn't show
+#[derive(Default)]
+pub(super) struct Bolts {
+    glows: Vec<DrawParam>,
+    dots: Vec<DrawParam>,
+}
+
+impl Bolts {
+    fn glow(&mut self, param: DrawParam) {
+        self.glows.push(param);
+    }
+
+    fn dot(&mut self, rect: Rect, color: Color) {
+        self.dots
+            .push(DrawParam::default().dest_rect(rect).color(color));
+    }
+
+    pub(super) fn draw(self, canvas: &mut Painter, meshes: &Meshes) {
+        for param in self.glows {
+            draw_mesh(canvas, &meshes.glow, param);
+        }
+        for param in self.dots {
+            draw_mesh(canvas, &meshes.rect, param);
+        }
+    }
+}
+
 /// a jagged bolt from one point to another, returns the points along it
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_bolt(
-    canvas: &mut Painter,
-    meshes: &Meshes,
+    bolts: &mut Bolts,
     from: Vec2,
     to: Vec2,
     segments: usize,
@@ -626,7 +635,7 @@ pub(super) fn draw_bolt(
             offset * 0.6 + (hash(seed * 97 + s, 25.0) - 0.5) * 2.0 * jag
         };
         let next = from + along * (s as f32 / segments as f32) + side * offset;
-        draw_bolt_segment(canvas, meshes, path[s - 1], next, size, color);
+        draw_bolt_segment(bolts, path[s - 1], next, size, color);
         path.push(next);
     }
     path
@@ -635,8 +644,7 @@ pub(super) fn draw_bolt(
 /// cloud to sea bolt with a fork, a glow where it leaves the cloud and where it hits the water
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_fork(
-    canvas: &mut Painter,
-    meshes: &Meshes,
+    bolts: &mut Bolts,
     seed: usize,
     x: f32,
     cloud_base: f32,
@@ -646,17 +654,14 @@ pub(super) fn draw_fork(
 ) {
     let from = Vec2::new(x, cloud_base);
     let to = Vec2::new(x + (hash(seed, 41.0) - 0.5) * w * 0.25, sea_top);
-    draw_mesh(
-        canvas,
-        &meshes.glow,
-        graphics::DrawParam::default()
+    bolts.glow(
+        DrawParam::default()
             .dest(from)
             .scale(Vec2::new(w * 0.25, w * 0.12))
             .color(with_alpha(FLASH_COLOR, 0.35 * bright)),
     );
     let path = draw_bolt(
-        canvas,
-        meshes,
+        bolts,
         from,
         to,
         BOLT_SEGMENTS,
@@ -673,8 +678,7 @@ pub(super) fn draw_fork(
             (sea_top - cloud_base) * 0.3,
         );
     draw_bolt(
-        canvas,
-        meshes,
+        bolts,
         fork_at,
         fork_to,
         6,
@@ -684,10 +688,8 @@ pub(super) fn draw_fork(
         with_alpha(BOLT_COLOR, bright * 0.6),
     );
     // the strike lights up the water where it lands
-    draw_mesh(
-        canvas,
-        &meshes.glow,
-        graphics::DrawParam::default()
+    bolts.glow(
+        DrawParam::default()
             .dest(to)
             .scale(Vec2::new(w * 0.1, 22.0))
             .color(with_alpha(FLASH_COLOR, 0.55 * bright)),
@@ -695,14 +697,7 @@ pub(super) fn draw_fork(
 }
 
 /// dotted line of a lightning bolt
-pub(super) fn draw_bolt_segment(
-    canvas: &mut Painter,
-    meshes: &Meshes,
-    from: Vec2,
-    to: Vec2,
-    size: f32,
-    color: Color,
-) {
+pub(super) fn draw_bolt_segment(bolts: &mut Bolts, from: Vec2, to: Vec2, size: f32, color: Color) {
     // bloom: soft glow stretched along the whole segment, a wide halo and a tight core
     let along = to - from;
     let middle = from + along / 2.0;
@@ -710,10 +705,8 @@ pub(super) fn draw_bolt_segment(
     let half = along.length() / 2.0;
     for (spread, strength) in BOLT_BLOOM {
         let width = size * spread;
-        draw_mesh(
-            canvas,
-            &meshes.glow,
-            graphics::DrawParam::default()
+        bolts.glow(
+            DrawParam::default()
                 .dest(middle)
                 .rotation(angle)
                 .scale(Vec2::new(half + width, width))
@@ -723,9 +716,7 @@ pub(super) fn draw_bolt_segment(
     let dots = (along.length() / (size * 0.75)).ceil().max(1.0) as usize;
     for d in 0..=dots {
         let at = from + (to - from) * (d as f32 / dots as f32);
-        draw_rect(
-            canvas,
-            meshes,
+        bolts.dot(
             Rect::new(
                 (at.x - size / 2.0).round(),
                 (at.y - size / 2.0).round(),

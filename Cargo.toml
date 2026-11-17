@@ -7,23 +7,38 @@ publish = false
 build = "build.rs"
 
 [dependencies]
-strum = { version = "=0.28.0", features = ["derive"] }
-rand = "=0.10.3"
+strum = { version = "=0.28.0", default-features = false, features = ["derive"] }
+rand = { version = "=0.10.3", default-features = false, features = ["sys_rng"] }
 rand_xoshiro = "=0.8.1"
 log = "=0.4.35"
 env_logger = { version = "=0.11.11", default-features = false }
-ggez = { version = "=0.10.0", default-features = false, features = ["audio"] }
+bevy = { version = "=0.20.1", default-features = false, features = [
+    "std",
+    "async_executor",
+    "multi_threaded",
+    "bevy_asset",
+    "bevy_winit",
+    "bevy_window",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_sprite",
+    "bevy_sprite_render",
+    "bevy_state",
+    "keyboard",
+    "x11",
+    "wayland",
+] }
+ab_glyph = { version = "=0.2.32", default-features = false, features = ["std"] }
 png = "=0.18.1"
 serde = { version = "=1.0.229", features = ["derive"] }
 toml = "=1.2.1"
 directories = "=6.0.0"
 # send the audio device drop message to tracing instead of stderr
-rodio = { version = "=0.22.2", default-features = false, features = ["tracing"] }
+rodio = { version = "=0.22.2", default-features = false, features = ["playback", "vorbis", "tracing"] }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "=0.1.12"
 
-# unreleased fix: 0.10.0 spins forever when the window is occluded on macOS
-# (minimized, covered, hidden), drop when ggez releases it
-[patch.crates-io]
-ggez = { git = "https://github.com/ggez/ggez", rev = "3049a29234961845bc5dc642614bf3e85ba4ea14" }
+[features]
+# chrome trace of every system, written to trace-*.json
+trace = ["bevy/trace_chrome"]

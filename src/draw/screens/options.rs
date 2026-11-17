@@ -1,8 +1,8 @@
-use ggez::glam::Vec2;
-use ggez::graphics::{Color, Rect};
-use ggez::GameResult;
+use crate::gfx::Vec2;
+use crate::gfx::{Color, Rect};
+use crate::GameResult;
 
-use crate::game::Mode;
+use crate::game::board::Mode;
 use crate::menus::{self, Menu};
 use crate::style::Style;
 
@@ -51,12 +51,12 @@ impl Layer for OptionsScreen<'_> {
             style,
             max_level,
         } = *self;
-        let ctx = frame.ctx;
+        let time = frame.time;
         let meshes = frame.meshes;
         let view_settings = frame.view;
         let view_rect = &view_settings.view_rect;
         draw_title(
-            ctx,
+            time,
             canvas,
             title,
             view_rect.h * 0.12,
@@ -85,7 +85,6 @@ impl Layer for OptionsScreen<'_> {
             }
             let selected = menu.selected() == i;
             let mut text = item.clone();
-            text.set_font("04b30");
             if selected {
                 match kind {
                     // centered words: the blocks hug the word
@@ -95,10 +94,10 @@ impl Layer for OptionsScreen<'_> {
                         } else {
                             MENU_ITEM_SIZE
                         };
-                        let width = text.clone().set_scale(px(size)).measure_ui(ctx)?.x;
-                        draw_selection_around(ctx, canvas, meshes, row, Some(width), style.block);
+                        let width = text.clone().set_scale(px(size)).measure_ui().x;
+                        draw_selection_around(time, canvas, meshes, row, Some(width), style.block);
                     }
-                    _ => draw_selection(ctx, canvas, meshes, row, style.block),
+                    _ => draw_selection(time, canvas, meshes, row, style.block),
                 }
             }
             let color = if selected { ACCENT_COLOR } else { Color::WHITE };
@@ -110,7 +109,7 @@ impl Layer for OptionsScreen<'_> {
                         OPTION_LABEL_SIZE
                     };
                     text.set_scale(px(size));
-                    draw_text_centered(ctx, canvas, &text, row.center().into(), color)?;
+                    draw_text_centered(canvas, &text, row.center(), color)?;
                     continue;
                 }
                 _ => {}
@@ -118,7 +117,7 @@ impl Layer for OptionsScreen<'_> {
 
             // label on the left, setting on the right
             text.set_scale(px(OPTION_LABEL_SIZE));
-            let size = text.measure_ui(ctx)?;
+            let size = text.measure_ui();
             let center_y = row.y + row.h / 2.0;
             draw_shadowed(
                 canvas,
@@ -137,7 +136,6 @@ impl Layer for OptionsScreen<'_> {
                 OptionRow::Choice(value, locked) => {
                     let center_x = right_x - slider_width / 2.0;
                     draw_text_centered(
-                        ctx,
                         canvas,
                         &ui_text(value, OPTION_LABEL_SIZE * 0.75),
                         Vec2::new(center_x, center_y),
@@ -197,12 +195,11 @@ impl Layer for OptionsScreen<'_> {
                 LABEL_COLOR,
             );
             let keys = ui_text(keys, SMALL_TEXT_SIZE);
-            let width = keys.measure_ui(ctx)?.x;
+            let width = keys.measure_ui().x;
             draw_shadowed(canvas, &keys, Vec2::new(right - width, y), Color::WHITE);
         }
 
         draw_hint(
-            ctx,
             canvas,
             "Up/Down: select   Left/Right: adjust   Enter: open   Esc: back",
             view_rect,

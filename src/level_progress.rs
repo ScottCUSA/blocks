@@ -1,4 +1,4 @@
-use ggez::glam::Vec2;
+use crate::gfx::Vec2;
 use rand::{RngExt, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 

@@ -1,4 +1,4 @@
-use ggez::glam::IVec2;
+use crate::gfx::IVec2;
 
 use crate::rustomino::{translated, Rotation, Rustomino, RustominoState, RustominoType};
 use std::fmt::Display;

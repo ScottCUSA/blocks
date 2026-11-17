@@ -1,5 +1,5 @@
-use ggez::glam::Vec2;
-use ggez::graphics::{self, Color, Rect};
+use crate::gfx::Vec2;
+use crate::gfx::{BlendMode, Color, DrawParam, Rect};
 
 use crate::background::{Background, STAR_FIELDS};
 use crate::rustomino::RustominoType;
@@ -191,7 +191,7 @@ pub(super) fn draw_nebula(
     let view = Vec2::new(view_rect.w, view_rect.h);
     let span = view_rect.w.max(view_rect.h);
     let drift = background.time * NEBULA_DRIFT;
-    set_blend_mode(canvas, graphics::BlendMode::ADD);
+    set_blend_mode(canvas, BlendMode::Add);
     for cloud in 0..NEBULA_CLOUDS {
         let n = |k: f32| hash(cloud, k + field as f32 * 10.0 + 500.0);
         let hue = NEBULA_COLORS[(n(1.0) * NEBULA_COLORS.len() as f32) as usize];
@@ -213,7 +213,7 @@ pub(super) fn draw_nebula(
             draw_mesh(
                 canvas,
                 &meshes.glow,
-                graphics::DrawParam::default()
+                DrawParam::default()
                     .dest(pos)
                     .rotation(m(8.0) * std::f32::consts::PI + drift * 0.1)
                     .scale(Vec2::new(radius, radius * stretch))
@@ -221,7 +221,7 @@ pub(super) fn draw_nebula(
             );
         }
     }
-    set_blend_mode(canvas, graphics::BlendMode::ALPHA);
+    set_blend_mode(canvas, BlendMode::Alpha);
 }
 
 /// a star streaking out from the center, head first, tail catching up

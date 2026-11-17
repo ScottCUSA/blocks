@@ -1,5 +1,5 @@
+use crate::gfx::{Color, IVec2};
 use ::rand::seq::SliceRandom;
-use ggez::{glam::IVec2, graphics::Color};
 use strum::{EnumIter, IntoEnumIterator};
 
 const I_START_TRANSLATION: IVec2 = IVec2::new(3, 18);

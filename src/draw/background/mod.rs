@@ -8,7 +8,7 @@ use plasma::*;
 use stars::*;
 use storm::*;
 
-use ggez::graphics::{self, Color, Rect};
+use crate::gfx::{Color, DrawParam, Rect};
 
 use crate::background::{Background, BackgroundStyle};
 
@@ -96,9 +96,7 @@ fn paint<S: Scenery>(
     draw_mesh(
         canvas,
         &meshes.background,
-        graphics::DrawParam::default()
-            .dest_rect(*view_rect)
-            .color(top),
+        DrawParam::default().dest_rect(*view_rect).color(top),
     );
     scenery.draw(canvas, meshes, view_rect, background);
 }

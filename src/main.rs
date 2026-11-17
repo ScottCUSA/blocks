@@ -1,16 +1,20 @@
 #![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
-use std::{env, path};
+// bevy systems take their data as parameters
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
+use std::{env, fmt, fs, path};
 
-use ggez::{conf, event, ContextBuilder};
-
+mod app;
+mod audio;
 mod background;
 mod controls;
 mod draw;
 mod effects;
 mod game;
+mod gfx;
 mod level_progress;
 mod menus;
 mod playfield;
+mod render;
 mod rustomino;
 mod score_display;
 mod scores;
@@ -20,8 +24,43 @@ mod util;
 
 const ASSETS_FOLDER: &str = "./resources";
 
-// TODO: load icon for blocks window
-// https://docs.rs/macroquad/0.3.25/macroquad/texture/struct.Image.html
+#[derive(Debug)]
+pub struct GameError(pub String);
+
+impl fmt::Display for GameError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for GameError {}
+
+impl From<std::io::Error> for GameError {
+    fn from(e: std::io::Error) -> Self {
+        GameError(e.to_string())
+    }
+}
+
+pub type GameResult<T = ()> = Result<T, GameError>;
+
+/// folders the game's files are read from, first match wins
+#[derive(bevy::prelude::Resource)]
+pub struct Resources {
+    pub dirs: Vec<path::PathBuf>,
+}
+
+impl Resources {
+    pub fn load(&self, file: &str) -> GameResult<Vec<u8>> {
+        for dir in &self.dirs {
+            match fs::read(dir.join(file)) {
+                Ok(data) => return Ok(data),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(GameError(format!("could not read {file}: {e}"))),
+            }
+        }
+        Err(GameError(format!("{file} not found in {:?}", self.dirs)))
+    }
+}
 
 fn main() {
     // setup logging
@@ -40,6 +79,19 @@ fn main() {
         path::PathBuf::from(ASSETS_FOLDER)
     };
     log::info!("resource_dir: {:?}", resource_dir);
+    let mut resources = Resources {
+        dirs: vec![resource_dir],
+    };
+    // packages keep resources next to the executable
+    if let Some(dir) = env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.join("resources")))
+    {
+        resources.dirs.push(dir);
+    }
+    if let Some(dir) = bundle_resource_dir() {
+        resources.dirs.push(dir);
+    }
 
     // --screenshot <scene> [path] renders one frame in a hidden window and exits
     let args: Vec<String> = env::args().collect();
@@ -48,32 +100,29 @@ fn main() {
         std::process::exit(2);
     });
 
+    // --bench [filter] [seconds per case] times the viewer's scenes and exits
+    let bench = args.iter().position(|a| a == "--bench").map(|i| {
+        let mut bench = game::bench::StartBench {
+            hold: game::bench::DEFAULT_HOLD,
+            filter: None,
+            exit: true,
+        };
+        for arg in args[i + 1..].iter().take_while(|a| !a.starts_with("--")) {
+            match arg.parse() {
+                Ok(hold) => bench.hold = hold,
+                Err(_) => bench.filter = Some(arg.clone()),
+            }
+        }
+        bench
+    });
+
     let settings = if screenshot.is_none() {
         settings::Settings::load()
     } else {
         settings::Settings::default()
     };
 
-    // setup game context
-    let mut builder = ContextBuilder::new("Blocks", "Scott Cummings")
-        .window_setup(conf::WindowSetup::default().title("Blocks"))
-        .window_mode(game::window_mode(screenshot.is_some(), &settings.window))
-        .add_resource_path(resource_dir);
-    if let Some(dir) = bundle_resource_dir() {
-        builder = builder.add_resource_path(dir);
-    }
-    let (mut ctx, event_loop) = builder.build().expect("could not create engine context");
-
-    if screenshot.is_none() {
-        game::show_window(&ctx, &settings.window);
-    }
-
-    // setup game state
-    let game = game::BlocksState::new(&mut ctx, screenshot, settings)
-        .expect("unable to initialize gamestate");
-
-    // run game
-    event::run(ctx, event_loop, game).expect("game loop error");
+    app::run(resources, screenshot, bench, settings);
 }
 
 // macOS .app bundle: Contents/MacOS/blocks -> Contents/Resources

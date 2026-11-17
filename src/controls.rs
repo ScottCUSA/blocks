@@ -1,5 +1,4 @@
-use ggez::input::keyboard::{KeyCode, KeyInput};
-use ggez::winit::keyboard::PhysicalKey;
+use bevy::input::keyboard::KeyCode;
 use std::collections::HashMap;
 use strum::{EnumIter, IntoEnumIterator};
 
@@ -67,6 +66,7 @@ impl Control {
     }
 }
 
+#[derive(bevy::prelude::Resource)]
 pub struct GameControls {
     pub key_map: HashMap<KeyCode, Control>,
     pub input_states: HashMap<Control, InputState>,
@@ -92,10 +92,10 @@ impl Default for GameControls {
 }
 
 /// physical key code of a key event
-pub fn keycode(input: &KeyInput) -> Option<KeyCode> {
-    match input.event.physical_key {
-        PhysicalKey::Code(code) => Some(code),
-        PhysicalKey::Unidentified(_) => None,
+pub fn keycode(key: KeyCode) -> Option<KeyCode> {
+    match key {
+        KeyCode::Unidentified(_) => None,
+        code => Some(code),
     }
 }
 

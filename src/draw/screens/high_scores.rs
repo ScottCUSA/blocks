@@ -1,6 +1,6 @@
-use ggez::glam::Vec2;
-use ggez::graphics::{Color, Rect};
-use ggez::GameResult;
+use crate::gfx::Vec2;
+use crate::gfx::{Color, Rect};
+use crate::GameResult;
 
 use crate::scores::{ScoreBoard, MAX_SCORES};
 
@@ -24,7 +24,7 @@ pub struct HighScoresScreen<'a> {
 impl Layer for HighScoresScreen<'_> {
     fn draw(&self, canvas: &mut Painter, frame: &Frame) -> GameResult {
         let Self { scores, highlight } = *self;
-        let ctx = frame.ctx;
+        let time = frame.time;
         let meshes = frame.meshes;
         let view_rect = &frame.view.view_rect;
         let style = frame.block;
@@ -36,7 +36,7 @@ impl Layer for HighScoresScreen<'_> {
             SCORES_ROW_HEIGHT,
         );
         draw_title(
-            ctx,
+            time,
             canvas,
             "High Scores",
             panel.y - PAUSED_TITLE_SIZE * 0.75,
@@ -54,7 +54,7 @@ impl Layer for HighScoresScreen<'_> {
          -> GameResult {
             for (cell, right) in cells.iter().zip(SCORES_COLUMNS) {
                 let text = ui_text(cell, size);
-                let dims = text.measure_ui(ctx)?;
+                let dims = text.measure_ui();
                 let pos = Vec2::new(panel.x + right - dims.x, row.y + (row.h - dims.y) / 2.0);
                 draw_shadowed(canvas, &text, pos, color);
             }
@@ -69,7 +69,7 @@ impl Layer for HighScoresScreen<'_> {
             LABEL_COLOR,
         )?;
 
-        let pulse = 0.5 + 0.5 * (ctx.time.time_since_start().as_secs_f32() * 5.0).sin();
+        let pulse = 0.5 + 0.5 * (time * 5.0).sin();
         for i in 0..MAX_SCORES {
             let row = menu_row_rect(panel, i + 1, SCORES_ROW_HEIGHT);
             let rank = format!("{}.", i + 1);
@@ -84,7 +84,7 @@ impl Layer for HighScoresScreen<'_> {
                 continue;
             };
             let color = if highlight == Some(i) {
-                draw_selection(ctx, canvas, meshes, row, style);
+                draw_selection(time, canvas, meshes, row, style);
                 mix_color(ACCENT_COLOR, Color::WHITE, pulse)
             } else {
                 Color::WHITE
@@ -103,6 +103,6 @@ impl Layer for HighScoresScreen<'_> {
                 color,
             )?;
         }
-        draw_hint(ctx, canvas, "Press any key", view_rect)
+        draw_hint(canvas, "Press any key", view_rect)
     }
 }

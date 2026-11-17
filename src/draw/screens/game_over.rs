@@ -1,6 +1,6 @@
-use ggez::glam::Vec2;
-use ggez::graphics::{Color, Rect};
-use ggez::{Context, GameResult};
+use crate::gfx::Vec2;
+use crate::gfx::{Color, Rect};
+use crate::GameResult;
 
 use crate::effects::GameOver;
 use crate::rustomino::RustominoType;
@@ -30,7 +30,6 @@ impl Layer for GameOverScreen<'_> {
             score,
             level,
         } = *self;
-        let ctx = frame.ctx;
         let meshes = frame.meshes;
         let view_rect = &frame.view.view_rect;
         draw_overlay_alpha(canvas, meshes, view_rect, game_over.overlay());
@@ -50,7 +49,7 @@ impl Layer for GameOverScreen<'_> {
         draw_panel(canvas, meshes, panel);
 
         let title_center = Vec2::new(view_rect.w / 2.0, top + GAME_OVER_TITLE_ROW / 2.0 + 4.0);
-        draw_dropping_title(ctx, canvas, game_over, "Game Over!", title_center)?;
+        draw_dropping_title(canvas, game_over, "Game Over!", title_center)?;
 
         // final score and level count up
         let count = 1.0 - (1.0 - game_over.count()).powi(3);
@@ -63,7 +62,7 @@ impl Layer for GameOverScreen<'_> {
         for (i, (label, value)) in stats.into_iter().enumerate() {
             let center_y = top + GAME_OVER_TITLE_ROW + (i as f32 + 0.5) * GAME_OVER_STAT_ROW;
             let label = ui_text(label, GAME_OVER_STAT_SIZE);
-            let label_h = label.measure_ui(ctx)?.y;
+            let label_h = label.measure_ui().y;
             draw_shadowed(
                 canvas,
                 &label,
@@ -71,7 +70,7 @@ impl Layer for GameOverScreen<'_> {
                 LABEL_COLOR,
             );
             let value = ui_text(&value.to_string(), GAME_OVER_STAT_SIZE);
-            let dims = value.measure_ui(ctx)?;
+            let dims = value.measure_ui();
             let counting = game_over.count() > 0.0 && game_over.count() < 1.0;
             let color = if counting { ACCENT_COLOR } else { Color::WHITE };
             draw_shadowed(
@@ -86,7 +85,7 @@ impl Layer for GameOverScreen<'_> {
             let blink = 0.65 + 0.35 * (time * 4.0).sin();
             let hint = ui_text("Press any key", SMALL_TEXT_SIZE);
             let center = Vec2::new(view_rect.w / 2.0, view_rect.h - 32.0);
-            draw_text_centered(ctx, canvas, &hint, center, with_alpha(LABEL_COLOR, blink))?;
+            draw_text_centered(canvas, &hint, center, with_alpha(LABEL_COLOR, blink))?;
         }
         Ok(())
     }
@@ -94,14 +93,13 @@ impl Layer for GameOverScreen<'_> {
 
 /// piece colored letters that drop in one by one and bounce, then wave
 pub(super) fn draw_dropping_title(
-    ctx: &Context,
     canvas: &mut Painter,
     game_over: &GameOver,
     title: &str,
     center: Vec2,
 ) -> GameResult {
     let size = GAME_OVER_TITLE_SIZE;
-    let dims = ui_text(title, size).measure_ui(ctx)?;
+    let dims = ui_text(title, size).measure_ui();
     let origin = center - Vec2::new(dims.x / 2.0, dims.y / 2.0);
     let colors: Vec<Color> = RustominoType::iter().map(|t| t.color()).collect();
     let shadow_offset = Vec2::splat(size / 16.0);
@@ -112,7 +110,7 @@ pub(super) fn draw_dropping_title(
         if drop <= 0.0 || letter == ' ' {
             continue;
         }
-        let x = ui_text(&title[..start], size).measure_ui(ctx)?.x;
+        let x = ui_text(&title[..start], size).measure_ui().x;
         let wave = (time * 4.0 - i as f32 * 0.6).sin() * LETTER_WAVE * drop;
         let y = -(1.0 - ease_out_bounce(drop)) * LETTER_DROP + wave;
         let pos = origin + Vec2::new(x, y);
@@ -124,7 +122,7 @@ pub(super) fn draw_dropping_title(
         draw(
             canvas,
             &text,
-            param.dest(pos).color(premultiply(with_alpha(color, alpha))),
+            param.dest(pos).color(with_alpha(color, alpha)),
         );
     }
     Ok(())

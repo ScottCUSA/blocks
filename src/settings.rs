@@ -28,7 +28,7 @@ impl Default for WindowState {
 }
 
 /// options and window state saved between runs
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, bevy::prelude::Resource)]
 #[serde(default)]
 pub struct Settings {
     pub mode: String,
@@ -51,8 +51,8 @@ impl Default for Settings {
             background: String::new(),
             blocks: String::new(),
             board: String::new(),
-            music_level: crate::game::DEFAULT_VOLUME_LEVEL,
-            sound_level: crate::game::DEFAULT_VOLUME_LEVEL,
+            music_level: crate::audio::DEFAULT_VOLUME_LEVEL,
+            sound_level: crate::audio::DEFAULT_VOLUME_LEVEL,
             play_unfocused: false,
             initials: String::new(),
             window: WindowState::default(),

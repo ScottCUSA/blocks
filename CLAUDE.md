@@ -1,4 +1,4 @@
 # CLAUDE.md
 
 - Do not commit unless explicitly asked to commit.
-- Don't use screenshots (`--screenshot`) to compare rendering before and after a change, rendering can be non-deterministic.
+- Screenshots (`--screenshot`) are fine for comparing rendering by eye, but don't diff them byte for byte, rendering can be non-deterministic.

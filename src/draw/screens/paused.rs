@@ -1,4 +1,4 @@
-use ggez::GameResult;
+use crate::GameResult;
 
 use crate::menus::{self, Menu};
 
@@ -13,7 +13,7 @@ pub struct PausedScreen<'a> {
 impl Layer for PausedScreen<'_> {
     fn draw(&self, canvas: &mut Painter, frame: &Frame) -> GameResult {
         let Self { menu } = *self;
-        let ctx = frame.ctx;
+        let time = frame.time;
         let meshes = frame.meshes;
         let view_settings = frame.view;
         let style = frame.block;
@@ -27,11 +27,17 @@ impl Layer for PausedScreen<'_> {
             MENU_ROW_HEIGHT,
         );
         let title_y = panel.y - PAUSED_TITLE_SIZE * 0.75;
-        draw_title(ctx, canvas, "Paused", title_y, PAUSED_TITLE_SIZE, view_rect)?;
+        draw_title(
+            time,
+            canvas,
+            "Paused",
+            title_y,
+            PAUSED_TITLE_SIZE,
+            view_rect,
+        )?;
         draw_panel(canvas, meshes, panel);
-        draw_menu_list(ctx, canvas, meshes, menu, panel, style)?;
+        draw_menu_list(time, canvas, meshes, menu, panel, style)?;
         draw_hint(
-            ctx,
             canvas,
             "Up/Down: select   Enter: choose   Esc: resume",
             view_rect,
