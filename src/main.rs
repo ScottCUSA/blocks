@@ -48,6 +48,23 @@ fn main() {
         std::process::exit(2);
     });
 
+    // --bench [filter] [seconds per case] times the viewer's scenes and exits
+    let bench = args.iter().position(|a| a == "--bench").map(|i| {
+        let mut bench = game::bench::StartBench {
+            hold: game::bench::DEFAULT_HOLD,
+            filter: None,
+            exit: true,
+            vsync: false,
+        };
+        for arg in args[i + 1..].iter().take_while(|a| !a.starts_with("--")) {
+            match arg.parse() {
+                Ok(hold) => bench.hold = hold,
+                Err(_) => bench.filter = Some(arg.clone()),
+            }
+        }
+        bench
+    });
+
     let settings = if screenshot.is_none() {
         settings::Settings::load()
     } else {
@@ -56,7 +73,12 @@ fn main() {
 
     // setup game context
     let mut builder = ContextBuilder::new("Blocks", "Scott Cummings")
-        .window_setup(conf::WindowSetup::default().title("Blocks"))
+        .window_setup(
+            conf::WindowSetup::default()
+                .title("Blocks")
+                // a benchmark runs uncapped
+                .vsync(bench.is_none()),
+        )
         .window_mode(game::window_mode(screenshot.is_some(), &settings.window))
         .add_resource_path(resource_dir);
     if let Some(dir) = bundle_resource_dir() {
@@ -69,7 +91,7 @@ fn main() {
     }
 
     // setup game state
-    let game = game::BlocksState::new(&mut ctx, screenshot, settings)
+    let game = game::BlocksState::new(&mut ctx, screenshot, bench, settings)
         .expect("unable to initialize gamestate");
 
     // run game

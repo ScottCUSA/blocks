@@ -14,6 +14,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod attract;
+pub mod bench;
 mod debug;
 mod music;
 mod screenshot;
@@ -68,6 +70,7 @@ const MUSIC_THEMES: [(&str, &str); 6] = [
     ("Storms", "/music_storms.ogg"),
     ("Shanty", "/music_shanty.ogg"),
 ];
+const TITLE_THEME: usize = 0; // Dance, outside of games
 const VOLUME_LEVELS: u8 = 10; // steps on the options volume sliders
 pub const DEFAULT_VOLUME_LEVEL: u8 = 5;
 const MUSIC_VOL_MAX: f32 = 0.2;
@@ -157,7 +160,8 @@ impl Sfx {
 
 pub struct Assets {
     music: Vec<music::Track>,
-    theme: usize,
+    theme: usize, // chosen for games
+    track: usize, // playing
     music_speed: f32,
     game_over: audio::Source,
     sfx: HashMap<Sfx, sfx::Effect>,
@@ -187,6 +191,7 @@ impl Assets {
         Ok(Assets {
             music,
             theme: 0,
+            track: TITLE_THEME,
             music_speed: 1.0,
             game_over,
             sfx,
@@ -202,12 +207,18 @@ impl Assets {
     }
 
     fn music(&self) -> &music::Track {
-        &self.music[self.theme]
+        &self.music[self.track]
     }
 
-    fn set_theme(&mut self, theme: usize, play: bool) {
+    /// switch to the chosen theme in games, the title theme elsewhere
+    fn select_track(&mut self, game: bool, play: bool) {
+        let track = if game { self.theme } else { TITLE_THEME };
+        if track == self.track {
+            return;
+        }
         self.music().stop();
-        self.theme = theme;
+        self.track = track;
+        self.music_speed = 1.0;
         self.apply_music_speed();
         if play {
             self.music().play();
@@ -324,6 +335,9 @@ pub struct BlocksState {
     scores_from_game: bool,
     screenshot: Option<Screenshot>,
     debug: debug::DebugView,
+    attract: attract::Attract,
+    bench: Option<bench::Bench>,
+    vsync: bool, // the window's, set at startup
 }
 
 /// resizable window, sized in logical pixels so high dpi screens get a larger window
@@ -373,6 +387,7 @@ impl BlocksState {
     pub fn new(
         ctx: &mut Context,
         screenshot: Option<Screenshot>,
+        bench: Option<bench::StartBench>,
         settings: Settings,
     ) -> GameResult<Self> {
         log::info!("Loading game resources");
@@ -437,13 +452,23 @@ impl BlocksState {
             scores_from_game: false,
             screenshot,
             debug: debug::DebugView::new(),
+            attract: attract::Attract::new(),
+            bench: None,
+            vsync: bench.as_ref().is_none_or(|b| b.vsync),
         };
         s.apply_settings();
+        // screenshots are of game scenes
+        if s.screenshot.is_none() {
+            s.background.start_calm();
+        }
         if s.screenshot.is_none() {
             s.assets.music().play();
         }
         if let Some(scene) = s.screenshot.as_ref().map(|screenshot| screenshot.scene) {
             s.setup_scene(scene);
+        }
+        if let Some(bench) = bench {
+            s.start_bench(bench);
         }
 
         Ok(s)
@@ -586,24 +611,30 @@ impl BlocksState {
         }
     }
 
-    fn translate(&mut self, direction: TranslationDirection) {
+    /// false if blocked
+    fn translate(&mut self, direction: TranslationDirection) -> bool {
         log::debug!("translate called, direction: {:?}", direction);
-        if self.playfield.translate_active(direction) {
+        let moved = self.playfield.translate_active(direction);
+        if moved {
             self.assets.play(Sfx::Move);
             self.increment_lockdown_resets();
         }
         log::trace!("playfield:\n{}", self.playfield);
+        moved
     }
 
-    fn rotate(&mut self, rotation: Rotation) {
+    /// false if blocked
+    fn rotate(&mut self, rotation: Rotation) -> bool {
         log::debug!("rotate called, direction: {:?}", rotation);
-        if self.playfield.rotate_active(rotation) {
+        let rotated = self.playfield.rotate_active(rotation);
+        if rotated {
             self.assets.play(Sfx::Rotate);
             // wall kicks can move the rustomino down
             self.update_lowest_row();
             self.increment_lockdown_resets();
         }
         log::trace!("playfield:\n{}", self.playfield);
+        rotated
     }
 
     // performs a soft drop
@@ -696,6 +727,10 @@ impl BlocksState {
 
     fn game_over(&mut self) {
         log::info!("Game Over! Score: {}", self.score);
+        // the viewer's demo ends on the next blocked spawn
+        if self.state == GameState::Debug {
+            return;
+        }
         self.controls.clear_inputs();
         self.effects.game_over();
         self.background.freeze(self.level);
@@ -766,12 +801,24 @@ impl BlocksState {
         self.hold_used = false;
     }
 
+    /// the chosen theme in games through name entry, the demo and the audio options
+    fn game_music(&self) -> bool {
+        match self.state {
+            GameState::Playing | GameState::Paused | GameState::GameOver | GameState::NameEntry => {
+                true
+            }
+            GameState::Options => self.options_in_game() || self.audio_open,
+            GameState::Debug => self.debug.in_game(),
+            _ => false,
+        }
+    }
+
     /// faster music in game, normal elsewhere
     fn music_speed(&self) -> f32 {
         let in_game = match self.state {
             GameState::Playing | GameState::Paused => true,
             GameState::Options => self.options_in_game(),
-            GameState::Debug => self.debug.view == GameState::Playing,
+            GameState::Debug => self.debug.in_game(),
             _ => false,
         };
         if in_game {
@@ -881,16 +928,16 @@ impl BlocksState {
         }
     }
     fn translate_left(&mut self) {
-        self.translate(TranslationDirection::Left);
+        _ = self.translate(TranslationDirection::Left);
     }
     fn translate_right(&mut self) {
-        self.translate(TranslationDirection::Right);
+        _ = self.translate(TranslationDirection::Right);
     }
     fn rotate_cw(&mut self) {
-        self.rotate(Rotation::Cw);
+        _ = self.rotate(Rotation::Cw);
     }
     fn rotate_ccw(&mut self) {
-        self.rotate(Rotation::Ccw);
+        _ = self.rotate(Rotation::Ccw);
     }
     // returns a closure which handles the provided
     // control for the game
@@ -1056,6 +1103,9 @@ impl BlocksState {
             GameState::Quit => {}
         }
 
+        if self.attract.demo() && matches!(self.state, GameState::Playing | GameState::GameOver) {
+            draw::DemoScreen.draw(canvas, &frame)?;
+        }
         if self.state == GameState::Debug && !self.debug.hidden {
             let names = debug::Animation::ALL.map(debug::Animation::name);
             draw::DebugScreen {
@@ -1068,6 +1118,7 @@ impl BlocksState {
                 fps: self.debug.fps(),
                 stats: self.debug.stats.shown,
                 recording: self.debug.recording.is_some(),
+                stats_only: self.debug.stats_only,
             }
             .draw(canvas, &frame)?;
         }
@@ -1075,6 +1126,15 @@ impl BlocksState {
         // batched draws still queued
         painter.end();
         Ok(())
+    }
+
+    /// main menu and the screens opened from it, the background is calm behind them
+    fn title_screen(&self) -> bool {
+        match self.shown_state() {
+            GameState::Menu | GameState::HighScores => true,
+            GameState::Options => !self.options_in_game(),
+            _ => false,
+        }
     }
 
     /// the screen being drawn, the viewer shows the screen of its animation
@@ -1124,8 +1184,8 @@ impl BlocksState {
                 menus::AUDIO_THEME => {
                     let count = MUSIC_THEMES.len() as isize;
                     let theme = (self.assets.theme as isize + delta as isize).rem_euclid(count);
-                    self.assets
-                        .set_theme(theme as usize, self.screenshot.is_none());
+                    self.assets.theme = theme as usize;
+                    self.assets.select_track(true, self.screenshot.is_none());
                     return;
                 }
                 menus::AUDIO_MUSIC => {
@@ -1208,7 +1268,7 @@ impl BlocksState {
             .iter()
             .position(|(name, _)| *name == settings.theme)
         {
-            self.assets.set_theme(theme, false);
+            self.assets.theme = theme;
         }
         if let Some(background) = style::from_name(
             &BackgroundStyle::ALL,
@@ -1293,12 +1353,17 @@ impl EventHandler for BlocksState {
     fn update(&mut self, ctx: &mut ggez::Context) -> GameResult {
         // cap the loop at the tick rate, 15fps in the background
         // paced here, not in draw: no frame is drawn while the window is occluded
-        let frame = if self.focused {
+        let frame = if self.focused || self.bench.is_some() {
             Duration::from_secs_f64(1.0 / self.debug.fps() as f64)
         } else {
             UNFOCUSED_FRAME
         };
-        if let Some(wait) = (self.last_frame + frame).checked_duration_since(Instant::now()) {
+        // a benchmark draws uncapped, focused or not
+        let uncapped = self.bench.is_some();
+        if let Some(wait) = (self.last_frame + frame)
+            .checked_duration_since(Instant::now())
+            .filter(|_| !uncapped)
+        {
             std::thread::sleep(wait);
         }
         self.last_frame = Instant::now();
@@ -1309,15 +1374,23 @@ impl EventHandler for BlocksState {
             return Ok(());
         }
 
+        let play = self.focused || self.play_unfocused;
+        self.assets.select_track(self.game_music(), play);
         // loop the music, rodio 0.22 repeat is silent for vorbis
-        if (self.focused || self.play_unfocused) && self.assets.music().stopped() {
+        if play && self.assets.music().stopped() {
             self.assets.music().play();
         }
 
         // fixed rate ticks, drawn at the display rate
-        let tick_rate = self.debug.fps();
+        let tick_rate = if self.bench.is_some() {
+            debug::GAME_FPS
+        } else {
+            self.debug.fps()
+        };
         while ctx.time.check_update_time(tick_rate) {
             let delta_time = 1.0 / (tick_rate as f64);
+            self.attract_update(delta_time);
+            self.background.set_calm(self.title_screen());
             // handle the game states
             match self.state {
                 GameState::Playing => {
@@ -1395,6 +1468,7 @@ impl EventHandler for BlocksState {
             let delta = ctx.time.delta();
             self.record_frame(sample, delta);
             self.debug.stats.record(sample, delta);
+            self.bench_step(delta);
         }
 
         if self.capture_screenshot(ctx)? {
@@ -1412,6 +1486,10 @@ impl EventHandler for BlocksState {
         input: KeyInput,
         repeated: bool,
     ) -> GameResult {
+        // any key leaves the demo
+        if self.attract_key() {
+            return Ok(());
+        }
         let keycode = controls::keycode(&input);
         match self.state {
             GameState::Playing => {
@@ -1567,6 +1645,8 @@ impl EventHandler for BlocksState {
     }
 
     fn quit_event(&mut self, ctx: &mut Context) -> Result<bool, ggez::GameError> {
+        // closing the window still prints and saves a benchmark
+        self.finish_bench(false);
         if self.screenshot.is_none() {
             self.store_window_state(ctx);
             self.save_settings();
@@ -1591,7 +1671,8 @@ impl EventHandler for BlocksState {
             if !self.play_unfocused {
                 self.assets.suspend();
             }
-            if self.state == GameState::Playing {
+            // the demo plays on
+            if self.state == GameState::Playing && !self.attract.demo() {
                 self.pause();
             }
         }

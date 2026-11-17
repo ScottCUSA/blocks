@@ -22,8 +22,8 @@ pub use background::{clear_color, draw_background, storm_strike_time, StrikeKind
 pub use batch::{take_draw_count, Batch, Painter};
 pub use board::GameLayer;
 pub use screens::{
-    DebugScreen, FrameStats, GameOverScreen, HighScoresScreen, MenuScreen, NameEntryScreen,
-    OptionRow, OptionsScreen, PausedScreen,
+    DebugScreen, DemoScreen, FrameStats, GameOverScreen, HighScoresScreen, MenuScreen,
+    NameEntryScreen, OptionRow, OptionsScreen, PausedScreen,
 };
 pub use text::set_pixel_scale;
 pub use widgets::Overlay;

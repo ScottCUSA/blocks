@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use ggez::input::keyboard::KeyCode;
 
-use super::{gravity_delay, BlocksState, GameState, Sfx, LINES_PER_LEVEL};
+use super::{attract, gravity_delay, BlocksState, GameState, Sfx, LINES_PER_LEVEL};
 use crate::{
     background::{BackgroundStyle, FREEZE_TIME, LEVEL_UP_TIME, THAW_TIME},
     controls::Control,
@@ -14,14 +14,15 @@ use crate::{
     effects::Effects,
     level_progress::LevelProgress,
     playfield::{Playfield, TranslationDirection, PLAYFIELD_SLOTS},
-    rustomino::{Rotation, Rustomino, RustominoType},
+    rustomino::{Rotation, Rustomino, RustominoBag, RustominoType},
     score_display::ScoreDisplay,
     scores::{Initials, ScoreBoard},
     style::{self, BlockStyle, Style},
 };
 
 const SPEEDS: [f64; 4] = [1.0, 0.5, 0.25, 0.1];
-const FPS: [u32; 5] = [240, 144, 120, 60, 30]; // first is the game default
+const FPS: [u32; 5] = [GAME_FPS, 144, 120, 60, 30]; // first is the game default
+pub(super) const GAME_FPS: u32 = 240; // ticks during a benchmark
 const LOOP_GAP: f64 = 0.6; // seconds before replaying
 const MAX_LEVEL: usize = 255;
 const LEVEL_STEP: usize = 10; // with shift
@@ -63,10 +64,11 @@ pub enum Animation {
     NewHighScore,
     HighScores,
     Background,
+    Demo,
 }
 
 impl Animation {
-    pub const ALL: [Animation; 13] = [
+    pub const ALL: [Animation; 14] = [
         Animation::Gravity,
         Animation::SoftDrop,
         Animation::HardDrop,
@@ -80,6 +82,7 @@ impl Animation {
         Animation::NewHighScore,
         Animation::HighScores,
         Animation::Background,
+        Animation::Demo,
     ];
 
     pub fn name(self) -> &'static str {
@@ -97,6 +100,7 @@ impl Animation {
             Animation::NewHighScore => "New High Score",
             Animation::HighScores => "High Scores",
             Animation::Background => "Background",
+            Animation::Demo => "Demo",
         }
     }
 
@@ -113,6 +117,7 @@ impl Animation {
             Animation::HighScores => 2.0,
             // calm, a surge per clear size, level up, game over freeze, thaw
             Animation::Background => background_cue(SURGES + 3) + THAW_TIME as f64 + THAW_GAP,
+            Animation::Demo => attract::DEMO_TIME,
         }
     }
 
@@ -131,14 +136,17 @@ pub struct DebugView {
     speed: usize,
     fps: usize, // kept after closing, for the session
     pub paused: bool,
-    pub replay: bool,    // loop with sound, or play once
-    pub hidden: bool,    // hud off
-    pub level: usize,    // board level, sets music speed
-    pub view: GameState, // screen drawn under the viewer
+    pub replay: bool,     // loop with sound, or play once
+    pub hidden: bool,     // hud off
+    pub stats_only: bool, // just the fps panel, for a benchmark
+    pub level: usize,     // board level, sets music speed
+    pub view: GameState,  // screen drawn under the viewer
     time: f64,
     landed: Option<f64>, // when the falling piece locked
     step: f64,           // soft drop repeat
     surges: usize,       // background cues fired
+    pub plays: usize,    // finished plays, a benchmark moves on after each
+    ended: bool,         // this play is finished
     saved: Option<(ScoreBoard, Style, BackgroundStyle)>, // restored on close
     pub stats: FrameStats,
     pub recording: Option<Recording>, // frame samples going to a csv
@@ -178,6 +186,8 @@ impl FrameStats {
         }
         let ms = |total: Duration| total.as_secs_f32() * 1000.0 / self.frames as f32;
         self.shown = Some(draw::FrameStats {
+            fps: self.frames as f32 / self.elapsed.as_secs_f32(),
+            frame_ms: ms(self.elapsed),
             draws: self.draws / self.frames as usize,
             scene_ms: ms(self.scene),
             encode_ms: ms(self.encode),
@@ -191,14 +201,16 @@ impl FrameStats {
 }
 
 // bump when the columns change, so old recordings aren't compared wrongly
-const RECORDING_VERSION: u32 = 1;
+const RECORDING_VERSION: u32 = 2;
 const RECORDING_COLUMNS: &str = "frame,time_ms,frame_ms,animation,background,block,board,level,fps_cap,draws,scene_ms,encode_ms,gpu_wait_ms";
 
 /// what a recording was made on, written at the top so runs can be compared
 pub struct RunInfo {
     pub drawable: (f32, f32), // physical pixels
     pub scale: f32,           // physical pixels per view unit
-    pub fps_cap: u32,
+    pub fps_cap: u32,         // 0 uncapped
+    pub vsync: bool,
+    pub kind: &'static str, // frames from C, or bench
 }
 
 /// where a frame was drawn, so rows of the same scene line up across runs
@@ -212,10 +224,10 @@ pub struct Scene {
 }
 
 /// a recorded frame, formatted only when the recording is saved
-struct RecordedFrame {
+pub(super) struct RecordedFrame {
     scene: Scene,
-    sample: FrameSample,
-    delta: Duration,
+    pub sample: FrameSample,
+    pub delta: Duration,
 }
 
 /// frame samples kept in memory, written to a csv when the recording stops
@@ -233,7 +245,7 @@ impl Recording {
             .unwrap_or_default()
             .as_secs();
         // a minute at the cap up front, so growing rarely copies mid recording
-        let frames = Vec::with_capacity(run.fps_cap as usize * 60);
+        let frames = Vec::with_capacity(run.fps_cap.max(240) as usize * 60);
         Self {
             run,
             started,
@@ -249,9 +261,17 @@ impl Recording {
         });
     }
 
+    pub(super) fn len(&self) -> usize {
+        self.frames.len()
+    }
+
+    pub(super) fn frames(&self) -> &[RecordedFrame] {
+        &self.frames
+    }
+
     /// write the csv, returns where
     pub fn finish(self) -> std::io::Result<PathBuf> {
-        let file = format!("frame-stats/frames-{}.csv", self.started);
+        let file = format!("frame-stats/{}-{}.csv", self.run.kind, self.started);
         let path = crate::settings::data_path(&file)
             .ok_or_else(|| std::io::Error::other("no data directory"))?;
         if let Some(dir) = path.parent() {
@@ -279,7 +299,8 @@ impl Recording {
             "# drawable={}x{} scale={}",
             run.drawable.0, run.drawable.1, run.scale
         )?;
-        writeln!(out, "# fps_cap={}", run.fps_cap)?;
+        writeln!(out, "# fps_cap={} vsync={}", run.fps_cap, run.vsync)?;
+        writeln!(out, "# kind={}", run.kind)?;
         writeln!(out, "{RECORDING_COLUMNS}")?;
         let ms = |d: Duration| d.as_secs_f64() * 1000.0;
         let mut time = Duration::ZERO;
@@ -310,6 +331,11 @@ impl Recording {
 }
 
 impl DebugView {
+    /// game music and speed, the background alone included
+    pub(super) fn in_game(&self) -> bool {
+        matches!(self.view, GameState::Playing | GameState::Debug)
+    }
+
     pub fn new() -> Self {
         Self {
             selected: 0,
@@ -318,12 +344,15 @@ impl DebugView {
             paused: false,
             replay: true,
             hidden: false,
+            stats_only: false,
             level: 4,
             view: GameState::Playing,
             time: 0.0,
             landed: None,
             step: 0.0,
             surges: 0,
+            plays: 0,
+            ended: false,
             saved: None,
             stats: FrameStats::default(),
             recording: None,
@@ -336,6 +365,14 @@ impl DebugView {
 
     pub fn speed(&self) -> f64 {
         SPEEDS[self.speed]
+    }
+
+    pub(super) fn speed_index(&self) -> usize {
+        self.speed
+    }
+
+    pub(super) fn set_speed_index(&mut self, speed: usize) {
+        self.speed = speed.min(SPEEDS.len() - 1);
     }
 
     /// game ticks and drawn frames per second
@@ -362,7 +399,7 @@ impl BlocksState {
         }
     }
 
-    fn stop_recording(&mut self, recording: Recording) {
+    pub(super) fn stop_recording(&mut self, recording: Recording) {
         match recording.finish() {
             Ok(path) => println!("frame stats saved to {}", path.display()),
             Err(e) => log::error!("could not save the frame stats recording: {e}"),
@@ -377,7 +414,11 @@ impl BlocksState {
             block: self.style.block.name(),
             board: self.style.board.name(),
             level: self.debug.level,
-            fps_cap: self.debug.fps(),
+            fps_cap: if self.bench.is_some() {
+                0
+            } else {
+                self.debug.fps()
+            },
         };
         if let Some(recording) = self.debug.recording.as_mut() {
             recording.record(scene, sample, delta);
@@ -385,6 +426,8 @@ impl BlocksState {
     }
 
     fn close_debug(&mut self) {
+        // Esc ends a benchmark early
+        self.finish_bench(false);
         if let Some(recording) = self.debug.recording.take() {
             self.stop_recording(recording);
         }
@@ -407,6 +450,7 @@ impl BlocksState {
         self.debug.landed = None;
         self.debug.step = 0.0;
         self.debug.surges = 0;
+        self.debug.ended = false;
         self.playfield = Playfield::new();
         self.effects = Effects::new();
         self.scores = ScoreBoard::default();
@@ -476,6 +520,17 @@ impl BlocksState {
             }
             // background alone
             Animation::Background => self.debug.view = GameState::Debug,
+            Animation::Demo => {
+                self.playfield = Playfield::new();
+                self.next_rustomino = None;
+                self.held_rustomino = None;
+                self.rustomino_bag = RustominoBag::new();
+                self.score = 0;
+                self.score_display = ScoreDisplay::new(0);
+                self.level_progress = LevelProgress::new(LINES_PER_LEVEL, 0);
+                self.total_lines_cleared = (self.level - 1) * LINES_PER_LEVEL;
+                self.attract.reset(attract::Phase::Off);
+            }
         }
     }
 
@@ -519,8 +574,7 @@ impl BlocksState {
     }
 
     pub(super) fn debug_update(&mut self, delta_time: f64) {
-        // replays restart audio, hold while unfocused
-        if self.debug.paused || !self.focused {
+        if self.debug.paused {
             return;
         }
         let dt = delta_time * self.debug.speed();
@@ -548,6 +602,19 @@ impl BlocksState {
             }
         }
         let mut length = self.debug.animation().length();
+        // the computer plays until the time is up, or it tops out
+        if self.debug.animation() == Animation::Demo && !self.playfield.is_clearing_lines() {
+            if self.playfield.ready_for_next() {
+                let piece = self.get_next_rustomino();
+                if !self.spawn(piece) {
+                    self.debug.time = self.debug.time.max(length);
+                }
+            }
+            if self.playfield.active_rustomino.is_some() {
+                self.computer(dt);
+                self.playing_update(dt);
+            }
+        }
         if self.debug.animation().falls() {
             if self.playfield.active_rustomino.is_some() {
                 if self.debug.animation() == Animation::SoftDrop {
@@ -559,8 +626,12 @@ impl BlocksState {
             }
             length = self.debug.landed.map_or(length, |t| t + LANDED_GAP);
         }
-        if self.debug.replay && self.debug.time >= length + LOOP_GAP {
-            self.start_animation();
+        if !self.debug.ended && self.debug.time >= length + LOOP_GAP {
+            self.debug.ended = true;
+            self.debug.plays += 1;
+            if self.debug.replay {
+                self.start_animation();
+            }
         }
     }
 
@@ -607,12 +678,14 @@ impl BlocksState {
             KeyCode::KeyP if !repeated => self.debug.paused = !self.debug.paused,
             KeyCode::KeyR if !repeated => self.debug.replay = !self.debug.replay,
             KeyCode::KeyH if !repeated => self.debug.hidden = !self.debug.hidden,
-            KeyCode::KeyC if !repeated => {
+            KeyCode::KeyC if !repeated && self.bench.is_none() => {
                 let view = &self.view_settings;
                 let run = RunInfo {
                     drawable: (view.view_rect.w * view.scale, view.view_rect.h * view.scale),
                     scale: view.scale,
                     fps_cap: self.debug.fps(),
+                    vsync: self.vsync,
+                    kind: "frames",
                 };
                 self.toggle_recording(run);
             }
@@ -623,6 +696,14 @@ impl BlocksState {
                 } else {
                     (self.debug.fps + 1) % count
                 };
+            }
+            KeyCode::KeyT if !repeated && self.bench.is_none() => {
+                self.start_bench(super::bench::StartBench {
+                    hold: super::bench::DEFAULT_HOLD,
+                    filter: None,
+                    exit: false,
+                    vsync: self.vsync,
+                });
             }
             KeyCode::KeyB => self.background.cycle(1),
             KeyCode::KeyS => self.style.block = style::cycle(&BlockStyle::ALL, self.style.block, 1),
