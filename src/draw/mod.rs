@@ -24,7 +24,8 @@ pub use batch::{take_draw_count, Batch, Painter};
 pub use board::GameLayer;
 pub use screens::{
     DebugScreen, DemoScreen, FrameStats, GameOverScreen, HighScoresScreen, Hover, MenuHit,
-    MenuScreen, NameEntryScreen, OptionRow, OptionsScreen, PausedScreen, RowPart,
+    MenuScreen, NameEntryScreen, OptionRow, OptionsScreen, PausedScreen, QuitAnswer, QuitScreen,
+    RowPart,
 };
 pub use text::set_pixel_scale;
 pub use widgets::Overlay;

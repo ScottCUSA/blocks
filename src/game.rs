@@ -289,8 +289,10 @@ pub struct BlocksState {
     paused_state: menus::MenuList,
     options_state: menus::MenuList,
     audio_state: menus::MenuList,
-    audio_open: bool,     // the audio page of the options
-    play_unfocused: bool, // music keeps playing when the window loses focus
+    audio_open: bool,              // the audio page of the options
+    confirm_quit: bool,            // asking before quitting from the menu
+    quit_choice: draw::QuitAnswer, // the prompt's selected answer
+    play_unfocused: bool,          // music keeps playing when the window loses focus
     view_settings: draw::ViewSettings,
     meshes: draw::Meshes,
     batch: RefCell<draw::Batch>, // draw_scene borrows the rest of the state
@@ -388,6 +390,8 @@ impl BlocksState {
             options_state: menus::MenuList::options(),
             audio_state: menus::MenuList::audio(),
             audio_open: false,
+            confirm_quit: false,
+            quit_choice: draw::QuitAnswer::No,
             play_unfocused: false,
             view_settings: draw::ViewSettings::new(width, height),
             meshes: draw::Meshes::new(ctx)?,
@@ -869,13 +873,19 @@ impl BlocksState {
 
     /// main and pause menu keys
     fn menu_key(&mut self, keycode: KeyCode) {
+        if self.confirm_quit {
+            return self.quit_key(keycode);
+        }
         let paused = self.state == GameState::Paused;
         match keycode {
             KeyCode::ArrowUp => self.menu_mut().previous(),
             KeyCode::ArrowDown => self.menu_mut().next(),
             KeyCode::Enter | KeyCode::NumpadEnter => return self.menu_select(),
             KeyCode::Escape if paused => return self.menu_back(),
-            KeyCode::Escape => return self.set_state(GameState::Quit),
+            KeyCode::Escape => {
+                self.assets.play(Sfx::MenuSelect);
+                return self.ask_quit();
+            }
             KeyCode::F12 if !paused => return self.open_debug(),
             _ => return,
         }
@@ -902,8 +912,47 @@ impl BlocksState {
                 self.scores_from_game = false;
                 self.set_state(GameState::HighScores);
             }
-            _ => self.set_state(GameState::Quit),
+            _ => self.ask_quit(),
         }
+    }
+
+    /// open the quit prompt on no
+    fn ask_quit(&mut self) {
+        self.quit_choice = draw::QuitAnswer::No;
+        self.confirm_quit = true;
+    }
+
+    /// quit prompt keys, Y and N answer at once
+    fn quit_key(&mut self, keycode: KeyCode) {
+        use draw::QuitAnswer::{No, Yes};
+        let choice = match keycode {
+            KeyCode::KeyY => return self.set_state(GameState::Quit),
+            KeyCode::KeyN | KeyCode::Escape => return self.cancel_quit(),
+            KeyCode::Enter | KeyCode::NumpadEnter => return self.answer_quit(self.quit_choice),
+            KeyCode::ArrowLeft => Yes,
+            KeyCode::ArrowRight => No,
+            KeyCode::ArrowUp | KeyCode::ArrowDown => match self.quit_choice {
+                Yes => No,
+                No => Yes,
+            },
+            _ => return,
+        };
+        if choice != self.quit_choice {
+            self.quit_choice = choice;
+            self.assets.play(Sfx::MenuMove);
+        }
+    }
+
+    fn answer_quit(&mut self, answer: draw::QuitAnswer) {
+        match answer {
+            draw::QuitAnswer::Yes => self.set_state(GameState::Quit),
+            draw::QuitAnswer::No => self.cancel_quit(),
+        }
+    }
+
+    fn cancel_quit(&mut self) {
+        self.confirm_quit = false;
+        self.assets.play(Sfx::MenuSelect);
     }
 
     fn handle_playing_inputs(&mut self, delta_time: f64) {
@@ -994,6 +1043,12 @@ impl BlocksState {
             GameState::Playing | GameState::Debug | GameState::Quit => {}
         }
 
+        if self.confirm_quit {
+            draw::QuitScreen {
+                selected: self.quit_selected(),
+            }
+            .draw(canvas)?;
+        }
         if self.attract.demo() && matches!(self.state, GameState::Playing | GameState::GameOver) {
             draw::DemoScreen.draw(canvas)?;
         }
@@ -1141,6 +1196,9 @@ impl BlocksState {
 
     /// the menu taking input
     fn open_menu(&mut self) -> Option<&mut menus::MenuList> {
+        if self.confirm_quit {
+            return None;
+        }
         match self.state {
             GameState::Menu | GameState::Paused => Some(self.menu_mut()),
             GameState::Options => Some(self.options_menu()),

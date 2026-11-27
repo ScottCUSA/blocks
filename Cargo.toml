@@ -8,17 +8,17 @@ build = "build.rs"
 
 [dependencies]
 strum = { version = "=0.28.0", features = ["derive"] }
-rand = "=0.10.3"
-rand_xoshiro = "=0.8.1"
+rand = "=0.10.4"
+rand_xoshiro = "=0.8.2"
 log = "=0.4.35"
-env_logger = { version = "=0.11.11", default-features = false }
+env_logger = { version = "=0.11.12", default-features = false }
 ggez = { version = "=0.10.0", default-features = false, features = ["audio"] }
 png = "=0.18.1"
 serde = { version = "=1.0.229", features = ["derive"] }
-toml = "=1.2.1"
+toml = "=1.2.2+spec-1.1.0"
 directories = "=6.0.0"
 # send the audio device drop message to tracing instead of stderr
-rodio = { version = "=0.22.2", default-features = false, features = ["tracing"] }
+rodio = { version = "=0.22.0", default-features = false, features = ["tracing"] }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "=0.1.12"

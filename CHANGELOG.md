@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Quit Game asks for confirmation (Y/N).
 - Benchmark: `--bench [filter] [seconds]`, or T in the animation viewer.
 - Frame stats in the animation viewer; C records them to a CSV.
 - Attract mode: after 30 s idle at the menu, the computer plays a demo game

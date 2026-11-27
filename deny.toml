@@ -7,13 +7,8 @@ targets = [
 ]
 
 [advisories]
-# all via ggez; revisit when ggez updates
+# via ggez; revisit when ggez updates
 ignore = [
-    # zip: extract() issues; ggez only reads entries from resources.zip, never extracts
-    { id = "RUSTSEC-2026-0367", reason = "extract() not used" },
-    { id = "RUSTSEC-2026-0368", reason = "extract() not used" },
-    { id = "RUSTSEC-2026-0369", reason = "extract() not used" },
-    { id = "RUSTSEC-2026-0429", reason = "extract() not used" },
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser unmaintained, no known vulnerability" },
 ]
 

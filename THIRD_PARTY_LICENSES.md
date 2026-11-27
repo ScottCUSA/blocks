@@ -2375,7 +2375,7 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
-- [rand_xoshiro 0.8.1](https://github.com/rust-random/rngs)
+- [rand_xoshiro 0.8.2](https://github.com/rust-random/rngs)
 
 ```
 Copyright (c) 2018 Developers of the Rand project
@@ -3416,11 +3416,11 @@ DEALINGS IN THE SOFTWARE.
 Used by:
 
 - [env_filter 2.0.0](https://github.com/rust-cli/env_logger)
-- [env_logger 0.11.11](https://github.com/rust-cli/env_logger)
+- [env_logger 0.11.12](https://github.com/rust-cli/env_logger)
 - [serde_spanned 1.1.3](https://github.com/toml-rs/toml)
-- [toml 1.2.1+spec-1.1.0](https://github.com/toml-rs/toml)
+- [toml 1.2.2+spec-1.1.0](https://github.com/toml-rs/toml)
 - [toml_datetime 1.1.3+spec-1.1.0](https://github.com/toml-rs/toml)
-- [toml_parser 1.1.5+spec-1.1.0](https://github.com/toml-rs/toml)
+- [toml_parser 1.1.6+spec-1.1.0](https://github.com/toml-rs/toml)
 - [toml_writer 1.2.0+spec-1.1.0](https://github.com/toml-rs/toml)
 
 ```
@@ -3450,7 +3450,7 @@ SOFTWARE.
 
 Used by:
 
-- [rodio 0.22.2](https://github.com/RustAudio/rodio)
+- [rodio 0.22.0](https://github.com/RustAudio/rodio)
 
 ```
 Copyright (c) The Rodio Project Contributors
@@ -3555,7 +3555,7 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
-- [rand 0.10.3](https://github.com/rust-random/rand)
+- [rand 0.10.4](https://github.com/rust-random/rand)
 
 ```
 Copyright 2018 Developers of the Rand project

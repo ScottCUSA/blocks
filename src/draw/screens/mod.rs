@@ -13,6 +13,7 @@ mod menu;
 mod name_entry;
 mod options;
 mod paused;
+mod quit;
 
 pub use debug::{DebugScreen, FrameStats};
 pub use demo::DemoScreen;
@@ -22,6 +23,7 @@ pub use menu::MenuScreen;
 pub use name_entry::NameEntryScreen;
 pub use options::{OptionRow, OptionsScreen};
 pub use paused::PausedScreen;
+pub use quit::{QuitAnswer, QuitScreen};
 
 pub(super) const TITLE_SIZE: f32 = 96.0;
 pub(super) const MENU_PANEL_WIDTH: f32 = 520.0;
