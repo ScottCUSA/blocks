@@ -76,7 +76,7 @@ pub(super) fn storm_strike(time: f32) -> Option<(usize, f32)> {
     Some((k, (fade * flicker).clamp(0.0, 1.0)))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, strum::VariantArray)]
 pub enum StrikeKind {
     Fork,    // one bolt from the clouds into the sea
     Double,  // two bolts at once, more common in a bigger storm
@@ -86,14 +86,6 @@ pub enum StrikeKind {
 }
 
 impl StrikeKind {
-    pub const ALL: [StrikeKind; 5] = [
-        StrikeKind::Fork,
-        StrikeKind::Double,
-        StrikeKind::Sheet,
-        StrikeKind::Crawl,
-        StrikeKind::Distant,
-    ];
-
     /// how brightly the sky flashes
     fn flash(self) -> f32 {
         match self {
@@ -141,23 +133,7 @@ pub(super) fn sea_wave(x: f32, layer: usize, time: f32) -> f32 {
         + 0.15 * (x * 0.061 + t * 2.1 - l).sin()
 }
 
-pub(super) struct Storm;
-
-impl Scenery for Storm {
-    const COLORS: (Color, Color) = STORM_COLORS;
-
-    fn draw(
-        &self,
-        canvas: &mut Painter,
-        meshes: &Meshes,
-        view_rect: &Rect,
-        background: &Background,
-    ) {
-        draw_storm(canvas, meshes, view_rect, background);
-    }
-}
-
-fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, background: &Background) {
+pub(super) fn draw_storm(canvas: &mut Painter, view_rect: &Rect, background: &Background) {
     let (x0, w, h) = (view_rect.x, view_rect.w, view_rect.h);
     // calm, the sea sinks out of view
     let calm = background.calm;
@@ -190,35 +166,21 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
                 * w;
         let y = view_rect.y + h * (0.02 + 0.22 * n(3.0));
         let radius = w * (0.12 + 0.1 * n(4.0));
-        draw_mesh(
+        draw_glow(
             canvas,
-            &meshes.glow,
-            graphics::DrawParam::default()
-                .dest(Vec2::new(x, y))
-                .scale(Vec2::new(radius, radius * (0.35 + 0.2 * n(5.0))))
-                .color(with_alpha(CLOUD_COLOR, 0.55 + 0.3 * n(6.0))),
+            Vec2::new(x, y),
+            Vec2::new(radius, radius * (0.35 + 0.2 * n(5.0))),
+            0.0,
+            with_alpha(CLOUD_COLOR, 0.55 + 0.3 * n(6.0)),
         );
     }
 
     // sky flash and the bolt
     if flash > 0.0 {
-        draw_rect(
-            canvas,
-            meshes,
-            *view_rect,
-            with_alpha(FLASH_COLOR, 0.12 * flash),
-        );
+        draw_rect(canvas, *view_rect, with_alpha(FLASH_COLOR, 0.12 * flash));
     }
     if let Some(p) = level_up {
-        draw_level_up_storm(
-            canvas,
-            meshes,
-            view_rect,
-            background,
-            p,
-            sea_top,
-            level_flash,
-        );
+        draw_level_up_storm(canvas, view_rect, background, p, sea_top, level_flash);
     }
     if let Some((k, bright, kind)) = strike {
         let cloud_base = view_rect.y + h * 0.18;
@@ -226,16 +188,7 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
         set_blend_mode(canvas, graphics::BlendMode::ADD);
         match kind {
             StrikeKind::Fork => {
-                draw_fork(
-                    canvas,
-                    meshes,
-                    k,
-                    start_x(k),
-                    cloud_base,
-                    sea_top,
-                    w,
-                    bright,
-                );
+                draw_fork(canvas, k, start_x(k), cloud_base, sea_top, w, bright);
             }
             StrikeKind::Double => {
                 let first = start_x(k);
@@ -243,10 +196,9 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
                 let second = x0
                     + (first - x0 + w * (0.3 + 0.4 * hash(k, 31.0))).rem_euclid(w * 0.8)
                     + w * 0.1;
-                draw_fork(canvas, meshes, k, first, cloud_base, sea_top, w, bright);
+                draw_fork(canvas, k, first, cloud_base, sea_top, w, bright);
                 draw_fork(
                     canvas,
-                    meshes,
                     k + 7_919,
                     second,
                     cloud_base,
@@ -264,13 +216,12 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
                         x0 + w * (0.05 + 0.9 * hash(k * 13 + p, 32.0)),
                         view_rect.y + h * (0.05 + 0.18 * hash(k * 13 + p, 33.0)),
                     );
-                    draw_mesh(
+                    draw_glow(
                         canvas,
-                        &meshes.glow,
-                        graphics::DrawParam::default()
-                            .dest(at)
-                            .scale(Vec2::new(w * 0.22, w * 0.09))
-                            .color(with_alpha(FLASH_COLOR, 0.4 * pulse)),
+                        at,
+                        Vec2::new(w * 0.22, w * 0.09),
+                        0.0,
+                        with_alpha(FLASH_COLOR, 0.4 * pulse),
                     );
                 }
             }
@@ -284,7 +235,6 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
                 );
                 let path = draw_bolt(
                     canvas,
-                    meshes,
                     from,
                     to,
                     22,
@@ -302,7 +252,6 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
                         );
                     draw_bolt(
                         canvas,
-                        meshes,
                         at,
                         to,
                         5,
@@ -320,7 +269,6 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
                 let to = Vec2::new(x + (hash(k, 40.0) - 0.5) * w * 0.05, sea_top);
                 draw_bolt(
                     canvas,
-                    meshes,
                     from,
                     to,
                     9,
@@ -370,7 +318,7 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
     };
     for (layer, (color, depth, height)) in SEA_LAYERS.iter().enumerate() {
         // rain for this depth falls first, so the swell in front hides where it lands
-        draw_rain_layer(canvas, meshes, &rain, layer, &|x| surface(x, layer));
+        draw_rain_layer(canvas, &rain, layer, &|x| surface(x, layer));
         let base = sea_top + sea_h * depth;
         let color = mix_color(*color, FLASH_COLOR, lit * (1.0 - *depth));
         for c in 0..columns {
@@ -379,7 +327,6 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
             let y = (base - wave * height * swell).round();
             draw_rect(
                 canvas,
-                meshes,
                 Rect::new(x, y, SEA_STRIP, view_rect.y + h - y),
                 color,
             );
@@ -388,12 +335,7 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
                 (sea_wave(x + SEA_STRIP, layer, sea) - wave).abs() * height * swell / SEA_STRIP;
             let foam = smoothstep(foam_slope * 0.5, foam_slope, slope);
             let crest = mix_color(color, CREST_COLOR, 0.25 + 0.5 * foam + lit);
-            draw_rect(
-                canvas,
-                meshes,
-                Rect::new(x, y, SEA_STRIP, 2.0 + 2.0 * foam),
-                crest,
-            );
+            draw_rect(canvas, Rect::new(x, y, SEA_STRIP, 2.0 + 2.0 * foam), crest);
         }
         // rain bouncing off this swell, smaller and fainter further out
         let scale = SEA_SCALE[layer];
@@ -415,7 +357,6 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
             for side in [-1.0, 1.0] {
                 draw_rect(
                     canvas,
-                    meshes,
                     Rect::new((x + side * spread).round(), (y - hop).round(), size, size),
                     with_alpha(RAIN_COLOR, alpha),
                 );
@@ -434,7 +375,6 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
             let size = if n(6.0) < 0.3 { 3.0 } else { 2.0 } * scale.max(0.75);
             draw_rect(
                 canvas,
-                meshes,
                 Rect::new(x.round(), y.round(), size.round(), size.round()),
                 with_alpha(CREST_COLOR, alpha),
             );
@@ -442,11 +382,11 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
     }
     // past a full storm, sheets of rain and mist wash out the view
     if whiteout > 0.0 {
-        draw_whiteout(canvas, meshes, view_rect, background, whiteout, flash);
+        draw_whiteout(canvas, view_rect, background, whiteout, flash);
     }
     // the nearest rain sweeps across in front of everything
     let front = SEA_LAYERS.len() - 1;
-    draw_rain_layer(canvas, meshes, &rain, RAIN_LAYERS.len() - 1, &|x| {
+    draw_rain_layer(canvas, &rain, RAIN_LAYERS.len() - 1, &|x| {
         surface(x, front) + sea_h
     });
 }
@@ -454,7 +394,6 @@ fn draw_storm(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
 /// blowing mist and a pale veil over the whole storm
 pub(super) fn draw_whiteout(
     canvas: &mut Painter,
-    meshes: &Meshes,
     view_rect: &Rect,
     background: &Background,
     whiteout: f32,
@@ -470,16 +409,12 @@ pub(super) fn draw_whiteout(
                 * w;
         let y = view_rect.y + h * (0.1 + 0.85 * n(3.0));
         let size = w * (0.2 + 0.2 * n(4.0));
-        draw_mesh(
+        draw_glow(
             canvas,
-            &meshes.glow,
-            graphics::DrawParam::default()
-                .dest(Vec2::new(x, y))
-                .scale(Vec2::new(size, size * 0.35))
-                .color(with_alpha(
-                    WHITEOUT_COLOR,
-                    0.18 * whiteout * (0.6 + 0.4 * n(5.0)),
-                )),
+            Vec2::new(x, y),
+            Vec2::new(size, size * 0.35),
+            0.0,
+            with_alpha(WHITEOUT_COLOR, 0.18 * whiteout * (0.6 + 0.4 * n(5.0))),
         );
     }
     // the veil thickens and thins with the gusts, and glows when lightning hits
@@ -487,7 +422,6 @@ pub(super) fn draw_whiteout(
     let color = mix_color(WHITEOUT_COLOR, Color::WHITE, flash * 0.3);
     draw_rect(
         canvas,
-        meshes,
         *view_rect,
         with_alpha(color, WHITEOUT_VEIL.0 * whiteout * gusting),
     );
@@ -496,17 +430,14 @@ pub(super) fn draw_whiteout(
     let over_sea = (WHITEOUT_VEIL.1 - WHITEOUT_VEIL.0) * whiteout * gusting;
     draw_rect(
         canvas,
-        meshes,
         Rect::new(x0, sea_top, w, view_rect.y + h - sea_top),
         with_alpha(color, over_sea),
     );
     // soft edge so the sea fades in rather than starting at a line
-    draw_mesh(
+    draw_fade(
         canvas,
-        &meshes.background,
-        graphics::DrawParam::default()
-            .dest_rect(Rect::new(x0, sea_top, w, -h * 0.12))
-            .color(with_alpha(color, over_sea)),
+        Rect::new(x0, sea_top, w, -h * 0.12),
+        with_alpha(color, over_sea),
     );
 }
 
@@ -514,7 +445,6 @@ pub(super) fn draw_whiteout(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_level_up_storm(
     canvas: &mut Painter,
-    meshes: &Meshes,
     view_rect: &Rect,
     background: &Background,
     p: f32,
@@ -525,7 +455,6 @@ pub(super) fn draw_level_up_storm(
     // the whole sky goes white for a moment
     draw_rect(
         canvas,
-        meshes,
         *view_rect,
         with_alpha(Color::WHITE, LEVEL_UP_WHITE * flash),
     );
@@ -543,16 +472,7 @@ pub(super) fn draw_level_up_storm(
         let bright = ((1.0 - t).powi(2) * flicker).clamp(0.0, 1.0);
         let lane = (b as f32 + 0.5) / LEVEL_UP_BOLTS as f32;
         let x = x0 + w * (0.05 + 0.9 * lane) + (hash(seed + b, 50.0) - 0.5) * w * 0.08;
-        draw_fork(
-            canvas,
-            meshes,
-            seed + b * 7,
-            x,
-            cloud_base,
-            sea_top,
-            w,
-            bright,
-        );
+        draw_fork(canvas, seed + b * 7, x, cloud_base, sea_top, w, bright);
     }
     set_blend_mode(canvas, graphics::BlendMode::ALPHA);
 }
@@ -571,7 +491,6 @@ pub(super) struct RainView {
 /// one layer of rain, falling until it meets the surface below it
 pub(super) fn draw_rain_layer(
     canvas: &mut Painter,
-    meshes: &Meshes,
     rain: &RainView,
     layer: usize,
     surface: &dyn Fn(f32) -> f32,
@@ -597,7 +516,7 @@ pub(super) fn draw_rain_layer(
         }
         draw_mesh(
             canvas,
-            &meshes.rect,
+            &canvas.meshes.rect,
             graphics::DrawParam::default()
                 .dest(Vec2::new(x, y))
                 .rotation(lean)
@@ -611,7 +530,6 @@ pub(super) fn draw_rain_layer(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_bolt(
     canvas: &mut Painter,
-    meshes: &Meshes,
     from: Vec2,
     to: Vec2,
     segments: usize,
@@ -632,7 +550,7 @@ pub(super) fn draw_bolt(
             offset * 0.6 + (hash(seed * 97 + s, 25.0) - 0.5) * 2.0 * jag
         };
         let next = from + along * (s as f32 / segments as f32) + side * offset;
-        draw_bolt_segment(canvas, meshes, path[s - 1], next, size, color);
+        draw_bolt_segment(canvas, path[s - 1], next, size, color);
         path.push(next);
     }
     path
@@ -642,7 +560,6 @@ pub(super) fn draw_bolt(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_fork(
     canvas: &mut Painter,
-    meshes: &Meshes,
     seed: usize,
     x: f32,
     cloud_base: f32,
@@ -652,17 +569,15 @@ pub(super) fn draw_fork(
 ) {
     let from = Vec2::new(x, cloud_base);
     let to = Vec2::new(x + (hash(seed, 41.0) - 0.5) * w * 0.25, sea_top);
-    draw_mesh(
+    draw_glow(
         canvas,
-        &meshes.glow,
-        graphics::DrawParam::default()
-            .dest(from)
-            .scale(Vec2::new(w * 0.25, w * 0.12))
-            .color(with_alpha(FLASH_COLOR, 0.35 * bright)),
+        from,
+        Vec2::new(w * 0.25, w * 0.12),
+        0.0,
+        with_alpha(FLASH_COLOR, 0.35 * bright),
     );
     let path = draw_bolt(
         canvas,
-        meshes,
         from,
         to,
         BOLT_SEGMENTS,
@@ -680,7 +595,6 @@ pub(super) fn draw_fork(
         );
     draw_bolt(
         canvas,
-        meshes,
         fork_at,
         fork_to,
         6,
@@ -690,20 +604,18 @@ pub(super) fn draw_fork(
         with_alpha(BOLT_COLOR, bright * 0.6),
     );
     // the strike lights up the water where it lands
-    draw_mesh(
+    draw_glow(
         canvas,
-        &meshes.glow,
-        graphics::DrawParam::default()
-            .dest(to)
-            .scale(Vec2::new(w * 0.1, 22.0))
-            .color(with_alpha(FLASH_COLOR, 0.55 * bright)),
+        to,
+        Vec2::new(w * 0.1, 22.0),
+        0.0,
+        with_alpha(FLASH_COLOR, 0.55 * bright),
     );
 }
 
 /// dotted line of a lightning bolt
 pub(super) fn draw_bolt_segment(
     canvas: &mut Painter,
-    meshes: &Meshes,
     from: Vec2,
     to: Vec2,
     size: f32,
@@ -716,14 +628,12 @@ pub(super) fn draw_bolt_segment(
     let half = along.length() / 2.0;
     for (spread, strength) in BOLT_BLOOM {
         let width = size * spread;
-        draw_mesh(
+        draw_glow(
             canvas,
-            &meshes.glow,
-            graphics::DrawParam::default()
-                .dest(middle)
-                .rotation(angle)
-                .scale(Vec2::new(half + width, width))
-                .color(with_alpha(BOLT_GLOW_COLOR, color.a * strength)),
+            middle,
+            Vec2::new(half + width, width),
+            angle,
+            with_alpha(BOLT_GLOW_COLOR, color.a * strength),
         );
     }
     let dots = (along.length() / (size * 0.75)).ceil().max(1.0) as usize;
@@ -731,7 +641,6 @@ pub(super) fn draw_bolt_segment(
         let at = from + (to - from) * (d as f32 / dots as f32);
         draw_rect(
             canvas,
-            meshes,
             Rect::new(
                 (at.x - size / 2.0).round(),
                 (at.y - size / 2.0).round(),

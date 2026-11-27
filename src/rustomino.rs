@@ -1,460 +1,48 @@
 use ::rand::seq::SliceRandom;
 use ggez::{glam::IVec2, graphics::Color};
-use strum::{EnumIter, IntoEnumIterator};
+use strum::{EnumIter, EnumString, IntoEnumIterator};
 
-const I_START_TRANSLATION: IVec2 = IVec2::new(3, 18);
-const O_T_L_J_S_Z_START_TRANSLATION: IVec2 = IVec2::new(3, 19);
-
-const I_BLOCKS: [IVec2; 4] = [
-    IVec2::new(0, 2),
-    IVec2::new(1, 2),
-    IVec2::new(2, 2),
-    IVec2::new(3, 2),
+// clockwise wall kicks from N, E, S and W, counterclockwise kicks undo the clockwise ones (guideline)
+const JLSTZ_KICKS: [[[i32; 2]; 5]; 4] = [
+    [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
+    [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
+    [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],
+    [[0, 0], [-1, 0], [-1, -1], [0, 2], [-1, 2]],
 ];
-const O_BLOCKS: [IVec2; 4] = [
-    IVec2::new(1, 2),
-    IVec2::new(2, 2),
-    IVec2::new(2, 1),
-    IVec2::new(1, 1),
-];
-const T_BLOCKS: [IVec2; 4] = [
-    IVec2::new(1, 1),
-    IVec2::new(0, 1),
-    IVec2::new(1, 2),
-    IVec2::new(2, 1),
-];
-const L_BLOCKS: [IVec2; 4] = [
-    IVec2::new(1, 1),
-    IVec2::new(0, 1),
-    IVec2::new(2, 2),
-    IVec2::new(2, 1),
-];
-const J_BLOCKS: [IVec2; 4] = [
-    IVec2::new(1, 1),
-    IVec2::new(0, 1),
-    IVec2::new(0, 2),
-    IVec2::new(2, 1),
-];
-const S_BLOCKS: [IVec2; 4] = [
-    IVec2::new(1, 1),
-    IVec2::new(0, 1),
-    IVec2::new(1, 2),
-    IVec2::new(2, 2),
-];
-const Z_BLOCKS: [IVec2; 4] = [
-    IVec2::new(1, 1),
-    IVec2::new(0, 2),
-    IVec2::new(1, 2),
-    IVec2::new(2, 1),
-];
-
-const I_ROTATIONS: [[IVec2; 4]; 4] = [
-    [
-        // N>>E || -(E>>N)
-        IVec2::new(2, 1),
-        IVec2::new(1, 0),
-        IVec2::new(0, -1),
-        IVec2::new(-1, -2),
-    ],
-    [
-        // E>>S || -(S>>E)
-        IVec2::new(1, -2),
-        IVec2::new(0, -1),
-        IVec2::new(-1, 0),
-        IVec2::new(-2, 1),
-    ],
-    [
-        // S>>W || -(W>>S)
-        IVec2::new(-2, -1),
-        IVec2::new(-1, 0),
-        IVec2::new(0, 1),
-        IVec2::new(1, 2),
-    ],
-    [
-        // W>>N || -(N>>W)
-        IVec2::new(-1, 2),
-        IVec2::new(0, 1),
-        IVec2::new(1, 0),
-        IVec2::new(2, -1),
-    ],
-];
-
-const O_ROTATIONS: [[IVec2; 4]; 4] = [
-    [
-        // N>>E || -(E>>N)
-        IVec2::new(1, 0),
-        IVec2::new(0, -1),
-        IVec2::new(-1, 0),
-        IVec2::new(0, 1),
-    ],
-    [
-        // E>>S || -(S>>E)
-        IVec2::new(0, -1),
-        IVec2::new(-1, 0),
-        IVec2::new(0, 1),
-        IVec2::new(1, 0),
-    ],
-    [
-        // S>>W || -(W>>S)
-        IVec2::new(-1, 0),
-        IVec2::new(0, 1),
-        IVec2::new(1, 0),
-        IVec2::new(0, -1),
-    ],
-    [
-        // W>>N || -(N>>W)
-        IVec2::new(0, 1),
-        IVec2::new(1, 0),
-        IVec2::new(0, -1),
-        IVec2::new(-1, 0),
-    ],
-];
-
-const T_ROTATIONS: [[IVec2; 4]; 4] = [
-    [
-        // N>>E || -(E>>N)
-        IVec2::new(0, 0),
-        IVec2::new(1, 1),
-        IVec2::new(1, -1),
-        IVec2::new(-1, -1),
-    ],
-    [
-        // E>>S || -(S>>E)
-        IVec2::new(0, 0),
-        IVec2::new(1, -1),
-        IVec2::new(-1, -1),
-        IVec2::new(-1, 1),
-    ],
-    [
-        // S>>W || -(W>>S)
-        IVec2::new(0, 0),
-        IVec2::new(-1, -1),
-        IVec2::new(-1, 1),
-        IVec2::new(1, 1),
-    ],
-    [
-        // W>>N || -(N>>W)
-        IVec2::new(0, 0),
-        IVec2::new(-1, 1),
-        IVec2::new(1, 1),
-        IVec2::new(1, -1),
-    ],
-];
-
-const L_ROTATIONS: [[IVec2; 4]; 4] = [
-    [
-        // N>>E || -(E>>N)
-        IVec2::new(0, 0),
-        IVec2::new(1, 1),
-        IVec2::new(0, -2),
-        IVec2::new(-1, -1),
-    ],
-    [
-        // E>>S || -(S>>E)
-        IVec2::new(0, 0),
-        IVec2::new(1, -1),
-        IVec2::new(-2, 0),
-        IVec2::new(-1, 1),
-    ],
-    [
-        // S>>W || -(W>>S)
-        IVec2::new(0, 0),
-        IVec2::new(-1, -1),
-        IVec2::new(0, 2),
-        IVec2::new(1, 1),
-    ],
-    [
-        // W>>N || -(N>>W)
-        IVec2::new(0, 0),
-        IVec2::new(-1, 1),
-        IVec2::new(2, 0),
-        IVec2::new(1, -1),
-    ],
-];
-
-const J_ROTATIONS: [[IVec2; 4]; 4] = [
-    [
-        // N>>E || -(E>>N)
-        IVec2::new(0, 0),
-        IVec2::new(1, 1),
-        IVec2::new(2, 0),
-        IVec2::new(-1, -1),
-    ],
-    [
-        // E>>S || -(S>>E)
-        IVec2::new(0, 0),
-        IVec2::new(1, -1),
-        IVec2::new(0, -2),
-        IVec2::new(-1, 1),
-    ],
-    [
-        // S>>W || -(W>>S)
-        IVec2::new(0, 0),
-        IVec2::new(-1, -1),
-        IVec2::new(-2, 0),
-        IVec2::new(1, 1),
-    ],
-    [
-        // W>>N || -(N>>W)
-        IVec2::new(0, 0),
-        IVec2::new(-1, 1),
-        IVec2::new(0, 2),
-        IVec2::new(1, -1),
-    ],
-];
-
-const S_ROTATIONS: [[IVec2; 4]; 4] = [
-    [
-        // N>>E || -(E>>N)
-        IVec2::new(0, 0),
-        IVec2::new(1, 1),
-        IVec2::new(1, -1),
-        IVec2::new(0, -2),
-    ],
-    [
-        // E>>S || -(S>>E)
-        IVec2::new(0, 0),
-        IVec2::new(1, -1),
-        IVec2::new(-1, -1),
-        IVec2::new(-2, 0),
-    ],
-    [
-        // S>>W || -(W>>S)
-        IVec2::new(0, 0),
-        IVec2::new(-1, -1),
-        IVec2::new(-1, 1),
-        IVec2::new(0, 2),
-    ],
-    [
-        // W>>N || -(N>>W)
-        IVec2::new(0, 0),
-        IVec2::new(-1, 1),
-        IVec2::new(1, 1),
-        IVec2::new(2, 0),
-    ],
-];
-
-const Z_ROTATIONS: [[IVec2; 4]; 4] = [
-    [
-        // N>>E || -(E>>N)
-        IVec2::new(0, 0),
-        IVec2::new(2, 0),
-        IVec2::new(1, -1),
-        IVec2::new(-1, -1),
-    ],
-    [
-        // E>>S || -(S>>E)
-        IVec2::new(0, 0),
-        IVec2::new(0, -2),
-        IVec2::new(-1, -1),
-        IVec2::new(-1, 1),
-    ],
-    [
-        // S>>W || -(W>>S)
-        IVec2::new(0, 0),
-        IVec2::new(-2, 0),
-        IVec2::new(-1, 1),
-        IVec2::new(1, 1),
-    ],
-    [
-        // W>>N || -(N>>W)
-        IVec2::new(0, 0),
-        IVec2::new(0, 2),
-        IVec2::new(1, 1),
-        IVec2::new(1, -1),
-    ],
-];
-
-const JLSTZ_WALL_KICK_TESTS: [[IVec2; 5]; 8] = [
-    [
-        // N->E (0, 0),(-1, 0),(-1,1),( 0,-2),(-1,-2)
-        IVec2::new(0, 0),
-        IVec2::new(-1, 0),
-        IVec2::new(-1, 1),
-        IVec2::new(0, -2),
-        IVec2::new(-1, -2),
-    ],
-    [
-        // E->N (0, 0),(1, 0),(1,-1),( 0,2),(1,2)
-        IVec2::new(0, 0),
-        IVec2::new(1, 0),
-        IVec2::new(1, -1),
-        IVec2::new(0, 2),
-        IVec2::new(1, 2),
-    ],
-    [
-        // E->S (0, 0),(1, 0),(1,-1),(0, 2),(1, 2)
-        IVec2::new(0, 0),
-        IVec2::new(1, 0),
-        IVec2::new(1, -1),
-        IVec2::new(0, 2),
-        IVec2::new(1, 2),
-    ],
-    [
-        // S->E ( 0, 0),(-1, 0),(-1,1),( 0,-2),(-1,-2)
-        IVec2::new(0, 0),
-        IVec2::new(-1, 0),
-        IVec2::new(-1, 1),
-        IVec2::new(0, -2),
-        IVec2::new(-1, -2),
-    ],
-    [
-        // E->W ( 0, 0),(1, 0),(1,1),( 0,-2),(1,-2)
-        IVec2::new(0, 0),
-        IVec2::new(1, 0),
-        IVec2::new(1, 1),
-        IVec2::new(0, -2),
-        IVec2::new(1, -2),
-    ],
-    [
-        // W->E ( 0, 0),(-1, 0),(-1,-1),( 0,2),(-1,2)
-        IVec2::new(0, 0),
-        IVec2::new(-1, 0),
-        IVec2::new(-1, -1),
-        IVec2::new(0, 2),
-        IVec2::new(-1, 2),
-    ],
-    [
-        // W->N ( 0, 0),(-1, 0),(-1,-1),( 0,2),(-1,2)
-        IVec2::new(0, 0),
-        IVec2::new(-1, 0),
-        IVec2::new(-1, -1),
-        IVec2::new(0, 2),
-        IVec2::new(-1, 2),
-    ],
-    [
-        // N->W (0, 0),(1, 0),(1, 1),(0, -2),(1, -2)
-        IVec2::new(0, 0),
-        IVec2::new(1, 0),
-        IVec2::new(1, 1),
-        IVec2::new(0, -2),
-        IVec2::new(1, -2),
-    ],
-];
-
-const I_WALL_KICK_TESTS: [[IVec2; 5]; 8] = [
-    [
-        // N->E ( 0, 0),(-2, 0),(1, 0),(-2,-1),(1,2)
-        IVec2::new(0, 0),
-        IVec2::new(-2, 0),
-        IVec2::new(1, 0),
-        IVec2::new(-2, -1),
-        IVec2::new(1, 2),
-    ],
-    [
-        // E->N ( 0, 0),(2, 0),(-1, 0),(2,1),(-1,-2)
-        IVec2::new(0, 0),
-        IVec2::new(2, 0),
-        IVec2::new(-1, 0),
-        IVec2::new(2, 1),
-        IVec2::new(-1, -2),
-    ],
-    [
-        // E->S ( 0, 0),(-1, 0),(2, 0),(-1,2),(2,-1)
-        IVec2::new(0, 0),
-        IVec2::new(-1, 0),
-        IVec2::new(2, 0),
-        IVec2::new(-1, 2),
-        IVec2::new(2, -1),
-    ],
-    [
-        // S->E ( 0, 0),(1, 0),(-2, 0),(1,-2),(-2,1)
-        IVec2::new(0, 0),
-        IVec2::new(1, 0),
-        IVec2::new(-2, 0),
-        IVec2::new(1, -2),
-        IVec2::new(-2, 1),
-    ],
-    [
-        // E->W ( 0, 0),(2, 0),(-1, 0),(2,1),(-1,-2)
-        IVec2::new(0, 0),
-        IVec2::new(2, 0),
-        IVec2::new(-1, 0),
-        IVec2::new(2, 1),
-        IVec2::new(-1, -2),
-    ],
-    [
-        // W->E ( 0, 0),(-2, 0),(1, 0),(-2,-1),(1,2)
-        IVec2::new(0, 0),
-        IVec2::new(-2, 0),
-        IVec2::new(1, 0),
-        IVec2::new(-2, -1),
-        IVec2::new(1, 2),
-    ],
-    [
-        // W->N ( 0, 0),(1, 0),(-2, 0),(1,-2),(-2,1)
-        IVec2::new(0, 0),
-        IVec2::new(1, 0),
-        IVec2::new(-2, 0),
-        IVec2::new(1, -2),
-        IVec2::new(-2, 1),
-    ],
-    [
-        // N->W ( 0, 0),(-1, 0),(2, 0),(-1,2),(2,-1)
-        IVec2::new(0, 0),
-        IVec2::new(-1, 0),
-        IVec2::new(2, 0),
-        IVec2::new(-1, 2),
-        IVec2::new(2, -1),
-    ],
+const I_KICKS: [[[i32; 2]; 5]; 4] = [
+    [[0, 0], [-2, 0], [1, 0], [-2, -1], [1, 2]],
+    [[0, 0], [-1, 0], [2, 0], [-1, 2], [2, -1]],
+    [[0, 0], [2, 0], [-1, 0], [2, 1], [-1, -2]],
+    [[0, 0], [1, 0], [-2, 0], [1, -2], [-2, 1]],
 ];
 
 #[derive(Debug, Clone)]
 pub struct Rustomino {
     pub rtype: RustominoType,
     pub state: RustominoState,
-    pub rotation: RustominoRotation,
+    turns: usize, // quarter turns clockwise from spawn
     pub blocks: [IVec2; 4],
     pub translation: IVec2,
 }
 
 impl Rustomino {
     pub fn new(rtype: RustominoType) -> Rustomino {
-        let (rotation, blocks, translation) = {
-            match rtype {
-                RustominoType::I => (
-                    RustominoRotation::new(&I_ROTATIONS),
-                    I_BLOCKS,
-                    I_START_TRANSLATION,
-                ),
-                RustominoType::O => (
-                    RustominoRotation::new(&O_ROTATIONS),
-                    O_BLOCKS,
-                    O_T_L_J_S_Z_START_TRANSLATION,
-                ),
-                RustominoType::T => (
-                    RustominoRotation::new(&T_ROTATIONS),
-                    T_BLOCKS,
-                    O_T_L_J_S_Z_START_TRANSLATION,
-                ),
-                RustominoType::L => (
-                    RustominoRotation::new(&L_ROTATIONS),
-                    L_BLOCKS,
-                    O_T_L_J_S_Z_START_TRANSLATION,
-                ),
-                RustominoType::J => (
-                    RustominoRotation::new(&J_ROTATIONS),
-                    J_BLOCKS,
-                    O_T_L_J_S_Z_START_TRANSLATION,
-                ),
-                RustominoType::S => (
-                    RustominoRotation::new(&S_ROTATIONS),
-                    S_BLOCKS,
-                    O_T_L_J_S_Z_START_TRANSLATION,
-                ),
-                RustominoType::Z => (
-                    RustominoRotation::new(&Z_ROTATIONS),
-                    Z_BLOCKS,
-                    O_T_L_J_S_Z_START_TRANSLATION,
-                ),
-            }
+        let blocks = match rtype {
+            RustominoType::I => [[0, 2], [1, 2], [2, 2], [3, 2]],
+            RustominoType::O => [[1, 2], [2, 2], [2, 1], [1, 1]],
+            RustominoType::T => [[1, 1], [0, 1], [1, 2], [2, 1]],
+            RustominoType::L => [[1, 1], [0, 1], [2, 2], [2, 1]],
+            RustominoType::J => [[1, 1], [0, 1], [0, 2], [2, 1]],
+            RustominoType::S => [[1, 1], [0, 1], [1, 2], [2, 2]],
+            RustominoType::Z => [[1, 1], [0, 2], [1, 2], [2, 1]],
         };
+        let start_y = if rtype == RustominoType::I { 18 } else { 19 };
         Rustomino {
             rtype,
             state: RustominoState::Falling { time: 0. },
-            rotation,
-            blocks,
-            translation,
+            turns: 0,
+            blocks: blocks.map(IVec2::from),
+            translation: IVec2::new(3, start_y),
         }
     }
 
@@ -467,56 +55,58 @@ impl Rustomino {
     }
 
     pub fn translated(&self, delta: &IVec2) -> [IVec2; 4] {
-        translated(&translated(&self.blocks, &self.translation), delta)
+        translated(&self.blocks, &(self.translation + *delta))
     }
 
     pub fn playfield_slots(&self) -> [IVec2; 4] {
-        self.translated(&IVec2::ZERO)
+        translated(&self.blocks, &self.translation)
     }
 
-    pub fn rotate(&mut self, rotation: &Rotation, translation: &IVec2) {
-        let rotation_trans = self.rotation.get_rotation_trans(rotation);
+    /// blocks a quarter turn about the pivot, in doubled units so the I and O stay whole
+    fn turned(&self, rotation: &Rotation) -> [IVec2; 4] {
+        let pivot = match self.rtype {
+            RustominoType::I | RustominoType::O => IVec2::new(3, 3),
+            _ => IVec2::new(2, 2),
+        };
+        self.blocks.map(|block| {
+            let arm = (block * 2 - pivot).perp();
+            let arm = match rotation {
+                Rotation::Cw => -arm,
+                Rotation::Ccw => arm,
+            };
+            (pivot + arm) / 2
+        })
+    }
 
-        for (block, delta) in self.blocks.iter_mut().zip(rotation_trans) {
-            *block += delta;
-        }
-        // apply the wall kick to the position, not the shape
-        self.translation += *translation;
-
-        self.rotation.rotate(rotation);
+    /// the kick moves the position, not the shape
+    pub fn rotate(&mut self, rotation: &Rotation, kick: &IVec2) {
+        self.blocks = self.turned(rotation);
+        self.translation += *kick;
+        self.turns = (self.turns + rotation.quarters()) % 4;
     }
 
     pub fn rotated(&self, rotation: &Rotation) -> [IVec2; 4] {
-        let rotation = self.rotation.get_rotation_trans(rotation);
-        let mut result = [IVec2::ZERO; 4];
-
-        for i in 0..4 {
-            result[i] = self.blocks[i] + self.translation + rotation[i];
-        }
-
-        result
+        translated(&self.turned(rotation), &self.translation)
     }
 
     pub fn wall_kick_tests(&self, rotation: &Rotation) -> [IVec2; 5] {
-        self.rotation.get_wall_kick_tests(self.rtype, rotation)
-    }
-
-    pub fn set_state(&mut self, state: RustominoState) {
-        log::trace!("setting rustomino state: {:?}", state);
-        self.state = state;
+        let kicks = if self.rtype == RustominoType::I {
+            &I_KICKS
+        } else {
+            &JLSTZ_KICKS
+        };
+        match rotation {
+            Rotation::Cw => kicks[self.turns].map(IVec2::from),
+            Rotation::Ccw => kicks[(self.turns + 3) % 4].map(|kick| -IVec2::from(kick)),
+        }
     }
 }
 
 pub fn translated(blocks: &[IVec2; 4], delta: &IVec2) -> [IVec2; 4] {
-    [
-        blocks[0] + *delta,
-        blocks[1] + *delta,
-        blocks[2] + *delta,
-        blocks[3] + *delta,
-    ]
+    blocks.map(|block| block + *delta)
 }
 
-#[derive(Debug, Clone, Copy, EnumIter, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, EnumIter, EnumString, PartialEq, Eq)]
 pub enum RustominoType {
     I,
     O,
@@ -550,138 +140,19 @@ pub enum RustominoState {
     Lockdown { time: f64 },
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum Direction {
-    N,
-    E,
-    S,
-    W,
-}
-
-impl Direction {
-    fn rotate(&self, rotation: &Rotation) -> Direction {
-        match self {
-            Direction::N => match rotation {
-                Rotation::Cw => Direction::E,
-                Rotation::Ccw => Direction::W,
-            },
-            Direction::E => match rotation {
-                Rotation::Cw => Direction::S,
-                Rotation::Ccw => Direction::N,
-            },
-            Direction::S => match rotation {
-                Rotation::Cw => Direction::W,
-                Rotation::Ccw => Direction::E,
-            },
-            Direction::W => match rotation {
-                Rotation::Cw => Direction::N,
-                Rotation::Ccw => Direction::S,
-            },
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum Rotation {
     Cw,
     Ccw,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct RustominoRotation {
-    direction: Direction,
-    // N>>E, E>>S, S>>W, W>>N
-    translations: &'static [[IVec2; 4]; 4],
-}
-
-impl RustominoRotation {
-    fn new(translations: &'static [[IVec2; 4]; 4]) -> Self {
-        Self {
-            direction: Direction::N,
-            translations,
+impl Rotation {
+    fn quarters(&self) -> usize {
+        match self {
+            Rotation::Cw => 1,
+            Rotation::Ccw => 3,
         }
     }
-
-    fn get_rotation_trans(&self, rotation: &Rotation) -> [IVec2; 4] {
-        let [n2e, e2s, s2w, w2n] = self.translations;
-        match self.direction {
-            Direction::N => match rotation {
-                Rotation::Cw => *n2e,
-                Rotation::Ccw => neg_trans(*w2n),
-            },
-            Direction::E => match rotation {
-                Rotation::Cw => *e2s,
-                Rotation::Ccw => neg_trans(*n2e),
-            },
-            Direction::S => match rotation {
-                Rotation::Cw => *s2w,
-                Rotation::Ccw => neg_trans(*e2s),
-            },
-            Direction::W => match rotation {
-                Rotation::Cw => *w2n,
-                Rotation::Ccw => neg_trans(*s2w),
-            },
-        }
-    }
-
-    fn get_wall_kick_tests(&self, rtype: RustominoType, rotation: &Rotation) -> [IVec2; 5] {
-        match self.direction {
-            Direction::N => match rotation {
-                Rotation::Cw => match rtype {
-                    RustominoType::I => I_WALL_KICK_TESTS[0],
-                    _ => JLSTZ_WALL_KICK_TESTS[0],
-                },
-                Rotation::Ccw => match rtype {
-                    RustominoType::I => I_WALL_KICK_TESTS[7],
-                    _ => JLSTZ_WALL_KICK_TESTS[7],
-                },
-            },
-            Direction::E => match rotation {
-                Rotation::Cw => match rtype {
-                    RustominoType::I => I_WALL_KICK_TESTS[2],
-                    _ => JLSTZ_WALL_KICK_TESTS[2],
-                },
-                Rotation::Ccw => match rtype {
-                    RustominoType::I => I_WALL_KICK_TESTS[1],
-                    _ => JLSTZ_WALL_KICK_TESTS[1],
-                },
-            },
-            Direction::S => match rotation {
-                Rotation::Cw => match rtype {
-                    RustominoType::I => I_WALL_KICK_TESTS[4],
-                    _ => JLSTZ_WALL_KICK_TESTS[4],
-                },
-                Rotation::Ccw => match rtype {
-                    RustominoType::I => I_WALL_KICK_TESTS[3],
-                    _ => JLSTZ_WALL_KICK_TESTS[3],
-                },
-            },
-            Direction::W => match rotation {
-                Rotation::Cw => match rtype {
-                    RustominoType::I => I_WALL_KICK_TESTS[6],
-                    _ => JLSTZ_WALL_KICK_TESTS[6],
-                },
-                Rotation::Ccw => match rtype {
-                    RustominoType::I => I_WALL_KICK_TESTS[5],
-                    _ => JLSTZ_WALL_KICK_TESTS[5],
-                },
-            },
-        }
-    }
-
-    fn rotate(&mut self, rotation: &Rotation) {
-        self.direction = self.direction.rotate(rotation)
-    }
-}
-
-#[inline(always)]
-fn neg_trans(block_trans: [IVec2; 4]) -> [IVec2; 4] {
-    [
-        -block_trans[0],
-        -block_trans[1],
-        -block_trans[2],
-        -block_trans[3],
-    ]
 }
 
 pub struct RustominoBag {
@@ -698,23 +169,14 @@ impl RustominoBag {
     }
 
     pub fn get_next(&mut self) -> Rustomino {
-        // make sure the bag isn't empty
-        self.fill_bag();
-
+        // one of each type, shuffled
+        if self.bag.is_empty() {
+            self.bag = RustominoType::iter().collect();
+            self.bag.shuffle(&mut self.rng);
+            log::debug!("filled rustomino bag: {:?}", self.bag);
+        }
         let rtype = self.bag.pop().expect("rustomino bag is empty");
         log::info!("next rustomino type: {:?}", rtype);
-
         Rustomino::new(rtype)
-    }
-
-    // add one of each rustomino type to bag
-    // then shuffle the bag
-    fn fill_bag(&mut self) {
-        if !self.bag.is_empty() {
-            return;
-        }
-        self.bag.append(&mut RustominoType::iter().collect());
-        self.bag.shuffle(&mut self.rng);
-        log::debug!("filled rustomino bag: {:?}", self.bag);
     }
 }

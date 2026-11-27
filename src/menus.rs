@@ -1,5 +1,3 @@
-use ggez::graphics;
-
 // options menu rows
 pub const OPTION_MODE: usize = 0;
 pub const OPTION_BACKGROUND: usize = 1;
@@ -15,25 +13,14 @@ pub const AUDIO_SOUND: usize = 2;
 pub const AUDIO_UNFOCUSED: usize = 3;
 pub const AUDIO_BACK: usize = 4;
 
-pub trait Menu {
-    fn items(&self) -> &Vec<graphics::Text>;
-    fn selected(&self) -> usize;
-    fn next(&mut self);
-    fn previous(&mut self);
-    fn reset_selection(&mut self);
-}
-
 pub struct MenuList {
-    items: Vec<graphics::Text>,
+    pub items: &'static [&'static str],
     selected: usize,
 }
 
 impl MenuList {
-    fn new(entries: &[&str]) -> Self {
-        Self {
-            items: entries.iter().map(|e| graphics::Text::new(*e)).collect(),
-            selected: 0,
-        }
+    fn new(items: &'static [&'static str]) -> Self {
+        Self { items, selected: 0 }
     }
 
     pub fn main() -> Self {
@@ -51,26 +38,20 @@ impl MenuList {
     pub fn audio() -> Self {
         Self::new(&["Song", "Music", "Sound", "Unfocused", "Back"])
     }
-}
 
-impl Menu for MenuList {
-    fn items(&self) -> &Vec<graphics::Text> {
-        &self.items
-    }
-    fn next(&mut self) {
-        self.selected = (self.selected + 1) % self.items.len();
-    }
-    fn selected(&self) -> usize {
+    pub fn selected(&self) -> usize {
         self.selected
     }
-    fn previous(&mut self) {
-        self.selected = if self.selected == 0 {
-            self.items.len() - 1
-        } else {
-            self.selected - 1
-        };
+
+    pub fn next(&mut self) {
+        self.selected = (self.selected + 1) % self.items.len();
     }
-    fn reset_selection(&mut self) {
+
+    pub fn previous(&mut self) {
+        self.selected = (self.selected + self.items.len() - 1) % self.items.len();
+    }
+
+    pub fn reset_selection(&mut self) {
         self.selected = 0;
     }
 }

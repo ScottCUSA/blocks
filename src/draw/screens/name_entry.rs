@@ -6,7 +6,6 @@ use crate::scores::{Initials, MAX_INITIALS};
 use crate::util;
 
 use super::*;
-use crate::draw::*;
 
 pub(super) const SPARKLE_COUNT: usize = 14;
 pub(super) const SPARKLE_SIZE: f32 = 8.0;
@@ -16,7 +15,6 @@ pub(super) const NAME_CELL_GAP: f32 = 24.0;
 pub(super) const NAME_LETTER_SIZE: f32 = 56.0;
 pub(super) const NAME_ARROW: f32 = 14.0;
 
-/// initials entry over the finished game
 /// initials entry for a high score, over the game
 pub struct NameEntryScreen<'a> {
     pub initials: &'a Initials,
@@ -24,47 +22,31 @@ pub struct NameEntryScreen<'a> {
 }
 
 impl Layer for NameEntryScreen<'_> {
-    fn draw(&self, canvas: &mut Painter, frame: &Frame) -> GameResult {
+    fn draw(&self, canvas: &mut Painter) -> GameResult {
         let Self { initials, score } = *self;
-        let ctx = frame.ctx;
-        let meshes = frame.meshes;
-        let view_rect = &frame.view.view_rect;
-        let style = frame.block;
-        draw_overlay(canvas, meshes, view_rect);
+        let view_rect = canvas.view.view_rect;
+        draw_overlay(canvas, 1.0);
         let height = 90.0 + 40.0 + NAME_CELL.y + 2.0 * NAME_ARROW + 3.0 * PANEL_PADDING;
-        let panel = Rect::new(
-            (view_rect.w - MENU_PANEL_WIDTH) / 2.0,
-            (view_rect.h - height) / 2.0,
-            MENU_PANEL_WIDTH,
-            height,
-        );
-        draw_panel(canvas, meshes, panel);
-        let time = ctx.time.time_since_start().as_secs_f32();
-        draw_sparkles(canvas, meshes, panel, time);
+        let panel = centered_panel(&view_rect, height);
+        draw_panel(canvas, panel);
+        let time = canvas.time();
+        draw_sparkles(canvas, panel, time);
 
         // title shrunk to fit the panel
         let title = "New High Score!";
-        let width = piece_colored_text(title, NAME_TITLE_SIZE)
+        let width = piece_colored_text(title, NAME_TITLE_SIZE, 1.0)
             .0
-            .measure_ui(ctx)?
+            .measure_ui(canvas)?
             .x;
         let size = NAME_TITLE_SIZE * ((panel.w - 2.0 * PANEL_PADDING) / width).min(1.0);
-        let dims = piece_colored_text(title, size).0.measure_ui(ctx)?;
+        let dims = piece_colored_text(title, size, 1.0).0.measure_ui(canvas)?;
         let wobble = util::slow_wobble(time) * 3.0;
-        let title_center = Vec2::new(view_rect.w / 2.0, panel.y + PANEL_PADDING + 30.0 + wobble);
-        draw_piece_colored(
-            canvas,
-            title,
-            title_center - Vec2::new(dims.x / 2.0, dims.y / 2.0),
-            size,
-        );
-        draw_text_centered(
-            ctx,
-            canvas,
-            &ui_text(&score.to_string(), UI_FONT_SIZE * 1.2),
-            Vec2::new(view_rect.w / 2.0, panel.y + PANEL_PADDING + 90.0),
-            ACCENT_COLOR,
-        )?;
+        let center_x = view_rect.w / 2.0;
+        let title_center = Vec2::new(center_x, panel.y + PANEL_PADDING + 30.0 + wobble);
+        draw_piece_colored(canvas, title, title_center - dims / 2.0, size);
+        let score = ui_text(&score.to_string(), UI_FONT_SIZE * 1.2);
+        let score_center = Vec2::new(center_x, panel.y + PANEL_PADDING + 90.0);
+        draw_text_centered(canvas, &score, score_center, ACCENT_COLOR)?;
 
         // letter cells, the selected one blinks with arrows above and below
         let row_width =
@@ -84,37 +66,32 @@ impl Layer for NameEntryScreen<'_> {
             } else {
                 (SLIDER_EMPTY_COLOR, Color::WHITE)
             };
-            draw_rect(canvas, meshes, cell, fill);
+            draw_rect(canvas, cell, fill);
             if let Some(&letter) = initials.letters.get(i) {
                 let text = ui_text(&(letter as char).to_string(), NAME_LETTER_SIZE);
-                draw_text_centered(ctx, canvas, &text, cell.center().into(), color)?;
+                draw_text_centered(canvas, &text, cell.center().into(), color)?;
             }
             if selected {
                 let arrow_x = cell.x + (cell.w - NAME_ARROW) / 2.0;
                 for y in [cell.y - NAME_ARROW - 6.0 - bob, cell.y + cell.h + 6.0 + bob] {
                     let rect = Rect::new(arrow_x, y, NAME_ARROW, NAME_ARROW);
-                    draw_block(canvas, meshes, rect, ACCENT_COLOR, style);
+                    draw_block(canvas, rect, ACCENT_COLOR);
                 }
             }
         }
         draw_hint(
-            ctx,
             canvas,
             "Up/Down: letter   Left/Right: move   Backspace: delete   Enter: done",
-            view_rect,
         )
     }
 }
 
 /// twinkling plus shapes along the panel edge
-pub(super) fn draw_sparkles(canvas: &mut Painter, meshes: &Meshes, panel: Rect, time: f32) {
+pub(super) fn draw_sparkles(canvas: &mut Painter, panel: Rect, time: f32) {
     for i in 0..SPARKLE_COUNT {
         let along = hash(i, 1.0);
-        let pos = if i % 2 == 0 {
-            Vec2::new(panel.x + along * panel.w, panel.y)
-        } else {
-            Vec2::new(panel.x + along * panel.w, panel.y + panel.h)
-        };
+        let edge = if i % 2 == 0 { panel.y } else { panel.bottom() };
+        let pos = Vec2::new(panel.x + along * panel.w, edge);
         let phase = hash(i, 2.0) * std::f32::consts::TAU;
         let twinkle = ((time * 3.0 + phase).sin().max(0.0)).powi(3);
         if twinkle <= 0.01 {
@@ -124,13 +101,11 @@ pub(super) fn draw_sparkles(canvas: &mut Painter, meshes: &Meshes, panel: Rect, 
         let color = with_alpha(LINE_CLEAR_COLOR, twinkle);
         draw_rect(
             canvas,
-            meshes,
             Rect::new(pos.x - s / 2.0, pos.y - s / 6.0, s, s / 3.0),
             color,
         );
         draw_rect(
             canvas,
-            meshes,
             Rect::new(pos.x - s / 6.0, pos.y - s / 2.0, s / 3.0, s),
             color,
         );

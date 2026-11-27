@@ -1,7 +1,7 @@
 use ggez::graphics::{Color, Rect};
-use ggez::{Context, GameResult};
+use ggez::GameResult;
 
-use crate::draw::*;
+use super::*;
 
 pub(super) const DEBUG_ROW_HEIGHT: f32 = 26.0;
 pub(super) const DEBUG_PANEL_GAP: f32 = 24.0; // below the hold and next previews
@@ -48,127 +48,101 @@ pub struct DebugScreen<'a> {
 }
 
 impl Layer for DebugScreen<'_> {
-    fn draw(&self, canvas: &mut Painter, frame: &Frame) -> GameResult {
-        let Self {
-            names,
-            selected,
-            speed,
-            paused,
-            replay,
-            level,
-            fps,
-            stats,
-            recording,
-            stats_only,
-        } = *self;
-        let ctx = frame.ctx;
-        let meshes = frame.meshes;
-        let view_settings = frame.view;
-        let style = frame.block;
-        let view = &view_settings.view_rect;
-        let top = view_settings.preview_rect.bottom() + DEBUG_PANEL_GAP;
+    fn draw(&self, canvas: &mut Painter) -> GameResult {
+        let view = canvas.view;
+        let top = view.preview_rect.bottom() + DEBUG_PANEL_GAP;
 
         // frame cost, small in the top left corner
-        let at = Rect::new(PANEL_PADDING, PANEL_PADDING, view_settings.hold_rect.w, 0.0);
-        if let Some(stats) = stats {
+        if let Some(stats) = self.stats {
             let mut lines = vec![
                 format!("{:.0} fps  {:.2}ms", stats.fps, stats.frame_ms),
                 format!("scene {:.2} enc {:.2}", stats.scene_ms, stats.encode_ms),
             ];
-            if !stats_only {
-                lines.push(if recording {
-                    format!("{} draws  REC", stats.draws)
-                } else {
-                    format!("{} draws", stats.draws)
-                });
+            if !self.stats_only {
+                let rec = if self.recording { "  REC" } else { "" };
+                lines.push(format!("{} draws{rec}", stats.draws));
                 lines.push(format!("GPU wait {:.2}ms", stats.gpu_wait_ms));
             }
-            draw_lines(ctx, canvas, meshes, at, &lines, COMPACT_ROW_HEIGHT, 0.6)?;
+            let lines: Vec<_> = lines.iter().map(|l| (l.as_str(), LABEL_COLOR)).collect();
+            let at = Rect::new(PANEL_PADDING, PANEL_PADDING, view.hold_rect.w, 0.0);
+            draw_lines(
+                canvas,
+                at,
+                &lines,
+                COMPACT_ROW_HEIGHT,
+                SMALL_TEXT_SIZE * 0.6,
+                None,
+            )?;
         }
-        if stats_only {
+        if self.stats_only {
             return Ok(());
         }
 
         // animations, right of the playfield
-        let left = view_settings.preview_rect.x;
-        let width = (view.w - left - PANEL_PADDING).max(view_settings.preview_rect.w);
-        let rows = names.len() + 4;
-        let panel = Rect::new(
-            left,
-            top,
-            width,
-            rows as f32 * DEBUG_ROW_HEIGHT + 2.0 * PANEL_PADDING,
-        );
-        draw_panel(canvas, meshes, panel);
-        let title = ui_text("Animations", SMALL_TEXT_SIZE);
-        let title_row = menu_row_rect(panel, 0, DEBUG_ROW_HEIGHT);
-        draw_text_centered(ctx, canvas, &title, title_row.center().into(), LABEL_COLOR)?;
-        for (i, name) in names.iter().enumerate() {
-            let row = menu_row_rect(panel, i + 1, DEBUG_ROW_HEIGHT);
-            let chosen = i == selected;
-            if chosen {
-                draw_selection(ctx, canvas, meshes, row, style);
-            }
-            let color = if chosen { ACCENT_COLOR } else { Color::WHITE };
-            let text = ui_text(name, SMALL_TEXT_SIZE);
-            draw_text_centered(ctx, canvas, &text, row.center().into(), color)?;
-        }
-        let status = if paused {
+        let status = if self.paused {
             "Paused".to_string()
         } else {
-            format!("Speed {speed}x")
+            format!("Speed {}x", self.speed)
         };
-        let replay = if replay { "Replay On" } else { "Replay Off" };
-        let level = format!("Level {level}  {fps} FPS");
-        for (i, line) in [status.as_str(), replay, level.as_str()]
-            .into_iter()
-            .enumerate()
-        {
-            let row = menu_row_rect(panel, rows - 3 + i, DEBUG_ROW_HEIGHT);
-            let text = ui_text(line, SMALL_TEXT_SIZE);
-            draw_text_centered(ctx, canvas, &text, row.center().into(), LABEL_COLOR)?;
-        }
+        let replay = if self.replay {
+            "Replay On"
+        } else {
+            "Replay Off"
+        };
+        let level = format!("Level {}  {} FPS", self.level, self.fps);
+        let mut lines = vec![("Animations", LABEL_COLOR)];
+        lines.extend(self.names.iter().map(|name| (*name, Color::WHITE)));
+        lines.extend([status.as_str(), replay, &level].map(|line| (line, LABEL_COLOR)));
+        let left = view.preview_rect.x;
+        let width = (view.view_rect.w - left - PANEL_PADDING).max(view.preview_rect.w);
+        let at = Rect::new(left, top, width, 0.0);
+        let selected = Some(self.selected + 1);
+        draw_lines(
+            canvas,
+            at,
+            &lines,
+            DEBUG_ROW_HEIGHT,
+            SMALL_TEXT_SIZE,
+            selected,
+        )?;
 
         // controls, left of the playfield
-        let right = view_settings.hold_rect.right();
-        let width = (right - PANEL_PADDING).max(view_settings.hold_rect.w);
-        let panel = Rect::new(
-            right - width,
-            top,
-            width,
-            DEBUG_HINTS.len() as f32 * DEBUG_ROW_HEIGHT + 2.0 * PANEL_PADDING,
-        );
-        draw_panel(canvas, meshes, panel);
-        for (i, hint) in DEBUG_HINTS.iter().enumerate() {
-            let row = menu_row_rect(panel, i, DEBUG_ROW_HEIGHT);
-            let text = ui_text(hint, SMALL_TEXT_SIZE * 0.75);
-            draw_text_centered(ctx, canvas, &text, row.center().into(), LABEL_COLOR)?;
-        }
-        Ok(())
+        let right = view.hold_rect.right();
+        let width = (right - PANEL_PADDING).max(view.hold_rect.w);
+        let hints = DEBUG_HINTS.map(|hint| (hint, LABEL_COLOR));
+        let at = Rect::new(right - width, top, width, 0.0);
+        draw_lines(
+            canvas,
+            at,
+            &hints,
+            DEBUG_ROW_HEIGHT,
+            SMALL_TEXT_SIZE * 0.75,
+            None,
+        )
     }
 }
 
-/// a panel of text lines, `at` gives its top left and width
+/// a panel of centered text lines, `at` gives its top left and width
 fn draw_lines(
-    ctx: &Context,
     canvas: &mut Painter,
-    meshes: &Meshes,
     at: Rect,
-    lines: &[String],
+    lines: &[(&str, Color)],
     row_height: f32,
-    text_scale: f32,
+    size: f32,
+    selected: Option<usize>,
 ) -> GameResult {
-    let panel = Rect::new(
-        at.x,
-        at.y,
-        at.w,
-        lines.len() as f32 * row_height + 2.0 * PANEL_PADDING,
-    );
-    draw_panel(canvas, meshes, panel);
-    for (i, line) in lines.iter().enumerate() {
+    let height = lines.len() as f32 * row_height + 2.0 * PANEL_PADDING;
+    let panel = Rect::new(at.x, at.y, at.w, height);
+    draw_panel(canvas, panel);
+    for (i, &(line, color)) in lines.iter().enumerate() {
         let row = menu_row_rect(panel, i, row_height);
-        let text = ui_text(line, SMALL_TEXT_SIZE * text_scale);
-        draw_text_centered(ctx, canvas, &text, row.center().into(), LABEL_COLOR)?;
+        let color = if selected == Some(i) {
+            draw_selection(canvas, row);
+            ACCENT_COLOR
+        } else {
+            color
+        };
+        draw_text_centered(canvas, &ui_text(line, size), row.center().into(), color)?;
     }
     Ok(())
 }

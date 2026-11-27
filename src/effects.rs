@@ -4,6 +4,7 @@ use rand::{RngExt, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 
 use crate::playfield::{Playfield, SlotState, PLAYFIELD_SLOTS};
+use crate::util::mix_color;
 
 const GRAVITY: f32 = 30.0; // cells per second squared
 const LINE_CLEAR_GOLD: Color = Color::new(1.0, 0.92, 0.72, 1.0);
@@ -225,7 +226,7 @@ impl Effects {
                     let color = if self.rng.random_bool(0.2) {
                         Color::WHITE
                     } else {
-                        mix(rtype.color(), LINE_CLEAR_GOLD, gold)
+                        mix_color(rtype.color(), LINE_CLEAR_GOLD, gold)
                     };
                     let vel = Vec2::new(
                         away * self.rng.random_range(0.0..6.0) + self.rng.random_range(-3.0..3.0),
@@ -271,22 +272,8 @@ impl Effects {
     pub fn hard_drop(&mut self, from: &[IVec2; 4], to: &[IVec2; 4], color: Color) {
         let rows = (from[0].y - to[0].y) as f32;
         self.drop_trails(from, to, color, 1.0);
-        for x in columns(to) {
-            let bottom = to
-                .iter()
-                .filter(|b| b.x == x)
-                .map(|b| b.y)
-                .min()
-                .unwrap_or(0);
-            self.dust(x, bottom, color, DUST_PER_COLUMN);
-        }
-        self.impact = Some(Impact {
-            blocks: *to,
-            strength: 1.0,
-            time: 0.0,
-        });
-        self.bump = (BUMP_MIN + rows * BUMP_PER_ROW).min(BUMP_MAX);
-        self.bump_time = 0.0;
+        let bump = (BUMP_MIN + rows * BUMP_PER_ROW).min(BUMP_MAX);
+        self.land(to, color, DUST_PER_COLUMN, 1.0, bump);
     }
 
     /// streak over rows skipped by one gravity tick
@@ -299,51 +286,55 @@ impl Effects {
         if from[0].y <= to[0].y {
             return;
         }
-        for x in columns(to) {
-            let top = |blocks: &[IVec2; 4]| blocks.iter().filter(|b| b.x == x).map(|b| b.y).max();
-            if let (Some(from_top), Some(to_top)) = (top(from), top(to)) {
-                self.trails.push(Trail {
-                    x: x as f32,
-                    from: from_top as f32 + 1.0,
-                    to: to_top as f32 + 1.0,
-                    color,
-                    strength,
-                    time: 0.0,
-                });
-            }
+        // the same shape, so the columns line up
+        for ((x, _, from_top), (_, _, to_top)) in
+            column_spans(from).into_iter().zip(column_spans(to))
+        {
+            self.trail(
+                x,
+                from_top as f32 + 1.0,
+                to_top as f32 + 1.0,
+                color,
+                strength,
+            );
         }
     }
 
     /// short streak above a piece moved down one row
     pub fn soft_drop(&mut self, to: &[IVec2; 4], color: Color) {
-        for x in columns(to) {
-            let Some(top) = to.iter().filter(|b| b.x == x).map(|b| b.y).max() else {
-                continue;
-            };
-            self.trails.push(Trail {
-                x: x as f32,
-                from: top as f32 + 2.0,
-                to: top as f32 + 1.0,
-                color,
-                strength: SOFT_TRAIL,
-                time: 0.0,
-            });
+        for (x, _, top) in column_spans(to) {
+            self.trail(x, top as f32 + 2.0, top as f32 + 1.0, color, SOFT_TRAIL);
         }
+    }
+
+    fn trail(&mut self, x: i32, from: f32, to: f32, color: Color, strength: f32) {
+        let x = x as f32;
+        self.trails.push(Trail {
+            x,
+            from,
+            to,
+            color,
+            strength,
+            time: 0.0,
+        });
     }
 
     /// soft flash, dust and bump for a normal lock
     pub fn lock(&mut self, blocks: &[IVec2; 4], color: Color) {
-        for x in columns(blocks) {
-            if let Some(bottom) = blocks.iter().filter(|b| b.x == x).map(|b| b.y).min() {
-                self.dust(x, bottom, color, LOCK_DUST_PER_COLUMN);
-            }
+        self.land(blocks, color, LOCK_DUST_PER_COLUMN, LOCK_FLASH, LOCK_BUMP);
+    }
+
+    /// dust under each column, a flash over the blocks and a bump
+    fn land(&mut self, blocks: &[IVec2; 4], color: Color, dust: usize, strength: f32, bump: f32) {
+        for (x, bottom, _) in column_spans(blocks) {
+            self.dust(x, bottom, color, dust);
         }
         self.impact = Some(Impact {
             blocks: *blocks,
-            strength: LOCK_FLASH,
+            strength,
             time: 0.0,
         });
-        self.bump = LOCK_BUMP;
+        self.bump = bump;
         self.bump_time = 0.0;
     }
 
@@ -356,7 +347,7 @@ impl Effects {
                     side * self.rng.random_range(2.0..6.0),
                     self.rng.random_range(1.0..4.0),
                 ),
-                color: mix(color, Color::WHITE, 0.6),
+                color: mix_color(color, Color::WHITE, 0.6),
                 size: self.rng.random_range(0.08..0.18),
                 delay: 0.0,
                 age: 0.0,
@@ -446,19 +437,14 @@ impl Effects {
     }
 }
 
-fn columns(blocks: &[IVec2; 4]) -> Vec<i32> {
+/// each column's x, bottom and top row, left to right
+fn column_spans(blocks: &[IVec2; 4]) -> Vec<(i32, i32, i32)> {
     let mut columns: Vec<i32> = blocks.iter().map(|block| block.x).collect();
     columns.sort_unstable();
     columns.dedup();
+    let rows = |x: i32| blocks.iter().filter(move |b| b.x == x).map(|b| b.y);
     columns
-}
-
-fn mix(from: Color, to: Color, amount: f32) -> Color {
-    let lerp = |a: f32, b: f32| a + (b - a) * amount;
-    Color::new(
-        lerp(from.r, to.r),
-        lerp(from.g, to.g),
-        lerp(from.b, to.b),
-        1.0,
-    )
+        .into_iter()
+        .map(|x| (x, rows(x).min().unwrap_or(0), rows(x).max().unwrap_or(0)))
+        .collect()
 }

@@ -213,7 +213,7 @@ impl LevelProgress {
         if drain <= 0.0 {
             return None;
         }
-        let grow = ease_out_back((t / GROW_TIME).min(1.0));
+        let grow = crate::util::ease_out_back((t / GROW_TIME).min(1.0));
         let settle = (1.0 - t / (2.0 * GROW_TIME)).max(0.0);
         let cool = (1.0 - t / COOL_TIME).max(0.0);
         let flare = self.sweep(i).max(self.burst());
@@ -237,12 +237,4 @@ impl LevelProgress {
         }
         Some((i, 0.5 - 0.5 * (self.time * PULSE_SPEED).cos()))
     }
-}
-
-/// overshoots past 1.0 then settles
-fn ease_out_back(t: f32) -> f32 {
-    const C1: f32 = 1.70158;
-    const C3: f32 = C1 + 1.0;
-    let u = t - 1.0;
-    1.0 + C3 * u * u * u + C1 * u * u
 }

@@ -7,8 +7,10 @@ use rand_xoshiro::Xoshiro256PlusPlus;
 use super::{gravity_delay, BlocksState, GameState, LINES_PER_LEVEL};
 use crate::effects::Effects;
 use crate::level_progress::LevelProgress;
-use crate::playfield::TranslationDirection;
-use crate::playfield::{PlayfieldSlots, SlotState, PLAYFIELD_SIZE, PLAYFIELD_SLOTS};
+use crate::playfield::{
+    check_collision, check_rotation, complete_lines, remove_lines, PlayfieldSlots, SlotState,
+    TranslationDirection, PLAYFIELD_SIZE, PLAYFIELD_SLOTS,
+};
 use crate::rustomino::{Rotation, Rustomino};
 use crate::score_display::ScoreDisplay;
 
@@ -257,23 +259,12 @@ fn best_plan(
     )
 }
 
-fn collides(slots: &PlayfieldSlots, blocks: [IVec2; 4]) -> bool {
-    blocks.iter().any(|b| {
-        b.x < 0
-            || b.x >= W as i32
-            || b.y < 0
-            || b.y >= H as i32
-            || slots[b.y as usize][b.x as usize] != SlotState::Empty
-    })
-}
-
 /// every reachable turn and column, dropped
 fn placements<'a>(
     slots: &'a PlayfieldSlots,
     piece: &Rustomino,
 ) -> impl Iterator<Item = (Plan, Rustomino)> + 'a {
-    let left = IVec2::new(-1, 0);
-    let down = IVec2::new(0, -1);
+    let (left, down) = (IVec2::NEG_X, IVec2::NEG_Y);
     let mut found = Vec::new();
     'turns: for turns in [0i32, 1, 2, -1] {
         let mut turned = piece.clone();
@@ -283,12 +274,7 @@ fn placements<'a>(
             Rotation::Cw
         };
         for _ in 0..turns.abs() {
-            let rotated = turned.rotated(&rotation);
-            let Some(kick) = turned
-                .wall_kick_tests(&rotation)
-                .into_iter()
-                .find(|kick| !collides(slots, crate::rustomino::translated(&rotated, kick)))
-            else {
+            let Some(kick) = check_rotation(slots, &turned, &rotation) else {
                 continue 'turns;
             };
             turned.rotate(&rotation, &kick);
@@ -299,7 +285,7 @@ fn placements<'a>(
                 // the unshifted column once
                 if dir == left || shifted.translation.x != turned.translation.x {
                     let mut dropped = shifted.clone();
-                    while !collides(slots, dropped.translated(&down)) {
+                    while !check_collision(slots, dropped.translated(&down)) {
                         dropped.translate(down);
                     }
                     let plan = Plan {
@@ -308,7 +294,7 @@ fn placements<'a>(
                     };
                     found.push((plan, dropped));
                 }
-                if collides(slots, shifted.translated(&dir)) {
+                if check_collision(slots, shifted.translated(&dir)) {
                     break;
                 }
                 shifted.translate(dir);
@@ -335,24 +321,13 @@ fn place(slots: &PlayfieldSlots, piece: &Rustomino) -> (PlayfieldSlots, Placed) 
     let (low, high) = blocks.iter().fold((i32::MAX, i32::MIN), |(lo, hi), b| {
         (lo.min(b.y), hi.max(b.y))
     });
-    let full: Vec<usize> = (0..H)
-        .filter(|&y| board[y].iter().all(|s| *s != SlotState::Empty))
-        .collect();
+    let full = complete_lines(&board);
     let eroded = full.len()
         * blocks
             .iter()
             .filter(|b| full.contains(&(b.y as usize)))
             .count();
-    let mut write = 0;
-    for read in 0..H {
-        if !full.contains(&read) {
-            board[write] = board[read];
-            write += 1;
-        }
-    }
-    for row in &mut board[write..] {
-        *row = [SlotState::Empty; W];
-    }
+    remove_lines(&mut board, &full);
     // over the visible rows tops out soon
     let above = if high >= PLAYFIELD_SIZE[1] {
         -1000.0
@@ -441,7 +416,7 @@ mod tests {
         let mut clears = [0; 5];
         for _ in 0..1000 {
             assert!(
-                !collides(&slots, piece.playfield_slots()),
+                !check_collision(&slots, piece.playfield_slots()),
                 "topped out at {lines} lines"
             );
             let plan = best_plan(&slots, &piece, Some(&next), &mut rng);

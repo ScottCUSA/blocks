@@ -33,10 +33,6 @@ pub(super) const WARP_STREAK: f32 = 0.4; // flight per px from center
 pub(super) const WARP_ARRIVE: f32 = 0.35; // new stars start appearing
 pub(super) const WARP_DOTS: usize = 48; // max per streak
 
-pub(super) fn overlaps(a: Rect, b: &Rect) -> bool {
-    a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
-}
-
 pub(super) struct Star {
     pos: Vec2,
     size: f32,
@@ -51,10 +47,7 @@ pub(super) fn star_of(i: usize, field: usize, background: &Background, view_rect
     let time = background.time;
     let z = (n(1.0) - time * STAR_FLIGHT).rem_euclid(1.0).max(STAR_NEAR);
     let depth = 1.0 - z;
-    let center = Vec2::new(
-        view_rect.x + view_rect.w / 2.0,
-        view_rect.y + view_rect.h / 2.0,
-    );
+    let center = Vec2::from(view_rect.center());
     let spread = Vec2::new(n(2.0) * 2.0 - 1.0, n(3.0) * 2.0 - 1.0) * STAR_SPREAD / z;
     let pos = center + spread * Vec2::new(view_rect.w, view_rect.h) / 2.0;
     let size = (1.0 + 3.0 * depth * depth).round();
@@ -93,35 +86,16 @@ pub(super) fn star_of(i: usize, field: usize, background: &Background, view_rect
     }
 }
 
-pub(super) struct Stars;
-
-impl Scenery for Stars {
-    const COLORS: (Color, Color) = STARS_COLORS;
-
-    fn draw(
-        &self,
-        canvas: &mut Painter,
-        meshes: &Meshes,
-        view_rect: &Rect,
-        background: &Background,
-    ) {
-        draw_stars(canvas, meshes, view_rect, background);
-    }
-}
-
-fn draw_stars(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, background: &Background) {
-    let center = Vec2::new(
-        view_rect.x + view_rect.w / 2.0,
-        view_rect.y + view_rect.h / 2.0,
-    );
+pub(super) fn draw_stars(canvas: &mut Painter, view_rect: &Rect, background: &Background) {
+    let center = Vec2::from(view_rect.center());
     let field = background.stars;
     let Some(p) = background.wave() else {
-        draw_nebula(canvas, meshes, view_rect, background, field, 1.0, 1.0);
+        draw_nebula(canvas, view_rect, background, field, 1.0, 1.0);
         for i in 0..STAR_COUNT {
             let star = star_of(i, field, background, view_rect);
             let rect = Rect::new(star.pos.x, star.pos.y, star.size, star.size);
-            if star.alpha > 0.0 && overlaps(rect, view_rect) {
-                draw_rect(canvas, meshes, rect, with_alpha(star.color, star.alpha));
+            if star.alpha > 0.0 && rect.overlaps(view_rect) {
+                draw_rect(canvas, rect, with_alpha(star.color, star.alpha));
             }
         }
         return;
@@ -132,7 +106,6 @@ fn draw_stars(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
     let leave = 1.0 - smoothstep(0.1, 0.7, p);
     draw_nebula(
         canvas,
-        meshes,
         view_rect,
         background,
         old,
@@ -141,7 +114,6 @@ fn draw_stars(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
     );
     draw_nebula(
         canvas,
-        meshes,
         view_rect,
         background,
         field,
@@ -151,7 +123,7 @@ fn draw_stars(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
     for i in 0..STAR_COUNT {
         // old field streaks out toward the camera
         let star = star_of(i, old, background, view_rect);
-        draw_warp_star(canvas, meshes, view_rect, center, &star, p);
+        draw_warp_star(canvas, view_rect, center, &star, p);
         // new field arrives from behind, small and dim, spreading into place
         if appear <= 0.0 {
             continue;
@@ -160,13 +132,8 @@ fn draw_stars(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
         let pos = center + (star.pos - center) * (0.7 + 0.3 * appear);
         let size = (star.size * appear).round().max(1.0);
         let rect = Rect::new(pos.x, pos.y, size, size);
-        if overlaps(rect, view_rect) {
-            draw_rect(
-                canvas,
-                meshes,
-                rect,
-                with_alpha(star.color, star.alpha * appear),
-            );
+        if rect.overlaps(view_rect) {
+            draw_rect(canvas, rect, with_alpha(star.color, star.alpha * appear));
         }
     }
 }
@@ -174,7 +141,6 @@ fn draw_stars(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgroun
 /// soft clouds behind a star field, drawn additively
 pub(super) fn draw_nebula(
     canvas: &mut Painter,
-    meshes: &Meshes,
     view_rect: &Rect,
     background: &Background,
     field: usize,
@@ -184,10 +150,7 @@ pub(super) fn draw_nebula(
     if alpha <= 0.0 {
         return;
     }
-    let center = Vec2::new(
-        view_rect.x + view_rect.w / 2.0,
-        view_rect.y + view_rect.h / 2.0,
-    );
+    let center = Vec2::from(view_rect.center());
     let view = Vec2::new(view_rect.w, view_rect.h);
     let span = view_rect.w.max(view_rect.h);
     let drift = background.time * NEBULA_DRIFT;
@@ -210,14 +173,12 @@ pub(super) fn draw_nebula(
             let stretch = 0.45 + 0.55 * m(5.0);
             let color = mix_color(hue, edge, m(6.0));
             let strength = NEBULA_ALPHA * (0.5 + 0.5 * m(7.0)) * alpha;
-            draw_mesh(
+            draw_glow(
                 canvas,
-                &meshes.glow,
-                graphics::DrawParam::default()
-                    .dest(pos)
-                    .rotation(m(8.0) * std::f32::consts::PI + drift * 0.1)
-                    .scale(Vec2::new(radius, radius * stretch))
-                    .color(with_alpha(color, strength)),
+                pos,
+                Vec2::new(radius, radius * stretch),
+                m(8.0) * std::f32::consts::PI + drift * 0.1,
+                with_alpha(color, strength),
             );
         }
     }
@@ -227,17 +188,13 @@ pub(super) fn draw_nebula(
 /// a star streaking out from the center, head first, tail catching up
 pub(super) fn draw_warp_star(
     canvas: &mut Painter,
-    meshes: &Meshes,
     view_rect: &Rect,
     center: Vec2,
     star: &Star,
     p: f32,
 ) {
     // streaks only head outward, so off screen stars stay off
-    if !overlaps(
-        Rect::new(star.pos.x, star.pos.y, star.size, star.size),
-        view_rect,
-    ) {
+    if !Rect::new(star.pos.x, star.pos.y, star.size, star.size).overlaps(view_rect) {
         return;
     }
     let reach = (star.pos - center) * WARP_STREAK * star.depth;
@@ -253,9 +210,9 @@ pub(super) fn draw_warp_star(
         let f = d as f32 / dots as f32;
         let at = star.pos + tail + (head - tail) * f;
         let dot = Rect::new(at.x, at.y, size, size);
-        if overlaps(dot, view_rect) {
+        if dot.overlaps(view_rect) {
             let fade = if dots == 1 { 1.0 } else { 0.3 + 0.7 * f };
-            draw_rect(canvas, meshes, dot, with_alpha(star.color, bright * fade));
+            draw_rect(canvas, dot, with_alpha(star.color, bright * fade));
         }
     }
 }

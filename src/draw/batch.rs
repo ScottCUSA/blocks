@@ -4,6 +4,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use ggez::graphics::{BlendMode, Canvas, DrawParam, Drawable, InstanceArray, Mesh, Rect};
 use ggez::Context;
 
+use super::{Frame, Meshes, ViewSettings};
+use crate::style::BlockStyle;
+
 // ggez canvases don't batch, every canvas draw is its own gpu draw
 // so runs of draws of the same mesh are queued here and sent as one instanced draw
 // anything else drawn, or a canvas state change, sends the queue first to keep the order
@@ -36,18 +39,28 @@ pub struct Batch {
 
 impl Batch {
     /// start a frame on the canvas, sizing the pool for the last one
-    pub fn begin<'a>(&'a mut self, ctx: &Context, canvas: &'a mut Canvas) -> Painter<'a> {
+    pub fn begin<'a>(&'a mut self, canvas: &'a mut Canvas, frame: Frame<'a>) -> Painter<'a> {
         self.mesh = None;
         self.params.clear();
         let wanted = (self.used + self.short).max(MIN_POOL);
         while self.pool.len() < wanted {
-            self.pool.push(InstanceArray::new(ctx, None));
+            self.pool.push(InstanceArray::new(frame.ctx, None));
         }
         self.used = 0;
         self.short = 0;
+        let Frame {
+            ctx,
+            meshes,
+            view,
+            block,
+        } = frame;
         Painter {
             canvas,
             batch: self,
+            ctx,
+            meshes,
+            view,
+            block,
         }
     }
 
@@ -76,12 +89,21 @@ impl Batch {
 pub struct Painter<'a> {
     canvas: &'a mut Canvas,
     batch: &'a mut Batch,
+    pub(super) ctx: &'a Context,
+    pub(super) meshes: &'a Meshes,
+    pub(super) view: &'a ViewSettings,
+    pub(super) block: BlockStyle, // style for every block drawn
 }
 
 impl Painter<'_> {
     /// send what's queued, before the canvas is finished
     pub fn end(self) {
         self.batch.flush(self.canvas);
+    }
+
+    /// seconds since the game started
+    pub(super) fn time(&self) -> f32 {
+        self.ctx.time.time_since_start().as_secs_f32()
     }
 
     pub(super) fn screen_coordinates(&self) -> Option<Rect> {

@@ -4,7 +4,7 @@
 // - draw_title_backdrop in place of draw_background on the title screens, clear color title_clear_color
 // - draw_backdrop_title in place of draw_title on the main menu
 // - time: a clock advanced by dt in Background::update
-// - beat: title theme position in beats, music::Track::position (player.get_pos()) * 150 bpm / 60
+// - beat: title theme position in beats, audio::Track::position (player.get_pos()) * 150 bpm / 60
 
 use ggez::glam::Vec2;
 use ggez::graphics::{self, Color, Rect};

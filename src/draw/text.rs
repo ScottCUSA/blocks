@@ -1,6 +1,6 @@
 use ggez::glam::Vec2;
-use ggez::graphics::{self, Color, Rect, TextFragment};
-use ggez::{Context, GameResult};
+use ggez::graphics::{self, Color, TextFragment};
+use ggez::GameResult;
 
 use crate::rustomino::RustominoType;
 use crate::util;
@@ -30,12 +30,12 @@ pub(super) fn text_param() -> graphics::DrawParam {
 
 pub(super) trait MeasureUi {
     /// size in view units
-    fn measure_ui(&self, ctx: &Context) -> GameResult<Vec2>;
+    fn measure_ui(&self, canvas: &Painter) -> GameResult<Vec2>;
 }
 
 impl MeasureUi for graphics::Text {
-    fn measure_ui(&self, ctx: &Context) -> GameResult<Vec2> {
-        Ok(Vec2::from(self.measure(ctx)?) / pixel_scale())
+    fn measure_ui(&self, canvas: &Painter) -> GameResult<Vec2> {
+        Ok(Vec2::from(self.measure(canvas.ctx)?) / pixel_scale())
     }
 }
 
@@ -52,7 +52,7 @@ pub(super) fn draw_shadowed(canvas: &mut Painter, text: &graphics::Text, pos: Ve
     draw(
         canvas,
         text,
-        param.dest(pos + Vec2::new(2.0, 2.0)).color(shadow),
+        param.dest(pos + Vec2::splat(2.0)).color(shadow),
     );
     draw(canvas, text, param.dest(pos).color(premultiply(color)));
 }
@@ -64,30 +64,19 @@ pub(super) fn draw_text(canvas: &mut Painter, text: &str, pos: Vec2, size: f32, 
 
 /// text positioned by its center
 pub(super) fn draw_text_centered(
-    ctx: &Context,
     canvas: &mut Painter,
     text: &graphics::Text,
     center: Vec2,
     color: Color,
 ) -> GameResult {
-    let size = text.measure_ui(ctx)?;
-    draw_shadowed(
-        canvas,
-        text,
-        center - Vec2::new(size.x / 2.0, size.y / 2.0),
-        color,
-    );
+    let size = text.measure_ui(canvas)?;
+    draw_shadowed(canvas, text, center - size / 2.0, color);
     Ok(())
 }
 
-/// large wobbling title, optionally with each letter in a piece color
 /// text with each letter colored like a piece, and a matching shadow text
 /// per letter colors override the draw color, so the shadow is its own text
-pub(super) fn piece_colored_text(text: &str, size: f32) -> (graphics::Text, graphics::Text) {
-    piece_colored_text_alpha(text, size, 1.0)
-}
-
-pub(super) fn piece_colored_text_alpha(
+pub(super) fn piece_colored_text(
     text: &str,
     size: f32,
     alpha: f32,
@@ -110,45 +99,31 @@ pub(super) fn piece_colored_text_alpha(
 }
 
 pub(super) fn draw_piece_colored(canvas: &mut Painter, text: &str, pos: Vec2, size: f32) {
-    let (text, shadow) = piece_colored_text(text, size);
-    let param = text_param();
-    draw(
-        canvas,
-        &shadow,
-        param.dest(pos + Vec2::splat((size / 16.0).max(2.0))),
-    );
-    draw(canvas, &text, param.dest(pos));
+    let (text, shadow) = piece_colored_text(text, size, 1.0);
+    let offset = Vec2::splat((size / 16.0).max(2.0));
+    draw(canvas, &shadow, text_param().dest(pos + offset));
+    draw(canvas, &text, text_param().dest(pos));
 }
 
 /// large wobbling piece colored title
 pub(super) fn draw_title(
-    ctx: &Context,
     canvas: &mut Painter,
     title: &str,
     center_y: f32,
     size: f32,
-    view_rect: &Rect,
 ) -> GameResult {
-    let wobble = util::slow_wobble(ctx.time.time_since_start().as_secs_f32());
-    let center = Vec2::new(view_rect.w / 2.0, center_y + wobble * size / 12.0);
-    let dims = piece_colored_text(title, size).0.measure_ui(ctx)?;
-    let pos = center - Vec2::new(dims.x / 2.0, dims.y / 2.0);
-    draw_piece_colored(canvas, title, pos, size);
+    let wobble = util::slow_wobble(canvas.time());
+    let center = Vec2::new(
+        canvas.view.view_rect.w / 2.0,
+        center_y + wobble * size / 12.0,
+    );
+    let dims = piece_colored_text(title, size, 1.0).0.measure_ui(canvas)?;
+    draw_piece_colored(canvas, title, center - dims / 2.0, size);
     Ok(())
 }
 
-pub(super) fn draw_hint(
-    ctx: &Context,
-    canvas: &mut Painter,
-    hint: &str,
-    view_rect: &Rect,
-) -> GameResult {
+pub(super) fn draw_hint(canvas: &mut Painter, hint: &str) -> GameResult {
+    let view_rect = canvas.view.view_rect;
     let center = Vec2::new(view_rect.w / 2.0, view_rect.h - 32.0);
-    draw_text_centered(
-        ctx,
-        canvas,
-        &ui_text(hint, SMALL_TEXT_SIZE),
-        center,
-        LABEL_COLOR,
-    )
+    draw_text_centered(canvas, &ui_text(hint, SMALL_TEXT_SIZE), center, LABEL_COLOR)
 }

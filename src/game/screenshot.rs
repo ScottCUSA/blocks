@@ -1,4 +1,5 @@
 use std::{fs, io::BufWriter, path::Path, path::PathBuf};
+use strum::{EnumString, VariantArray, VariantNames};
 
 use ggez::{
     graphics::{Canvas, Image, ImageFormat},
@@ -7,12 +8,13 @@ use ggez::{
 
 use super::{BlocksState, GameState, LINES_PER_LEVEL, LINE_CLEAR_DELAY};
 use crate::background::BackgroundStyle;
+use crate::draw::{storm_strike_time, StrikeKind};
 use crate::level_progress::LevelProgress;
 use crate::score_display::ScoreDisplay;
 use crate::scores::{HighScore, Initials};
 use crate::style::{BlockStyle, BoardStyle};
 use crate::{
-    playfield::{LineClear, SlotState, TranslationDirection},
+    playfield::{self, SlotState, TranslationDirection},
     rustomino::{Rustomino, RustominoType},
 };
 
@@ -25,7 +27,8 @@ const STACK: [&str; 5] = [
     "......O...",
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, EnumString, VariantNames)]
+#[strum(serialize_all = "kebab-case")]
 pub enum Scene {
     Menu,
     Playing,
@@ -57,48 +60,8 @@ pub enum Scene {
     Demo,
 }
 
-impl Scene {
-    const ALL: [(&'static str, Scene); 28] = [
-        ("menu", Scene::Menu),
-        ("playing", Scene::Playing),
-        ("line-clear", Scene::LineClear),
-        ("quad-clear", Scene::QuadClear),
-        ("hard-drop", Scene::HardDrop),
-        ("stars", Scene::Stars),
-        ("plasma", Scene::Plasma),
-        ("storm", Scene::Storm),
-        ("storm-max", Scene::StormMax),
-        ("storm-whiteout", Scene::StormWhiteout),
-        ("paused", Scene::Paused),
-        ("game-over", Scene::GameOver),
-        ("game-over-sweep", Scene::GameOverSweep),
-        ("game-over-drop", Scene::GameOverDrop),
-        ("options", Scene::Options),
-        ("options-paused", Scene::OptionsPaused),
-        ("options-audio", Scene::OptionsAudio),
-        ("score", Scene::Score),
-        ("flat", Scene::Flat),
-        ("neon", Scene::Neon),
-        ("retro", Scene::Retro),
-        ("jelly", Scene::Jelly),
-        ("name-entry", Scene::NameEntry),
-        ("high-scores", Scene::HighScores),
-        ("high-scores-new", Scene::HighScoresNew),
-        ("progress-fill", Scene::ProgressFill),
-        ("level-up", Scene::LevelUp),
-        ("demo", Scene::Demo),
-    ];
-
-    fn parse(name: &str) -> Option<Scene> {
-        Self::ALL
-            .iter()
-            .find(|(scene_name, _)| *scene_name == name)
-            .map(|(_, scene)| *scene)
-    }
-
-    fn names() -> String {
-        Self::ALL.map(|(name, _)| name).join(", ")
-    }
+fn scene_names() -> String {
+    Scene::VARIANTS.join(", ")
 }
 
 #[derive(Debug)]
@@ -116,13 +79,10 @@ impl Screenshot {
         };
         let name = args
             .get(i + 1)
-            .ok_or_else(|| format!("--screenshot needs a scene: {}", Scene::names()))?;
-        let scene = Scene::parse(name).ok_or_else(|| {
-            format!(
-                "unknown scene {name:?}, expected one of: {}",
-                Scene::names()
-            )
-        })?;
+            .ok_or_else(|| format!("--screenshot needs a scene: {}", scene_names()))?;
+        let scene = name
+            .parse()
+            .map_err(|_| format!("unknown scene {name:?}, expected one of: {}", scene_names()))?;
         let path = args
             .get(i + 2)
             .map(PathBuf::from)
@@ -135,24 +95,11 @@ impl Screenshot {
     }
 }
 
-fn rtype(c: char) -> Option<RustominoType> {
-    match c {
-        'I' => Some(RustominoType::I),
-        'O' => Some(RustominoType::O),
-        'T' => Some(RustominoType::T),
-        'L' => Some(RustominoType::L),
-        'J' => Some(RustominoType::J),
-        'S' => Some(RustominoType::S),
-        'Z' => Some(RustominoType::Z),
-        _ => None,
-    }
-}
-
 impl BlocksState {
     pub(super) fn fill_rows(&mut self, start: usize, rows: &[&str]) {
         for (y, row) in rows.iter().enumerate() {
             for (x, c) in row.chars().enumerate() {
-                if let Some(rtype) = rtype(c) {
+                if let Ok(rtype) = c.to_string().parse() {
                     self.playfield.slots[start + y][x] = SlotState::Locked(rtype);
                 }
             }
@@ -208,130 +155,108 @@ impl BlocksState {
 
     /// set up a fixed game state for a screenshot
     pub(super) fn setup_scene(&mut self, scene: Scene) {
+        use Scene::*;
         self.background.time = 12.0;
+        // most scenes are a game in progress, with a piece falling
+        let menus = matches!(
+            scene,
+            Menu | Options | OptionsAudio | HighScores | HighScoresNew
+        );
+        let landed = matches!(
+            scene,
+            LineClear | QuadClear | HardDrop | GameOver | GameOverSweep | GameOverDrop | NameEntry
+        );
+        if !menus {
+            self.setup_board();
+            self.state = GameState::Playing;
+        }
+        if !menus && !landed {
+            self.setup_active();
+        }
         match scene {
-            Scene::Menu => self.state = GameState::Menu,
-            Scene::Options => self.state = GameState::Options,
-            Scene::OptionsAudio => {
+            Menu => self.state = GameState::Menu,
+            Options => self.state = GameState::Options,
+            OptionsAudio => {
                 self.state = GameState::Options;
                 self.audio_open = true;
-                crate::menus::Menu::next(&mut self.audio_state);
+                self.audio_state.next();
             }
-            Scene::Score => {
+            OptionsPaused => {
+                self.state = GameState::Options;
+                self.previous_state = GameState::Paused;
+                return;
+            }
+            Playing => {}
+            Paused => self.state = GameState::Paused,
+            Demo => self.attract.phase = super::attract::Phase::Demo,
+            Score => {
                 // part way through the score animation after a clear
-                self.setup_board();
-                self.setup_active();
                 self.score += 800;
                 self.score_display.add(800);
                 self.score_display.update(0.15);
                 self.level += 1;
                 self.level_display.add(1);
                 self.level_display.update(0.15);
-                self.state = GameState::Playing;
             }
-            Scene::OptionsPaused => {
-                self.setup_board();
-                self.setup_active();
-                self.state = GameState::Options;
-                self.previous_state = GameState::Paused;
-                return;
-            }
-            Scene::Stars
-            | Scene::Plasma
-            | Scene::Storm
-            | Scene::StormMax
-            | Scene::StormWhiteout => {
+            Stars | Plasma | Storm | StormMax | StormWhiteout => {
                 self.background.style = match scene {
-                    Scene::Stars => BackgroundStyle::Stars,
-                    Scene::Plasma => BackgroundStyle::Plasma,
+                    Stars => BackgroundStyle::Stars,
+                    Plasma => BackgroundStyle::Plasma,
                     _ => BackgroundStyle::Storm,
                 };
-                if scene == Scene::StormWhiteout {
+                if scene == StormWhiteout {
                     self.background.whiteout = 1.0;
                 }
-                if matches!(scene, Scene::StormMax | Scene::StormWhiteout) {
+                if matches!(scene, StormMax | StormWhiteout) {
                     self.background.storm = 1.0;
                     self.background.sea_storm = 1.0;
                     self.background.wind = 40.0;
                     self.background.rain = 40.0;
                     self.background.sea = 40.0;
                 }
-                if matches!(scene, Scene::Storm | Scene::StormMax | Scene::StormWhiteout) {
+                if matches!(scene, Storm | StormMax | StormWhiteout) {
                     // catch a lightning strike near its brightest
                     // STORM_STRIKE picks the kind of lightning: 0 fork, 1 double, 2 sheet, 3 crawl, 4 distant
                     let kind = std::env::var("STORM_STRIKE")
                         .ok()
                         .and_then(|v| v.parse::<usize>().ok())
-                        .and_then(|i| crate::draw::StrikeKind::ALL.get(i).copied())
-                        .unwrap_or(crate::draw::StrikeKind::Fork);
-                    self.background.bolt =
-                        crate::draw::storm_strike_time(kind, self.background.storm);
+                        .and_then(|i| StrikeKind::VARIANTS.get(i).copied())
+                        .unwrap_or(StrikeKind::Fork);
+                    self.background.bolt = storm_strike_time(kind, self.background.storm);
                 }
-                self.setup_board();
-                self.setup_active();
-                self.state = GameState::Playing;
             }
-            Scene::Flat | Scene::Neon | Scene::Retro | Scene::Jelly => {
+            Flat | Neon | Retro | Jelly => {
                 (self.style.block, self.style.board) = match scene {
-                    Scene::Flat => (BlockStyle::Flat, BoardStyle::Dots),
-                    Scene::Neon => (BlockStyle::Neon, BoardStyle::Clean),
-                    Scene::Retro => (BlockStyle::Retro, BoardStyle::Checker),
+                    Flat => (BlockStyle::Flat, BoardStyle::Dots),
+                    Neon => (BlockStyle::Neon, BoardStyle::Clean),
+                    Retro => (BlockStyle::Retro, BoardStyle::Checker),
                     _ => (BlockStyle::Jelly, BoardStyle::Grid),
                 };
-                self.setup_board();
-                self.setup_active();
-                self.state = GameState::Playing;
             }
-            Scene::Demo => {
-                self.setup_board();
-                self.setup_active();
-                self.state = GameState::Playing;
-                self.attract.phase = super::attract::Phase::Demo;
-            }
-            Scene::Playing | Scene::Paused => {
-                self.setup_board();
-                self.setup_active();
-                self.state = if scene == Scene::Paused {
-                    GameState::Paused
+            LineClear | QuadClear => {
+                // a vertical I locked into the gap clears the bottom rows
+                let (lines, origin, at) = if scene == QuadClear {
+                    self.fill_rows(0, &["SSZZOOLJ.T", "OOZZSSLJ.T", "TTJJLLOO.I", "TZZSSJJO.I"]);
+                    self.fill_rows(0, &["........I"; 4]);
+                    (4, 8, 0.5)
                 } else {
-                    GameState::Playing
+                    self.fill_rows(0, &["...I"; 4]);
+                    (2, 3, 0.4)
                 };
-            }
-            Scene::LineClear => {
-                self.setup_board();
-                // a vertical I locked into the gap clears the bottom two rows
-                self.fill_rows(0, &["...I", "...I", "...I", "...I"]);
-                self.playfield.line_clear = Some(LineClear {
-                    lines: vec![0, 1],
-                    origins: vec![3],
-                    time: LINE_CLEAR_DELAY * 0.4,
+                let time = LINE_CLEAR_DELAY * at;
+                self.playfield.line_clear = Some(playfield::LineClear {
+                    lines: (0..lines).collect(),
+                    origins: vec![origin],
+                    time,
                     duration: LINE_CLEAR_DELAY,
                 });
                 self.effects.line_clear(&self.playfield);
-                self.effects.update(LINE_CLEAR_DELAY * 0.4);
-                self.background.surge(2);
-                self.background.update(LINE_CLEAR_DELAY * 0.4, self.level);
-                self.state = GameState::Playing;
+                self.effects.update(time);
+                self.background.surge(lines);
+                self.background.update(time, self.level);
             }
-            Scene::QuadClear => {
-                self.setup_board();
-                self.fill_rows(0, &["SSZZOOLJ.T", "OOZZSSLJ.T", "TTJJLLOO.I", "TZZSSJJO.I"]);
-                self.fill_rows(0, &["........I", "........I", "........I", "........I"]);
-                self.playfield.line_clear = Some(LineClear {
-                    lines: vec![0, 1, 2, 3],
-                    origins: vec![8],
-                    time: LINE_CLEAR_DELAY * 0.5,
-                    duration: LINE_CLEAR_DELAY,
-                });
-                self.effects.line_clear(&self.playfield);
-                self.effects.update(LINE_CLEAR_DELAY * 0.5);
-                self.background.surge(4);
-                self.background.update(LINE_CLEAR_DELAY * 0.5, self.level);
-                self.state = GameState::Playing;
-            }
-            Scene::HardDrop => {
+            HardDrop => {
                 // just after a T slams into the stack
-                self.setup_board();
                 self.playfield.set_active(Rustomino::new(RustominoType::T));
                 if let Some(from) = self.playfield.hard_drop_active() {
                     if let Some(to) = self.playfield.lock_active() {
@@ -339,38 +264,34 @@ impl BlocksState {
                     }
                 }
                 self.effects.update(0.04);
-                self.state = GameState::Playing;
             }
-            Scene::GameOver | Scene::GameOverSweep | Scene::GameOverDrop | Scene::NameEntry => {
-                self.setup_board();
+            GameOver | GameOverSweep | GameOverDrop | NameEntry => {
                 self.setup_tall_stack();
                 self.effects.game_over();
                 self.background.freeze(self.level);
                 let time = match scene {
-                    Scene::GameOverSweep => 0.4,
-                    Scene::GameOverDrop => 1.3,
+                    GameOverSweep => 0.4,
+                    GameOverDrop => 1.3,
                     _ => 4.0,
                 };
                 self.effects.update(time as f64);
                 self.background.skip(time, self.level);
                 self.state = GameState::GameOver;
-                if scene == Scene::NameEntry {
+                if scene == NameEntry {
                     self.initials = Initials::new("SCO");
                     self.initials.cursor = 1;
                     self.state = GameState::NameEntry;
                 }
             }
-            Scene::ProgressFill | Scene::LevelUp => {
+            ProgressFill | LevelUp => {
                 // a double clear popping in, or a quad finishing the bar
-                self.setup_board();
-                self.setup_active();
-                let (lines, time) = if scene == Scene::LevelUp {
+                let (lines, time) = if scene == LevelUp {
                     (4, 0.8)
                 } else {
                     (2, 0.17)
                 };
                 self.level_progress.add(lines);
-                if scene == Scene::LevelUp {
+                if scene == LevelUp {
                     self.background.level_up();
                 }
                 for _ in 0..(time * 60.0) as usize {
@@ -379,11 +300,10 @@ impl BlocksState {
                     }
                     self.background.update(1.0 / 60.0, self.level);
                 }
-                self.state = GameState::Playing;
             }
-            Scene::HighScores | Scene::HighScoresNew => {
+            HighScores | HighScoresNew => {
                 self.setup_sample_scores();
-                if scene == Scene::HighScoresNew {
+                if scene == HighScoresNew {
                     self.highlight = Some(2);
                 }
                 self.state = GameState::HighScores;

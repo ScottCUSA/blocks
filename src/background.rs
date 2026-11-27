@@ -1,27 +1,12 @@
-#[derive(Debug, Clone, Copy, PartialEq)]
+use crate::style::Choice;
+
+#[derive(Debug, Clone, Copy, PartialEq, Default, strum::VariantArray, strum::IntoStaticStr)]
 pub enum BackgroundStyle {
+    #[default]
     Stars,
     Plasma,
     Storm,
     Off,
-}
-
-impl BackgroundStyle {
-    pub const ALL: [BackgroundStyle; 4] = [
-        BackgroundStyle::Stars,
-        BackgroundStyle::Plasma,
-        BackgroundStyle::Storm,
-        BackgroundStyle::Off,
-    ];
-
-    pub fn name(self) -> &'static str {
-        match self {
-            BackgroundStyle::Stars => "Stars",
-            BackgroundStyle::Plasma => "Plasma",
-            BackgroundStyle::Storm => "Storm",
-            BackgroundStyle::Off => "Off",
-        }
-    }
 }
 
 const LEVEL_SPEEDUP: f32 = 0.06;
@@ -44,6 +29,7 @@ const STORM_RAMP: f32 = 0.4; // how quickly the storm follows the level, per sec
 const CALM_RATE: f32 = 2.5; // how quickly calm follows its target, per second
 
 /// animated background shown behind the game
+#[derive(Default)]
 pub struct Background {
     pub style: BackgroundStyle,
     pub time: f32,         // animation clock, runs faster with level and energy
@@ -67,33 +53,9 @@ pub struct Background {
 }
 
 impl Background {
-    pub fn new() -> Self {
-        Self {
-            style: BackgroundStyle::Stars,
-            time: 0.0,
-            energy: 0.0,
-            level_up: None,
-            stars: 0,
-            freeze: None,
-            freeze_rate: 0.0,
-            frozen_at: 0.0,
-            thaw: None,
-            twinkle: 0.0,
-            storm: 0.0,
-            sea_storm: 0.0,
-            wind: 0.0,
-            rain: 0.0,
-            sea: 0.0,
-            bolt: 0.0,
-            whiteout: 0.0,
-            calm: 0.0,
-            calm_target: false,
-        }
-    }
-
     /// step through the styles
     pub fn cycle(&mut self, delta: isize) {
-        self.style = crate::style::cycle(&BackgroundStyle::ALL, self.style, delta);
+        self.style = self.style.cycle(delta);
     }
 
     fn speed(&self, level: usize) -> f32 {

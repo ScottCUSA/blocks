@@ -15,12 +15,25 @@ pub(super) fn snap_line(start: f32) -> (f32, f32) {
     (snap(start + BLOCK_PADDING) - width, width)
 }
 
-pub(super) fn draw_rect(canvas: &mut Painter, meshes: &Meshes, rect: Rect, color: Color) {
-    draw_mesh(
-        canvas,
-        &meshes.rect,
-        graphics::DrawParam::default().dest_rect(rect).color(color),
-    );
+pub(super) fn draw_rect(canvas: &mut Painter, rect: Rect, color: Color) {
+    let param = graphics::DrawParam::default().dest_rect(rect).color(color);
+    draw_mesh(canvas, &canvas.meshes.rect, param);
+}
+
+/// rect fading out downward
+pub(super) fn draw_fade(canvas: &mut Painter, rect: Rect, color: Color) {
+    let param = graphics::DrawParam::default().dest_rect(rect).color(color);
+    draw_mesh(canvas, &canvas.meshes.background, param);
+}
+
+/// soft disc, size is the radius on each axis
+pub(super) fn draw_glow(canvas: &mut Painter, pos: Vec2, size: Vec2, rotation: f32, color: Color) {
+    let param = graphics::DrawParam::default()
+        .dest(pos)
+        .rotation(rotation)
+        .scale(size)
+        .color(color);
+    draw_mesh(canvas, &canvas.meshes.glow, param);
 }
 
 pub(super) fn with_alpha(color: Color, alpha: f32) -> Color {
@@ -34,15 +47,6 @@ pub(super) fn premultiply(color: Color) -> Color {
         color.g * color.a,
         color.b * color.a,
         color.a,
-    )
-}
-
-pub(super) fn mix_color(from: Color, to: Color, amount: f32) -> Color {
-    Color::new(
-        from.r + (to.r - from.r) * amount,
-        from.g + (to.g - from.g) * amount,
-        from.b + (to.b - from.b) * amount,
-        from.a + (to.a - from.a) * amount,
     )
 }
 
@@ -64,15 +68,24 @@ pub(super) fn tint(color: Color, amount: f32) -> Color {
     )
 }
 
-pub(super) fn draw_rounded(canvas: &mut Painter, meshes: &Meshes, rect: Rect, color: Color) {
+pub(super) fn draw_rounded(canvas: &mut Painter, rect: Rect, color: Color) {
+    draw_mesh(canvas, &canvas.meshes.rounded, block_param(rect, color));
+}
+
+pub(super) fn draw_rounded_outline(canvas: &mut Painter, rect: Rect, color: Color) {
     draw_mesh(
         canvas,
-        &meshes.rounded,
-        graphics::DrawParam::default()
-            .dest(Vec2::new(rect.x, rect.y))
-            .scale(Vec2::new(rect.w / BLOCK_SIZE, rect.h / BLOCK_SIZE))
-            .color(color),
+        &canvas.meshes.rounded_outline,
+        block_param(rect, color),
     );
+}
+
+/// a BLOCK_SIZE mesh fitted to the rect
+fn block_param(rect: Rect, color: Color) -> graphics::DrawParam {
+    graphics::DrawParam::default()
+        .dest(Vec2::new(rect.x, rect.y))
+        .scale(Vec2::new(rect.w / BLOCK_SIZE, rect.h / BLOCK_SIZE))
+        .color(color)
 }
 
 pub(super) fn inset(rect: Rect, by: f32) -> Rect {
@@ -85,13 +98,7 @@ pub(super) fn inset(rect: Rect, by: f32) -> Rect {
 }
 
 /// rect edges of the given width, as non-overlapping rects
-pub(super) fn draw_outline(
-    canvas: &mut Painter,
-    meshes: &Meshes,
-    rect: Rect,
-    width: f32,
-    color: Color,
-) {
+pub(super) fn draw_outline(canvas: &mut Painter, rect: Rect, width: f32, color: Color) {
     let (x, y, w, h) = (rect.x, rect.y, rect.w, rect.h);
     for edge in [
         Rect::new(x, y, w, width),
@@ -99,113 +106,72 @@ pub(super) fn draw_outline(
         Rect::new(x, y + width, width, h - 2.0 * width),
         Rect::new(x + w - width, y + width, width, h - 2.0 * width),
     ] {
-        draw_rect(canvas, meshes, edge, color);
+        draw_rect(canvas, edge, color);
     }
 }
 
 /// block in the selected style, edges scale with the block size
-pub(super) fn draw_block(
-    canvas: &mut Painter,
-    meshes: &Meshes,
-    rect: Rect,
-    color: Color,
-    style: BlockStyle,
-) {
+pub(super) fn draw_block(canvas: &mut Painter, rect: Rect, color: Color) {
     let k = rect.w.min(rect.h) / BLOCK_SIZE;
-    match style {
+    match canvas.block {
         BlockStyle::Bevel => {
             // light top left edge, dark bottom right edge and gloss
             let bevel = BEVEL * k;
-            draw_rect(canvas, meshes, rect, shade(color, 0.55));
+            draw_rect(canvas, rect, shade(color, 0.55));
             let highlight = Rect::new(rect.x, rect.y, rect.w - bevel, rect.h - bevel);
-            draw_rect(canvas, meshes, highlight, tint(color, 0.45));
+            draw_rect(canvas, highlight, tint(color, 0.45));
             let face = inset(rect, bevel);
-            draw_rect(canvas, meshes, face, color);
+            draw_rect(canvas, face, color);
             let gloss = Rect::new(face.x, face.y, face.w, face.h * 0.45);
-            draw_rect(
-                canvas,
-                meshes,
-                gloss,
-                with_alpha(Color::WHITE, 0.12 * color.a),
-            );
+            draw_rect(canvas, gloss, with_alpha(Color::WHITE, 0.12 * color.a));
         }
         BlockStyle::Flat => {
-            draw_rect(canvas, meshes, rect, shade(color, 0.8));
-            draw_rect(canvas, meshes, inset(rect, 2.0 * k), color);
+            draw_rect(canvas, rect, shade(color, 0.8));
+            draw_rect(canvas, inset(rect, 2.0 * k), color);
         }
         BlockStyle::Neon => {
             // dim core with a bright rim
-            draw_rect(
-                canvas,
-                meshes,
-                rect,
-                with_alpha(shade(color, 0.3), color.a * 0.85),
-            );
-            draw_outline(canvas, meshes, rect, NEON_EDGE * k, tint(color, 0.15));
+            draw_rect(canvas, rect, with_alpha(shade(color, 0.3), color.a * 0.85));
+            draw_outline(canvas, rect, NEON_EDGE * k, tint(color, 0.15));
             let core = Rect::new(
                 rect.x + rect.w * 0.36,
                 rect.y + rect.h * 0.36,
                 rect.w * 0.28,
                 rect.h * 0.28,
             );
-            draw_rect(
-                canvas,
-                meshes,
-                core,
-                with_alpha(tint(color, 0.5), color.a * 0.7),
-            );
+            draw_rect(canvas, core, with_alpha(tint(color, 0.5), color.a * 0.7));
         }
         BlockStyle::Retro => {
             // dark border, solid face and a pixel highlight in the corner
             let edge = RETRO_EDGE * k;
             let pixel = (rect.w.min(rect.h) / 7.5).round().max(1.0);
-            draw_rect(canvas, meshes, rect, shade(color, 0.25));
+            draw_rect(canvas, rect, shade(color, 0.25));
             let face = inset(rect, edge);
-            draw_rect(canvas, meshes, face, color);
+            draw_rect(canvas, face, color);
             let shine = with_alpha(tint(color, 0.85), color.a);
             let (x, y) = (face.x + pixel, face.y + pixel);
-            draw_rect(canvas, meshes, Rect::new(x, y, pixel, pixel), shine);
-            draw_rect(
-                canvas,
-                meshes,
-                Rect::new(x + pixel, y, pixel * 2.0, pixel),
-                shine,
-            );
-            draw_rect(
-                canvas,
-                meshes,
-                Rect::new(x, y + pixel, pixel, pixel * 2.0),
-                shine,
-            );
+            draw_rect(canvas, Rect::new(x, y, pixel, pixel), shine);
+            draw_rect(canvas, Rect::new(x + pixel, y, pixel * 2.0, pixel), shine);
+            draw_rect(canvas, Rect::new(x, y + pixel, pixel, pixel * 2.0), shine);
         }
         BlockStyle::Jelly => {
             // rounded with a soft shadow and a glossy top
-            draw_rounded(canvas, meshes, rect, shade(color, 0.6));
+            draw_rounded(canvas, rect, shade(color, 0.6));
             let face = Rect::new(rect.x, rect.y, rect.w, rect.h - 2.0 * k);
-            draw_rounded(canvas, meshes, face, color);
+            draw_rounded(canvas, face, color);
             let gloss = Rect::new(
                 face.x + face.w * 0.2,
                 face.y + face.h * 0.12,
                 face.w * 0.6,
                 face.h * 0.3,
             );
-            draw_rounded(
-                canvas,
-                meshes,
-                gloss,
-                with_alpha(Color::WHITE, 0.35 * color.a),
-            );
+            draw_rounded(canvas, gloss, with_alpha(Color::WHITE, 0.35 * color.a));
         }
     }
 }
 
 pub(super) fn frame_rect(rect: Rect) -> Rect {
-    Rect::new(
-        rect.x - FRAME_WIDTH,
-        rect.y - FRAME_WIDTH,
-        rect.w + 2.0 * FRAME_WIDTH,
-        rect.h + 2.0 * FRAME_WIDTH,
-    )
+    inset(rect, -FRAME_WIDTH)
 }
 
 /// to the nearest whole physical pixel

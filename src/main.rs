@@ -32,13 +32,8 @@ fn main() {
         .init();
 
     // setup resource path
-    let resource_dir = if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
-        let mut path = path::PathBuf::from(manifest_dir);
-        path.push(ASSETS_FOLDER);
-        path
-    } else {
-        path::PathBuf::from(ASSETS_FOLDER)
-    };
+    let resource_dir =
+        path::PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap_or_default()).join(ASSETS_FOLDER);
     log::info!("resource_dir: {:?}", resource_dir);
 
     // --screenshot <scene> [path] renders one frame in a hidden window and exits
@@ -65,11 +60,10 @@ fn main() {
         bench
     });
 
-    let settings = if screenshot.is_none() {
-        settings::Settings::load()
-    } else {
-        settings::Settings::default()
-    };
+    // screenshots don't use or change the player's settings
+    let settings = screenshot
+        .as_ref()
+        .map_or_else(settings::Settings::load, |_| Default::default());
 
     // setup game context
     let mut builder = ContextBuilder::new("Blocks", "Scott Cummings")

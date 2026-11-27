@@ -3,11 +3,9 @@ use ggez::graphics::{Color, Rect};
 use ggez::GameResult;
 
 use crate::game::Mode;
-use crate::menus::{self, Menu};
-use crate::style::Style;
+use crate::menus;
 
 use super::*;
-use crate::draw::*;
 
 pub(super) const OPTION_LABEL_SIZE: f32 = 32.0;
 pub(super) const OPTIONS_PANEL_WIDTH: f32 = 680.0;
@@ -37,95 +35,64 @@ pub struct OptionsScreen<'a> {
     pub menu: &'a menus::MenuList,
     pub rows: &'a [OptionRow<'a>],
     pub mode: Mode,
-    pub style: &'a Style,
     pub max_level: u8,
 }
 
 impl Layer for OptionsScreen<'_> {
-    fn draw(&self, canvas: &mut Painter, frame: &Frame) -> GameResult {
+    fn draw(&self, canvas: &mut Painter) -> GameResult {
         let Self {
             title,
             menu,
             rows,
             mode,
-            style,
             max_level,
         } = *self;
-        let ctx = frame.ctx;
-        let meshes = frame.meshes;
-        let view_settings = frame.view;
-        let view_rect = &view_settings.view_rect;
-        draw_title(
-            ctx,
-            canvas,
-            title,
-            view_rect.h * 0.12,
-            TITLE_SIZE,
-            view_rect,
-        )?;
+        let view_rect = canvas.view.view_rect;
+        draw_title(canvas, title, view_rect.h * 0.12, TITLE_SIZE)?;
 
-        // settings, sliders and back
-        let panel = menu_panel_rect(
-            view_rect,
-            menu.items().len(),
-            view_rect.h * 0.19,
+        // settings, sliders and back, a little space above Back so it reads as its own button
+        let (top, count) = (view_rect.h * 0.19, menu.items.len());
+        let mut panel = menu_panel_rect(
+            &view_rect,
+            count,
+            top,
             OPTIONS_PANEL_WIDTH,
             OPTION_ROW_HEIGHT,
         );
-        // a little space above Back so it reads as its own button
-        let back_gap = BACK_GAP;
-        let mut panel = panel;
-        panel.h += back_gap;
+        panel.h += BACK_GAP;
         let slider_width = max_level as f32 * (SLIDER_SEGMENT + SLIDER_GAP) - SLIDER_GAP;
-        draw_panel(canvas, meshes, panel);
-        for (i, (item, kind)) in menu.items().iter().zip(rows).enumerate() {
+        draw_panel(canvas, panel);
+        for (i, (item, kind)) in menu.items.iter().zip(rows).enumerate() {
             let mut row = menu_row_rect(panel, i, OPTION_ROW_HEIGHT);
-            if let OptionRow::Back = kind {
-                row.y += back_gap;
-            }
             let selected = menu.selected() == i;
-            let mut text = item.clone();
-            text.set_font("04b30");
-            if selected {
-                match kind {
-                    // centered words: the blocks hug the word
-                    OptionRow::Back | OptionRow::Link => {
-                        let size = if let OptionRow::Link = kind {
-                            OPTION_LABEL_SIZE
-                        } else {
-                            MENU_ITEM_SIZE
-                        };
-                        let width = text.clone().set_scale(px(size)).measure_ui(ctx)?.x;
-                        draw_selection_around(ctx, canvas, meshes, row, Some(width), style.block);
-                    }
-                    _ => draw_selection(ctx, canvas, meshes, row, style.block),
-                }
-            }
             let color = if selected { ACCENT_COLOR } else { Color::WHITE };
-            match kind {
-                OptionRow::Back | OptionRow::Link => {
-                    let size = if let OptionRow::Back = kind {
-                        MENU_ITEM_SIZE
-                    } else {
-                        OPTION_LABEL_SIZE
-                    };
-                    text.set_scale(px(size));
-                    draw_text_centered(ctx, canvas, &text, row.center().into(), color)?;
-                    continue;
+            // centered words, the blocks hug the word
+            let centered = match kind {
+                OptionRow::Back => Some(MENU_ITEM_SIZE),
+                OptionRow::Link => Some(OPTION_LABEL_SIZE),
+                _ => None,
+            };
+            if let Some(size) = centered {
+                if let OptionRow::Back = kind {
+                    row.y += BACK_GAP;
                 }
-                _ => {}
+                let text = ui_text(item, size);
+                if selected {
+                    let width = text.measure_ui(canvas)?.x;
+                    draw_selection_around(canvas, row, Some(width));
+                }
+                draw_text_centered(canvas, &text, row.center().into(), color)?;
+                continue;
+            }
+            if selected {
+                draw_selection(canvas, row);
             }
 
             // label on the left, setting on the right
-            text.set_scale(px(OPTION_LABEL_SIZE));
-            let size = text.measure_ui(ctx)?;
+            let text = ui_text(item, OPTION_LABEL_SIZE);
             let center_y = row.y + row.h / 2.0;
-            draw_shadowed(
-                canvas,
-                &text,
-                Vec2::new(row.x + 48.0, center_y - size.y / 2.0),
-                color,
-            );
+            let label_y = center_y - text.measure_ui(canvas)?.y / 2.0;
+            draw_shadowed(canvas, &text, Vec2::new(row.x + 48.0, label_y), color);
             let right_x = row.x + row.w - 48.0;
             let arrow = SLIDER_SEGMENT * 0.6;
             let arrow_color = if selected {
@@ -135,32 +102,22 @@ impl Layer for OptionsScreen<'_> {
             };
             match kind {
                 OptionRow::Choice(value, locked) => {
-                    let center_x = right_x - slider_width / 2.0;
-                    draw_text_centered(
-                        ctx,
-                        canvas,
-                        &ui_text(value, OPTION_LABEL_SIZE * 0.75),
-                        Vec2::new(center_x, center_y),
-                        if *locked { LABEL_COLOR } else { color },
-                    )?;
+                    let value = ui_text(value, OPTION_LABEL_SIZE * 0.75);
+                    let center = Vec2::new(right_x - slider_width / 2.0, center_y);
+                    let value_color = if *locked { LABEL_COLOR } else { color };
+                    draw_text_centered(canvas, &value, center, value_color)?;
                     if *locked {
                         continue;
                     }
                     // arrow blocks either side of the value
                     for x in [right_x - slider_width, right_x - arrow] {
                         let rect = Rect::new(x, center_y - arrow / 2.0, arrow, arrow);
-                        draw_block(canvas, meshes, rect, arrow_color, style.block);
+                        draw_block(canvas, rect, arrow_color);
                     }
                 }
-                OptionRow::Slider(level) => draw_slider(
-                    canvas,
-                    meshes,
-                    right_x,
-                    center_y,
-                    *level,
-                    max_level,
-                    style.block,
-                ),
+                OptionRow::Slider(level) => {
+                    draw_slider(canvas, right_x, center_y, *level, max_level)
+                }
                 OptionRow::Back | OptionRow::Link => {}
             }
         }
@@ -171,19 +128,16 @@ impl Layer for OptionsScreen<'_> {
             .filter(|(action, _)| mode != Mode::Hard || *action != "Hold")
             .collect();
         let header = PANEL_PADDING + CONTROLS_ROW_HEIGHT * 1.2;
-        let controls = Rect::new(
-            panel.x,
-            panel.y + panel.h + 12.0,
-            panel.w,
-            header + rows.len() as f32 * CONTROLS_ROW_HEIGHT + PANEL_PADDING,
-        );
-        draw_panel(canvas, meshes, controls);
+        let height = header + rows.len() as f32 * CONTROLS_ROW_HEIGHT + PANEL_PADDING;
+        let controls = Rect::new(panel.x, panel.bottom() + 12.0, panel.w, height);
+        draw_panel(canvas, controls);
         let left = controls.x + PANEL_PADDING + 28.0;
-        let right = controls.x + controls.w - PANEL_PADDING - 28.0;
+        let right = controls.right() - PANEL_PADDING - 28.0;
+        let heading = Vec2::new(left, controls.y + PANEL_PADDING);
         draw_text(
             canvas,
             "Controls",
-            Vec2::new(left, controls.y + PANEL_PADDING),
+            heading,
             SMALL_TEXT_SIZE * 1.25,
             LABEL_COLOR,
         );
@@ -197,15 +151,12 @@ impl Layer for OptionsScreen<'_> {
                 LABEL_COLOR,
             );
             let keys = ui_text(keys, SMALL_TEXT_SIZE);
-            let width = keys.measure_ui(ctx)?.x;
+            let width = keys.measure_ui(canvas)?.x;
             draw_shadowed(canvas, &keys, Vec2::new(right - width, y), Color::WHITE);
         }
-
         draw_hint(
-            ctx,
             canvas,
             "Up/Down: select   Left/Right: adjust   Enter: open   Esc: back",
-            view_rect,
         )
     }
 }

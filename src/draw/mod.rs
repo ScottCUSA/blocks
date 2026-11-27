@@ -1,9 +1,10 @@
-use ggez::glam::Vec2;
+use ggez::glam::{IVec2, Vec2};
 use ggez::graphics::{self, Color, DrawMode, Rect};
 use ggez::{Context, GameResult};
 
 use crate::playfield;
 use crate::style::BlockStyle;
+use crate::util::mix_color;
 
 mod background;
 mod batch;
@@ -35,7 +36,6 @@ const STAGING_PADDING: f32 = 2.;
 pub const VIEW_WIDTH: f32 = 1024.0;
 pub const VIEW_HEIGHT: f32 = 768.;
 const UI_FONT_SIZE: f32 = 24.0;
-pub const STAGING_BACKGROUND_COLOR: Color = Color::new(0.0, 0.0, 0.0, 0.5);
 const FRAME_COLOR: Color = Color::new(0.55, 0.8, 0.9, 0.35);
 const FRAME_WIDTH: f32 = 3.0;
 const JELLY_RADIUS: f32 = 8.0; // at BLOCK_SIZE
@@ -67,7 +67,7 @@ pub struct Frame<'a> {
 
 /// a screen or overlay, drawn over the background
 pub trait Layer {
-    fn draw(&self, canvas: &mut Painter, frame: &Frame) -> GameResult;
+    fn draw(&self, canvas: &mut Painter) -> GameResult;
 }
 
 #[derive(Debug)]
@@ -151,6 +151,15 @@ impl ViewSettings {
                 playfield_y + playfield_h - 30.0,
             ),
         }
+    }
+}
+
+impl ViewSettings {
+    /// a playfield slot on screen, row 0 at the bottom
+    fn block_rect(&self, slot: IVec2) -> Rect {
+        let x = self.staging_rect.x + slot.x as f32 * CELL + 1.0;
+        let y = self.playfield_rect.bottom() - (slot.y + 1) as f32 * CELL - 1.0;
+        Rect::new(snap(x), snap(y), block_size(), block_size())
     }
 }
 
