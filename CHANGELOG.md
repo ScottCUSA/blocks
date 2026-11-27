@@ -12,8 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Quit Game asks for confirmation (Y/N).
-- Benchmark: `--bench [filter] [seconds]`, or T in the animation viewer.
-- Frame stats in the animation viewer; C records them to a CSV.
 - Attract mode: after 30 s idle at the menu, the computer plays a demo game
   from level 7.
 - Storm level up: a white flash, a barrage of six lightning bolts sweeping
@@ -29,8 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Audio option to turn off the menu sounds.
 - Shanty, a stormy 6/8 sea shanty music theme in D minor with a folk-dance
   bridge, and a jig drum pattern in `tools/make_chiptune.py`.
-- `storm`, `storm-max`, `storm-whiteout` and `options-audio` screenshot scenes.
-- `demo` screenshot scene.
 - Mouse support in the menus: hover selects, click chooses or sets a value,
   the mouse's back button goes back.
 
@@ -43,8 +39,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A 15–40 ms stutter whenever the music changed or the game over jingle
   stopped.
-- Closing the window from the animation viewer saved its block and
-  background styles as the player's.
 
 ## [0.5.1] - 2026-11-15
 
