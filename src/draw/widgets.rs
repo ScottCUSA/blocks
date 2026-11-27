@@ -1,8 +1,6 @@
 use ggez::graphics::{Color, Rect};
-use ggez::{Context, GameResult};
+use ggez::GameResult;
 
-use crate::menus::Menu;
-use crate::style::BlockStyle;
 use crate::util;
 
 use super::*;
@@ -15,29 +13,20 @@ pub(super) const PAUSED_OVERLAY_COLOR: Color = Color::new(0.1, 0.1, 0.1, 0.6);
 pub struct Overlay;
 
 impl Layer for Overlay {
-    fn draw(&self, canvas: &mut Painter, frame: &Frame) -> GameResult {
-        draw_overlay(canvas, frame.meshes, &frame.view.view_rect);
+    fn draw(&self, canvas: &mut Painter) -> GameResult {
+        draw_overlay(canvas, 1.0);
         Ok(())
     }
 }
 
-pub(super) fn draw_overlay(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect) {
-    draw_overlay_alpha(canvas, meshes, view_rect, 1.0);
-}
-
-pub(super) fn draw_overlay_alpha(
-    canvas: &mut Painter,
-    meshes: &Meshes,
-    view_rect: &Rect,
-    alpha: f32,
-) {
+pub(super) fn draw_overlay(canvas: &mut Painter, alpha: f32) {
     let color = with_alpha(PAUSED_OVERLAY_COLOR, PAUSED_OVERLAY_COLOR.a * alpha);
-    draw_rect(canvas, meshes, *view_rect, color);
+    draw_rect(canvas, canvas.view.view_rect, color);
 }
 
-pub(super) fn draw_panel(canvas: &mut Painter, meshes: &Meshes, rect: Rect) {
-    draw_rect(canvas, meshes, frame_rect(rect), FRAME_COLOR);
-    draw_rect(canvas, meshes, rect, PANEL_COLOR);
+pub(super) fn draw_panel(canvas: &mut Painter, rect: Rect) {
+    draw_rect(canvas, frame_rect(rect), FRAME_COLOR);
+    draw_rect(canvas, rect, PANEL_COLOR);
 }
 
 pub(super) fn menu_panel_rect(
@@ -61,27 +50,14 @@ pub(super) fn menu_row_rect(panel: Rect, row: usize, row_height: f32) -> Rect {
 }
 
 /// highlight bar with a bobbing gold block at each end
-pub(super) fn draw_selection(
-    ctx: &Context,
-    canvas: &mut Painter,
-    meshes: &Meshes,
-    row: Rect,
-    style: BlockStyle,
-) {
-    draw_selection_around(ctx, canvas, meshes, row, None, style);
+pub(super) fn draw_selection(canvas: &mut Painter, row: Rect) {
+    draw_selection_around(canvas, row, None);
 }
 
 /// selection bar, with the bobbing blocks at its ends or hugging a centered word
-pub(super) fn draw_selection_around(
-    ctx: &Context,
-    canvas: &mut Painter,
-    meshes: &Meshes,
-    row: Rect,
-    word_width: Option<f32>,
-    style: BlockStyle,
-) {
-    draw_rect(canvas, meshes, row, HIGHLIGHT_COLOR);
-    let bob = util::fast_wobble(ctx.time.time_since_start().as_secs_f32()) * 3.0;
+pub(super) fn draw_selection_around(canvas: &mut Painter, row: Rect, word_width: Option<f32>) {
+    draw_rect(canvas, row, HIGHLIGHT_COLOR);
+    let bob = util::fast_wobble(canvas.time()) * 3.0;
     let size = row.h * 0.3;
     let y = row.y + row.h / 2.0 - size / 2.0;
     let (left, right) = match word_width {
@@ -96,62 +72,21 @@ pub(super) fn draw_selection_around(
         None => (row.x + 12.0, row.x + row.w - 12.0 - size),
     };
     for x in [left + bob, right - bob] {
-        draw_block(
-            canvas,
-            meshes,
-            Rect::new(x, y, size, size),
-            ACCENT_COLOR,
-            style,
-        );
+        draw_block(canvas, Rect::new(x, y, size, size), ACCENT_COLOR);
     }
-}
-
-pub(super) fn draw_menu_list<T: Menu>(
-    ctx: &Context,
-    canvas: &mut Painter,
-    meshes: &Meshes,
-    menu: &T,
-    panel: Rect,
-    style: BlockStyle,
-) -> GameResult {
-    for (i, item) in menu.items().iter().enumerate() {
-        let row = menu_row_rect(panel, i, MENU_ROW_HEIGHT);
-        let selected = menu.selected() == i;
-        let mut text = item.clone();
-        text.set_font("04b30").set_scale(px(MENU_ITEM_SIZE));
-        if selected {
-            let width = text.measure_ui(ctx)?.x;
-            draw_selection_around(ctx, canvas, meshes, row, Some(width), style);
-        }
-        let color = if selected { ACCENT_COLOR } else { Color::WHITE };
-        draw_text_centered(ctx, canvas, &text, row.center().into(), color)?;
-    }
-    Ok(())
 }
 
 /// row of blocks filled up to the level, right aligned to right_x
-pub(super) fn draw_slider(
-    canvas: &mut Painter,
-    meshes: &Meshes,
-    right_x: f32,
-    center_y: f32,
-    level: u8,
-    max: u8,
-    style: BlockStyle,
-) {
+pub(super) fn draw_slider(canvas: &mut Painter, right_x: f32, center_y: f32, level: u8, max: u8) {
     let (segment, pitch) = (snap(SLIDER_SEGMENT), snap(SLIDER_SEGMENT + SLIDER_GAP));
     let left = snap(right_x - max as f32 * pitch + pitch - segment);
+    let top = snap(center_y - segment / 2.0);
     for i in 0..max {
-        let rect = Rect::new(
-            left + i as f32 * pitch,
-            snap(center_y - segment / 2.0),
-            segment,
-            segment,
-        );
+        let rect = Rect::new(left + i as f32 * pitch, top, segment, segment);
         if i < level {
-            draw_block(canvas, meshes, rect, ACCENT_COLOR, style);
+            draw_block(canvas, rect, ACCENT_COLOR);
         } else {
-            draw_rect(canvas, meshes, rect, SLIDER_EMPTY_COLOR);
+            draw_rect(canvas, rect, SLIDER_EMPTY_COLOR);
         }
     }
 }

@@ -3,6 +3,8 @@ use std::{fs, path::PathBuf};
 use directories::ProjectDirs;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
+use crate::{draw, game};
+
 const SETTINGS_FILE: &str = "settings.toml";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -18,8 +20,8 @@ pub struct WindowState {
 impl Default for WindowState {
     fn default() -> Self {
         Self {
-            width: crate::draw::VIEW_WIDTH,
-            height: crate::draw::VIEW_HEIGHT,
+            width: draw::VIEW_WIDTH,
+            height: draw::VIEW_HEIGHT,
             x: None,
             y: None,
             maximized: false,
@@ -51,8 +53,8 @@ impl Default for Settings {
             background: String::new(),
             blocks: String::new(),
             board: String::new(),
-            music_level: crate::game::DEFAULT_VOLUME_LEVEL,
-            sound_level: crate::game::DEFAULT_VOLUME_LEVEL,
+            music_level: game::DEFAULT_VOLUME_LEVEL,
+            sound_level: game::DEFAULT_VOLUME_LEVEL,
             play_unfocused: false,
             initials: String::new(),
             window: WindowState::default(),

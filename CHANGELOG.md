@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A 15–40 ms stutter whenever the music changed or the game over jingle
   stopped.
+- Closing the window from the animation viewer saved its block and
+  background styles as the player's.
 
 ## [0.5.1] - 2026-11-15
 

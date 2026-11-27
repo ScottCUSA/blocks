@@ -1,23 +1,24 @@
-use std::cmp::Ordering;
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use ggez::input::keyboard::KeyCode;
+use strum::{IntoStaticStr, VariantArray};
 
-use super::{attract, gravity_delay, BlocksState, GameState, Sfx, LINES_PER_LEVEL};
+use super::{attract, bench, gravity_delay, BlocksState, GameState, Sfx, LINES_PER_LEVEL};
 use crate::{
     background::{BackgroundStyle, FREEZE_TIME, LEVEL_UP_TIME, THAW_TIME},
     controls::Control,
     draw,
     effects::Effects,
     level_progress::LevelProgress,
-    playfield::{Playfield, TranslationDirection, PLAYFIELD_SLOTS},
+    playfield::{Playfield, SlotState, TranslationDirection, PLAYFIELD_SLOTS},
     rustomino::{Rotation, Rustomino, RustominoBag, RustominoType},
     score_display::ScoreDisplay,
     scores::{Initials, ScoreBoard},
-    style::{self, BlockStyle, Style},
+    settings,
+    style::{Choice, Style},
 };
 
 const SPEEDS: [f64; 4] = [1.0, 0.5, 0.25, 0.1];
@@ -49,61 +50,31 @@ const WELL: i32 = PLAYFIELD_SLOTS[0] as i32 / 2 - 1;
 // bottom row first, the center column is left open for an I
 const CLEAR_ROWS: [&str; 4] = ["LLZZ.OOSSJ", "LZZT.OOSJJ", "TTJJ.LLOOZ", "TZZS.SJJOO"];
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, VariantArray, IntoStaticStr)]
 pub enum Animation {
+    Gravity,
+    #[strum(to_string = "Soft Drop")]
+    SoftDrop,
+    #[strum(to_string = "Hard Drop")]
+    HardDrop,
+    Lock,
     Single,
     Double,
     Triple,
     Quad,
+    #[strum(to_string = "Level Up")]
     LevelUp,
-    HardDrop,
-    Gravity,
-    SoftDrop,
-    Lock,
+    #[strum(to_string = "Game Over")]
     GameOver,
+    #[strum(to_string = "New High Score")]
     NewHighScore,
+    #[strum(to_string = "High Scores")]
     HighScores,
     Background,
     Demo,
 }
 
 impl Animation {
-    pub const ALL: [Animation; 14] = [
-        Animation::Gravity,
-        Animation::SoftDrop,
-        Animation::HardDrop,
-        Animation::Lock,
-        Animation::Single,
-        Animation::Double,
-        Animation::Triple,
-        Animation::Quad,
-        Animation::LevelUp,
-        Animation::GameOver,
-        Animation::NewHighScore,
-        Animation::HighScores,
-        Animation::Background,
-        Animation::Demo,
-    ];
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Animation::Single => "Single",
-            Animation::Double => "Double",
-            Animation::Triple => "Triple",
-            Animation::Quad => "Quad",
-            Animation::LevelUp => "Level Up",
-            Animation::HardDrop => "Hard Drop",
-            Animation::Gravity => "Gravity",
-            Animation::SoftDrop => "Soft Drop",
-            Animation::Lock => "Lock",
-            Animation::GameOver => "Game Over",
-            Animation::NewHighScore => "New High Score",
-            Animation::HighScores => "High Scores",
-            Animation::Background => "Background",
-            Animation::Demo => "Demo",
-        }
-    }
-
     /// seconds before replaying
     fn length(self) -> f64 {
         match self {
@@ -131,10 +102,11 @@ impl Animation {
 }
 
 /// animation viewer state
+#[derive(Default)]
 pub struct DebugView {
     pub selected: usize,
-    speed: usize,
-    fps: usize, // kept after closing, for the session
+    pub(super) speed: usize, // index into SPEEDS
+    fps: usize,              // kept after closing, for the session
     pub paused: bool,
     pub replay: bool,     // loop with sound, or play once
     pub hidden: bool,     // hud off
@@ -147,7 +119,7 @@ pub struct DebugView {
     surges: usize,       // background cues fired
     pub plays: usize,    // finished plays, a benchmark moves on after each
     ended: bool,         // this play is finished
-    saved: Option<(ScoreBoard, Style, BackgroundStyle)>, // restored on close
+    pub saved: Option<(ScoreBoard, Style, BackgroundStyle)>, // restored on close
     pub stats: FrameStats,
     pub recording: Option<Recording>, // frame samples going to a csv
 }
@@ -272,8 +244,8 @@ impl Recording {
     /// write the csv, returns where
     pub fn finish(self) -> std::io::Result<PathBuf> {
         let file = format!("frame-stats/{}-{}.csv", self.run.kind, self.started);
-        let path = crate::settings::data_path(&file)
-            .ok_or_else(|| std::io::Error::other("no data directory"))?;
+        let path =
+            settings::data_path(&file).ok_or_else(|| std::io::Error::other("no data directory"))?;
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir)?;
         }
@@ -338,41 +310,19 @@ impl DebugView {
 
     pub fn new() -> Self {
         Self {
-            selected: 0,
-            speed: 0,
-            fps: 0,
-            paused: false,
             replay: true,
-            hidden: false,
-            stats_only: false,
             level: 4,
             view: GameState::Playing,
-            time: 0.0,
-            landed: None,
-            step: 0.0,
-            surges: 0,
-            plays: 0,
-            ended: false,
-            saved: None,
-            stats: FrameStats::default(),
-            recording: None,
+            ..Self::default()
         }
     }
 
     pub fn animation(&self) -> Animation {
-        Animation::ALL[self.selected]
+        Animation::VARIANTS[self.selected]
     }
 
     pub fn speed(&self) -> f64 {
         SPEEDS[self.speed]
-    }
-
-    pub(super) fn speed_index(&self) -> usize {
-        self.speed
-    }
-
-    pub(super) fn set_speed_index(&mut self, speed: usize) {
-        self.speed = speed.min(SPEEDS.len() - 1);
     }
 
     /// game ticks and drawn frames per second
@@ -480,15 +430,8 @@ impl BlocksState {
             Animation::Lock => {
                 self.spawn(Rustomino::new(RustominoType::T));
                 self.playfield.translate_active(TranslationDirection::Right);
-                let rows = match (
-                    &self.playfield.active_rustomino,
-                    &self.playfield.ghost_rustomino,
-                ) {
-                    (Some(active), Some(ghost)) => {
-                        active.playfield_slots()[0].y - ghost.playfield_slots()[0].y
-                    }
-                    _ => 0,
-                };
+                let y = |r: &Option<Rustomino>| r.as_ref().map_or(0, |r| r.translation.y);
+                let rows = y(&self.playfield.active_rustomino) - y(&self.playfield.ghost_rustomino);
                 for _ in LOCK_ROWS..rows {
                     self.playfield.translate_active(TranslationDirection::Down);
                 }
@@ -537,38 +480,28 @@ impl BlocksState {
     /// clear `lines` rows with an I dropped down the center
     fn debug_clear(&mut self, lines: usize, filled: usize) {
         self.playfield = Playfield::new();
-        let rows: Vec<String> = CLEAR_ROWS
-            .iter()
-            .enumerate()
-            .map(|(y, row)| {
-                let mut row = row.to_string();
-                if y >= lines {
-                    row.replace_range(y + 6..y + 7, ".");
-                }
-                row
-            })
-            .collect();
-        let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
-        self.fill_rows(0, &rows);
+        self.fill_rows(0, &CLEAR_ROWS);
+        // a gap in each row left standing
+        for y in lines..CLEAR_ROWS.len() {
+            self.playfield.slots[y][y + 6] = SlotState::Empty;
+        }
         self.level_progress = LevelProgress::new(LINES_PER_LEVEL, filled);
         self.total_lines_cleared = (self.level - 1) * LINES_PER_LEVEL + filled;
 
         self.spawn(Rustomino::new(RustominoType::I));
         self.playfield.rotate_active(Rotation::Cw);
-        while let Some(x) = self
+        let x = self
             .playfield
             .active_rustomino
             .as_ref()
-            .map(|r| r.playfield_slots()[0].x)
-        {
-            let direction = match x.cmp(&WELL) {
-                Ordering::Less => TranslationDirection::Right,
-                Ordering::Greater => TranslationDirection::Left,
-                Ordering::Equal => break,
-            };
-            if !self.playfield.translate_active(direction) {
-                break;
-            }
+            .map_or(WELL, |r| r.playfield_slots()[0].x);
+        let direction = if x < WELL {
+            TranslationDirection::Right
+        } else {
+            TranslationDirection::Left
+        };
+        for _ in 0..(x - WELL).abs() {
+            self.playfield.translate_active(direction);
         }
         self.hard_drop();
     }
@@ -579,11 +512,7 @@ impl BlocksState {
         }
         let dt = delta_time * self.debug.speed();
         self.debug.time += dt;
-        self.score_display.update(dt);
-        self.level_display.update(dt);
-        if self.level_progress.update(dt) {
-            self.level_display.add(1);
-        }
+        self.update_displays(dt);
         self.effects.update(dt);
         self.background.update(dt, self.level);
         self.playfield.update_line_clear(dt);
@@ -637,7 +566,7 @@ impl BlocksState {
 
     /// soft drop at the held key repeat rate
     fn debug_soft_drop(&mut self, dt: f64) {
-        let Some(repeat) = Control::SoftDrop.action_repeat_delay() else {
+        let Some((_, repeat)) = Control::SoftDrop.repeat() else {
             return;
         };
         self.debug.step += dt;
@@ -648,7 +577,7 @@ impl BlocksState {
     }
 
     pub(super) fn debug_key(&mut self, keycode: KeyCode, repeated: bool, shift: bool) {
-        let count = Animation::ALL.len();
+        let count = Animation::VARIANTS.len();
         let step = if shift { LEVEL_STEP } else { 1 };
         match keycode {
             KeyCode::Escape if !repeated => self.close_debug(),
@@ -698,15 +627,15 @@ impl BlocksState {
                 };
             }
             KeyCode::KeyT if !repeated && self.bench.is_none() => {
-                self.start_bench(super::bench::StartBench {
-                    hold: super::bench::DEFAULT_HOLD,
+                self.start_bench(bench::StartBench {
+                    hold: bench::DEFAULT_HOLD,
                     filter: None,
                     exit: false,
                     vsync: self.vsync,
                 });
             }
             KeyCode::KeyB => self.background.cycle(1),
-            KeyCode::KeyS => self.style.block = style::cycle(&BlockStyle::ALL, self.style.block, 1),
+            KeyCode::KeyS => self.style.block = self.style.block.cycle(1),
             _ => {}
         }
     }

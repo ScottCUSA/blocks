@@ -29,10 +29,7 @@ pub(super) fn level_ring(background: &Background, view_rect: &Rect, point: Vec2)
     let Some(p) = background.wave() else {
         return (0.0, Vec2::ZERO);
     };
-    let center = Vec2::new(
-        view_rect.x + view_rect.w / 2.0,
-        view_rect.y + view_rect.h / 2.0,
-    );
+    let center = Vec2::from(view_rect.center());
     let reach = center.distance(view_rect.point().into()) + RING_WIDTH * 2.0;
     let radius = (1.0 - (1.0 - p).powi(2)) * reach;
     let offset = point - center;
@@ -46,30 +43,11 @@ pub(super) fn frost(color: Color, amount: f32) -> Color {
     mix_color(color, with_alpha(ice, color.a), amount)
 }
 
-pub(super) struct Plasma;
-
-impl Scenery for Plasma {
-    const COLORS: (Color, Color) = PLASMA_COLORS;
-
-    fn draw(
-        &self,
-        canvas: &mut Painter,
-        meshes: &Meshes,
-        view_rect: &Rect,
-        background: &Background,
-    ) {
-        draw_plasma(canvas, meshes, view_rect, background);
-    }
-}
-
-fn draw_plasma(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, background: &Background) {
+pub(super) fn draw_plasma(canvas: &mut Painter, view_rect: &Rect, background: &Background) {
     let glow = 1.0 + background.energy;
     let colors: Vec<Color> = RustominoType::iter().map(|t| t.color()).collect();
     // cells counted from the view center so resizing doesn't shift the pattern
-    let center = Vec2::new(
-        view_rect.x + view_rect.w / 2.0,
-        view_rect.y + view_rect.h / 2.0,
-    );
+    let center = Vec2::from(view_rect.center());
     let cols = (view_rect.w / 2.0 / PLASMA_CELL).ceil() as i32;
     let rows = (view_rect.h / 2.0 / PLASMA_CELL).ceil() as i32;
     let frozen = background.frozen();
@@ -127,7 +105,7 @@ fn draw_plasma(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgrou
                 melt = smoothstep(thaw, thaw + MELT_FADE, background.thawed());
                 let alpha =
                     (0.008 + 0.02 * n * n + 0.015 * facet) * glow + 0.06 * flash + 0.08 * glint;
-                draw_rect(canvas, meshes, rect, with_alpha(ice, alpha * (1.0 - melt)));
+                draw_rect(canvas, rect, with_alpha(ice, alpha * (1.0 - melt)));
                 if melt <= 0.0 {
                     continue;
                 }
@@ -145,7 +123,7 @@ fn draw_plasma(canvas: &mut Painter, meshes: &Meshes, view_rect: &Rect, backgrou
                 .sin();
             let shimmer = 1.0 + calm * PLASMA_CALM_TWINKLE * twinkle;
             let alpha = ((0.01 + 0.04 * n * n) * glow * shimmer + 0.15 * wave).min(1.0);
-            draw_rect(canvas, meshes, rect, with_alpha(color, alpha * melt));
+            draw_rect(canvas, rect, with_alpha(color, alpha * melt));
         }
     }
 }

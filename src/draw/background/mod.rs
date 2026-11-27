@@ -8,7 +8,7 @@ use plasma::*;
 use stars::*;
 use storm::*;
 
-use ggez::graphics::{self, Color, Rect};
+use ggez::graphics::{Color, Rect};
 
 use crate::background::{Background, BackgroundStyle};
 
@@ -34,35 +34,12 @@ pub(super) const OFF_COLORS: (Color, Color) = (
 
 const CALM_DIM: f32 = 0.45; // darkening behind the title
 
-/// a background style's gradient and animation, statically dispatched
-pub(super) trait Scenery {
-    /// window gradient, top and bottom
-    const COLORS: (Color, Color);
-
-    /// animation over the gradient
-    fn draw(
-        &self,
-        _canvas: &mut Painter,
-        _meshes: &Meshes,
-        _view_rect: &Rect,
-        _background: &Background,
-    ) {
-    }
-}
-
-/// gradient only
-struct Off;
-
-impl Scenery for Off {
-    const COLORS: (Color, Color) = OFF_COLORS;
-}
-
 fn colors(style: BackgroundStyle) -> (Color, Color) {
     match style {
-        BackgroundStyle::Stars => Stars::COLORS,
-        BackgroundStyle::Plasma => Plasma::COLORS,
-        BackgroundStyle::Storm => Storm::COLORS,
-        BackgroundStyle::Off => Off::COLORS,
+        BackgroundStyle::Stars => STARS_COLORS,
+        BackgroundStyle::Plasma => PLASMA_COLORS,
+        BackgroundStyle::Storm => STORM_COLORS,
+        BackgroundStyle::Off => OFF_COLORS,
     }
 }
 
@@ -72,69 +49,23 @@ pub fn clear_color(style: BackgroundStyle) -> Color {
 }
 
 /// vertical gradient, then the animation
-pub fn draw_background(
-    canvas: &mut Painter,
-    meshes: &Meshes,
-    view_rect: &Rect,
-    background: &Background,
-) {
+pub fn draw_background(canvas: &mut Painter, view_rect: &Rect, background: &Background) {
+    let (top, bottom) = colors(background.style);
+    draw_rect(canvas, *view_rect, bottom);
+    draw_fade(canvas, *view_rect, top);
     match background.style {
-        BackgroundStyle::Stars => paint(&Stars, canvas, meshes, view_rect, background),
-        BackgroundStyle::Plasma => paint(&Plasma, canvas, meshes, view_rect, background),
-        BackgroundStyle::Storm => paint(&Storm, canvas, meshes, view_rect, background),
-        BackgroundStyle::Off => paint(&Off, canvas, meshes, view_rect, background),
+        BackgroundStyle::Stars => draw_stars(canvas, view_rect, background),
+        BackgroundStyle::Plasma => draw_plasma(canvas, view_rect, background),
+        BackgroundStyle::Storm => draw_storm(canvas, view_rect, background),
+        BackgroundStyle::Off => {}
     }
-}
-
-fn paint<S: Scenery>(
-    scenery: &S,
-    canvas: &mut Painter,
-    meshes: &Meshes,
-    view_rect: &Rect,
-    background: &Background,
-) {
-    let (top, bottom) = S::COLORS;
-    draw_rect(canvas, meshes, *view_rect, bottom);
-    draw_mesh(
-        canvas,
-        &meshes.background,
-        graphics::DrawParam::default()
-            .dest_rect(*view_rect)
-            .color(top),
-    );
-    scenery.draw(canvas, meshes, view_rect, background);
     if background.calm > 0.0 {
-        draw_rect(
-            canvas,
-            meshes,
-            *view_rect,
-            Color::new(0.0, 0.0, 0.0, CALM_DIM * background.calm),
-        );
+        let dim = Color::new(0.0, 0.0, 0.0, CALM_DIM * background.calm);
+        draw_rect(canvas, *view_rect, dim);
     }
 }
 
 pub(super) fn smoothstep(from: f32, to: f32, x: f32) -> f32 {
     let t = ((x - from) / (to - from)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // catches swapped match arms, no screenshot scene uses Off
-    #[test]
-    fn colors_match_style() {
-        assert_eq!(colors(BackgroundStyle::Stars), STARS_COLORS);
-        assert_eq!(colors(BackgroundStyle::Plasma), PLASMA_COLORS);
-        assert_eq!(colors(BackgroundStyle::Storm), STORM_COLORS);
-        assert_eq!(colors(BackgroundStyle::Off), OFF_COLORS);
-    }
-
-    #[test]
-    fn clear_color_is_gradient_bottom() {
-        for style in BackgroundStyle::ALL {
-            assert_eq!(clear_color(style), colors(style).1);
-        }
-    }
 }

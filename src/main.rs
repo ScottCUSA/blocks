@@ -3,6 +3,8 @@ use std::{env, path};
 
 use ggez::{conf, event, ContextBuilder};
 
+use game::bench;
+
 mod background;
 mod controls;
 mod draw;
@@ -32,13 +34,8 @@ fn main() {
         .init();
 
     // setup resource path
-    let resource_dir = if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
-        let mut path = path::PathBuf::from(manifest_dir);
-        path.push(ASSETS_FOLDER);
-        path
-    } else {
-        path::PathBuf::from(ASSETS_FOLDER)
-    };
+    let resource_dir =
+        path::PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap_or_default()).join(ASSETS_FOLDER);
     log::info!("resource_dir: {:?}", resource_dir);
 
     // --screenshot <scene> [path] renders one frame in a hidden window and exits
@@ -50,26 +47,25 @@ fn main() {
 
     // --bench [filter] [seconds per case] times the viewer's scenes and exits
     let bench = args.iter().position(|a| a == "--bench").map(|i| {
-        let mut bench = game::bench::StartBench {
-            hold: game::bench::DEFAULT_HOLD,
+        let mut request = bench::StartBench {
+            hold: bench::DEFAULT_HOLD,
             filter: None,
             exit: true,
             vsync: false,
         };
         for arg in args[i + 1..].iter().take_while(|a| !a.starts_with("--")) {
             match arg.parse() {
-                Ok(hold) => bench.hold = hold,
-                Err(_) => bench.filter = Some(arg.clone()),
+                Ok(hold) => request.hold = hold,
+                Err(_) => request.filter = Some(arg.clone()),
             }
         }
-        bench
+        request
     });
 
-    let settings = if screenshot.is_none() {
-        settings::Settings::load()
-    } else {
-        settings::Settings::default()
-    };
+    // screenshots don't use or change the player's settings
+    let settings = screenshot
+        .as_ref()
+        .map_or_else(settings::Settings::load, |_| Default::default());
 
     // setup game context
     let mut builder = ContextBuilder::new("Blocks", "Scott Cummings")

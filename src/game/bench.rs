@@ -5,7 +5,8 @@ use std::time::Duration;
 use super::debug::{Animation, Recording, RunInfo};
 use super::{attract, BlocksState, GameState};
 use crate::background::{Background, BackgroundStyle};
-use crate::style::BlockStyle;
+use crate::style::{BlockStyle, Choice};
+use strum::VariantArray;
 
 pub const DEFAULT_HOLD: f32 = 0.0; // least seconds per case, past one whole play
 const WARMUP: Duration = Duration::from_secs(1); // unmeasured, before the first case
@@ -33,9 +34,9 @@ const ANIMATIONS: [Animation; 6] = [
 
 /// per background: the animations at level 1, level ups to the top, the animations again
 fn cases() -> Vec<Case> {
-    let block = BlockStyle::ALL[0];
+    let block = BlockStyle::VARIANTS[0];
     let mut cases = Vec::new();
-    for background in BackgroundStyle::ALL {
+    for &background in BackgroundStyle::VARIANTS {
         let mut case = |animation, level| {
             cases.push(Case {
                 animation,
@@ -65,7 +66,7 @@ fn cases() -> Vec<Case> {
         case(Animation::Demo, attract::DEMO_LEVEL);
     }
     // the other block styles, over the heaviest background
-    for block in &BlockStyle::ALL[1..] {
+    for block in &BlockStyle::VARIANTS[1..] {
         cases.push(Case {
             animation: Animation::Quad,
             background: BackgroundStyle::Storm,
@@ -133,14 +134,14 @@ impl BlocksState {
             debug.hidden,
             debug.replay,
             debug.level,
-            debug.speed_index(),
+            debug.speed,
         );
         debug.hidden = false;
         debug.stats_only = true;
         // the benchmark starts each play
         debug.replay = false;
         debug.paused = false;
-        debug.set_speed_index(0);
+        debug.speed = 0;
         let filter = request.filter.as_deref().map(str::to_lowercase);
         let cases: Vec<Case> = cases()
             .into_iter()
@@ -189,10 +190,10 @@ impl BlocksState {
         self.style.block = case.block;
         // a new background starts calm, not easing down from the last level
         if self.background.style != case.background {
-            self.background = Background::new();
+            self.background = Background::default();
             self.background.style = case.background;
         }
-        self.debug.selected = Animation::ALL
+        self.debug.selected = Animation::VARIANTS
             .iter()
             .position(|a| *a == case.animation)
             .unwrap_or(0);
@@ -255,7 +256,7 @@ impl BlocksState {
         debug.stats_only = false;
         debug.replay = replay;
         debug.level = level;
-        debug.set_speed_index(speed);
+        debug.speed = speed;
         if let Some(recording) = recording {
             summarize(&bench, &recording, complete);
             self.stop_recording(recording);
@@ -268,8 +269,14 @@ impl BlocksState {
     }
 }
 
-fn percentile(sorted: &[f64], p: f64) -> f64 {
-    sorted[((sorted.len() - 1) as f64 * p).round() as usize]
+/// mean, p99, max and frames over budget, of frame times in ms
+fn stats(times: &[f64]) -> (f64, f64, f64, usize) {
+    let mut sorted = times.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    let mean = times.iter().sum::<f64>() / times.len() as f64;
+    let p99 = sorted[((sorted.len() - 1) as f64 * 0.99).round() as usize];
+    let over = times.iter().filter(|t| **t > BUDGET_MS).count();
+    (mean, p99, sorted[sorted.len() - 1], over)
 }
 
 /// a table per case on stdout
@@ -284,50 +291,36 @@ fn summarize(bench: &Bench, recording: &Recording, complete: bool) {
     let mut worst: (f64, String) = (0.0, String::new());
     for (i, start) in bench.starts.iter().enumerate() {
         let end = bench.starts.get(i + 1).copied().unwrap_or(frames.len());
-        let mut times = Vec::new();
-        let (mut scene, mut draws) = (0.0, 0);
-        for frame in &frames[*start..end] {
-            times.push(ms(frame.delta));
-            scene += ms(frame.sample.scene);
-            draws += frame.sample.draws;
-        }
-        if times.is_empty() {
+        let frames = &frames[*start..end];
+        if frames.is_empty() {
             continue;
         }
-        let case = bench.cases[i];
-        let name = case.name();
-        let n = times.len() as f64;
-        let mean = times.iter().sum::<f64>() / n;
-        let over = times.iter().filter(|t| **t > BUDGET_MS).count();
-        all.extend_from_slice(&times);
-        times.sort_by(f64::total_cmp);
-        let max = *times.last().unwrap_or(&0.0);
-        let p99 = percentile(&times, 0.99);
+        let times: Vec<f64> = frames.iter().map(|frame| ms(frame.delta)).collect();
+        let scene: f64 = frames.iter().map(|frame| ms(frame.sample.scene)).sum();
+        let draws: usize = frames.iter().map(|frame| frame.sample.draws).sum();
+        let name = bench.cases[i].name();
+        let (mean, p99, max, over) = stats(&times);
         if p99 > worst.0 {
             worst = (p99, name.clone());
         }
+        let n = times.len();
         println!(
-            "{name:<34} {:>6} {:>7.0} {mean:>6.2} {p99:>6.2} {max:>6.2} {:>6.2} {:>6} {over:>5}",
-            times.len(),
+            "{name:<34} {n:>6} {:>7.0} {mean:>6.2} {p99:>6.2} {max:>6.2} {:>6.2} {:>6} {over:>5}",
             1000.0 / mean,
-            scene / n,
-            draws / times.len(),
+            scene / n as f64,
+            draws / n,
         );
+        all.extend(times);
     }
     if all.is_empty() {
         return;
     }
-    let n = all.len() as f64;
-    let mean = all.iter().sum::<f64>() / n;
-    let over = all.iter().filter(|t| **t > BUDGET_MS).count();
-    all.sort_by(f64::total_cmp);
+    let (mean, p99, max, over) = stats(&all);
     println!(
-        "\nall: {} frames, {:.0} fps mean, p99 {:.2} ms, max {:.2} ms, {over} over {BUDGET_MS:.2} ms ({:.2}%)",
+        "\nall: {} frames, {:.0} fps mean, p99 {p99:.2} ms, max {max:.2} ms, {over} over {BUDGET_MS:.2} ms ({:.2}%)",
         all.len(),
         1000.0 / mean,
-        percentile(&all, 0.99),
-        all.last().unwrap_or(&0.0),
-        100.0 * over as f64 / n
+        100.0 * over as f64 / all.len() as f64
     );
     println!("worst p99: {} ({:.2} ms)", worst.1, worst.0);
     if !complete {

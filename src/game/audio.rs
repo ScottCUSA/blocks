@@ -3,8 +3,8 @@ use std::io::Cursor;
 
 use super::stretch::{Stretch, Tempo};
 
-/// music source with live tempo, pitch unchanged
-/// Player::clear blocks until the audio thread drains it (~15-40ms),
+/// sound or music, a replay cuts off the last play, music has a live tempo with pitch unchanged
+/// Player::clear and ggez Source::play block on the audio thread (~15-40ms),
 /// so each play gets its own player and the last is dropped, which only flags it to stop
 pub struct Track {
     data: SoundData,
@@ -21,7 +21,7 @@ impl Track {
         Ok(track)
     }
 
-    /// no tempo control
+    /// no tempo control, for sound effects
     pub fn plain(ctx: &Context, path: &str) -> GameResult<Self> {
         Ok(Track {
             data: SoundData::new(ctx, path)?,
@@ -37,7 +37,7 @@ impl Track {
         let decoder = match rodio::Decoder::new(Cursor::new(self.data.clone())) {
             Ok(decoder) => decoder,
             Err(err) => {
-                log::error!("music decode failed: {err}");
+                log::error!("audio decode failed: {err}");
                 return;
             }
         };
