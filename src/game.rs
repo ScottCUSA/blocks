@@ -1,10 +1,11 @@
 use ggez::{
     conf,
     event::EventHandler,
-    glam::IVec2,
+    glam::{IVec2, Vec2},
     graphics::{self},
     input::keyboard::KeyCode,
     input::keyboard::KeyInput,
+    input::mouse::MouseButton,
     winit, Context, GameResult,
 };
 use std::{
@@ -17,6 +18,7 @@ mod attract;
 mod audio;
 pub mod bench;
 mod debug;
+mod mouse;
 mod screenshot;
 mod stretch;
 pub use screenshot::Screenshot;
@@ -138,6 +140,7 @@ pub struct Assets {
     music_speed: f32,
     game_over: audio::Track,
     sfx: HashMap<Sfx, audio::Track>,
+    pub menu_sounds: bool, // menu move and select
     // sources paused on focus loss
     music_suspended: bool,
     game_over_suspended: bool,
@@ -161,12 +164,17 @@ impl Assets {
             music_speed: 1.0,
             game_over: audio::Track::plain(ctx, "/game_over_8bit.ogg")?,
             sfx: sfx.collect::<GameResult<_>>()?,
+            menu_sounds: true,
             music_suspended: false,
             game_over_suspended: false,
         })
     }
 
     fn play(&mut self, effect: Sfx) {
+        let menu = matches!(effect, Sfx::MenuMove | Sfx::MenuSelect);
+        if menu && !self.menu_sounds {
+            return;
+        }
         if let Some(source) = self.sfx.get_mut(&effect) {
             source.play();
         }
@@ -294,6 +302,9 @@ pub struct BlocksState {
     lockdown_resets: u32,
     lowest_row: i32, // lowest row reached by the active rustomino
     focused: bool,
+    cursor: Option<Vec2>, // window position in physical pixels, none outside it
+    mouse_leads: bool,    // the menu highlight follows the mouse, until a key
+    hover: Option<draw::Hover>,
     last_frame: Instant,
     music_level: u8,
     sound_level: u8,
@@ -396,6 +407,9 @@ impl BlocksState {
             lockdown_resets: 0,
             lowest_row: i32::MAX,
             focused: true,
+            cursor: None,
+            mouse_leads: false,
+            hover: None,
             last_frame: Instant::now(),
             music_level: DEFAULT_VOLUME_LEVEL,
             sound_level: DEFAULT_VOLUME_LEVEL,
@@ -860,10 +874,7 @@ impl BlocksState {
             KeyCode::ArrowUp => self.menu_mut().previous(),
             KeyCode::ArrowDown => self.menu_mut().next(),
             KeyCode::Enter | KeyCode::NumpadEnter => return self.menu_select(),
-            KeyCode::Escape if paused => {
-                self.paused_state.reset_selection();
-                return self.resume();
-            }
+            KeyCode::Escape if paused => return self.menu_back(),
             KeyCode::Escape => return self.set_state(GameState::Quit),
             KeyCode::F12 if !paused => return self.open_debug(),
             _ => return,
@@ -872,9 +883,12 @@ impl BlocksState {
     }
 
     fn menu_select(&mut self) {
+        let Some(row) = self.menu_mut().selected else {
+            return;
+        };
         self.assets.play(Sfx::MenuSelect);
         let paused = self.state == GameState::Paused;
-        match self.menu_mut().selected() {
+        match row {
             0 => {
                 self.menu_mut().reset_selection();
                 self.resume();
@@ -962,19 +976,7 @@ impl BlocksState {
                 if self.options_in_game() {
                     draw::Overlay.draw(canvas)?;
                 }
-                let (title, menu) = if self.audio_open {
-                    ("Audio", &self.audio_state)
-                } else {
-                    ("Options", &self.options_state)
-                };
-                draw::OptionsScreen {
-                    title,
-                    menu,
-                    rows: &self.option_rows(),
-                    mode: self.mode,
-                    max_level: VOLUME_LEVELS,
-                }
-                .draw(canvas)?;
+                self.options_screen().draw(canvas)?;
             }
             GameState::NameEntry => {
                 draw::NameEntryScreen {
@@ -1072,34 +1074,37 @@ impl BlocksState {
     fn adjust_option(&mut self, delta: i8) {
         let step = |level: u8| (level as i8 + delta).clamp(0, VOLUME_LEVELS as i8) as u8;
         if self.audio_open {
-            match self.audio_state.selected() {
-                menus::AUDIO_THEME => {
+            match self.audio_state.selected {
+                Some(menus::AUDIO_THEME) => {
                     self.assets.theme = self.assets.theme.cycle(delta as isize);
                     self.assets.select_track(true, self.screenshot.is_none());
                     return;
                 }
-                menus::AUDIO_MUSIC => {
+                Some(menus::AUDIO_MUSIC) => {
                     self.music_level = step(self.music_level);
                     self.assets.set_music_level(self.music_level);
                 }
-                menus::AUDIO_SOUND => {
+                Some(menus::AUDIO_SOUND) => {
                     self.sound_level = step(self.sound_level);
                     self.assets.set_sound_level(self.sound_level);
                 }
-                menus::AUDIO_UNFOCUSED => self.play_unfocused = !self.play_unfocused,
+                Some(menus::AUDIO_UNFOCUSED) => self.play_unfocused = !self.play_unfocused,
+                Some(menus::AUDIO_MENU_SOUNDS) => {
+                    self.assets.menu_sounds = !self.assets.menu_sounds
+                }
                 _ => return,
             }
             self.assets.play(Sfx::MenuMove);
             return;
         }
-        match self.options_state.selected() {
+        match self.options_state.selected {
             // locked during a game
-            menus::OPTION_MODE if self.options_in_game() => return,
-            menus::OPTION_MODE => self.mode = self.mode.cycle(delta as isize),
-            menus::OPTION_BACKGROUND => self.background.cycle(delta as isize),
-            menus::OPTION_BLOCKS => self.style.block = self.style.block.cycle(delta as isize),
-            menus::OPTION_BOARD => self.style.board = self.style.board.cycle(delta as isize),
-            menus::OPTION_AUDIO if delta > 0 => {
+            Some(menus::OPTION_MODE) if self.options_in_game() => return,
+            Some(menus::OPTION_MODE) => self.mode = self.mode.cycle(delta as isize),
+            Some(menus::OPTION_BACKGROUND) => self.background.cycle(delta as isize),
+            Some(menus::OPTION_BLOCKS) => self.style.block = self.style.block.cycle(delta as isize),
+            Some(menus::OPTION_BOARD) => self.style.board = self.style.board.cycle(delta as isize),
+            Some(menus::OPTION_AUDIO) if delta > 0 => {
                 self.open_audio();
                 return;
             }
@@ -1125,31 +1130,84 @@ impl BlocksState {
         self.set_state(self.previous_state);
     }
 
+    /// the options page that is showing
+    fn options_menu(&mut self) -> &mut menus::MenuList {
+        if self.audio_open {
+            &mut self.audio_state
+        } else {
+            &mut self.options_state
+        }
+    }
+
+    /// the menu taking input
+    fn open_menu(&mut self) -> Option<&mut menus::MenuList> {
+        match self.state {
+            GameState::Menu | GameState::Paused => Some(self.menu_mut()),
+            GameState::Options => Some(self.options_menu()),
+            _ => None,
+        }
+    }
+
+    /// a menu key with nothing selected brings back the keyboard selection, on the top row
+    fn reveal_selection(&mut self, keycode: KeyCode) -> bool {
+        use KeyCode::*;
+        let menu_key = matches!(
+            keycode,
+            ArrowUp | ArrowDown | ArrowLeft | ArrowRight | Enter | NumpadEnter
+        );
+        match self.open_menu() {
+            Some(menu) if menu_key && menu.selected.is_none() => menu.reset_selection(),
+            _ => return false,
+        }
+        self.assets.play(Sfx::MenuMove);
+        true
+    }
+
+    /// resume from pause, or back out of an options page
+    fn menu_back(&mut self) {
+        match self.state {
+            GameState::Paused => {
+                self.paused_state.reset_selection();
+                self.resume();
+            }
+            GameState::Options => self.options_back(),
+            _ => {}
+        }
+    }
+
+    /// choose an options row: back, the audio page, or flip an on/off setting
+    fn options_enter(&mut self) {
+        let row = if self.audio_open {
+            self.audio_state.selected
+        } else {
+            self.options_state.selected
+        };
+        match (self.audio_open, row) {
+            (true, Some(menus::AUDIO_BACK)) | (false, Some(menus::OPTION_BACK)) => {
+                self.options_back()
+            }
+            (false, Some(menus::OPTION_AUDIO)) => self.open_audio(),
+            (true, Some(menus::AUDIO_UNFOCUSED | menus::AUDIO_MENU_SOUNDS)) => {
+                self.adjust_option(1)
+            }
+            _ => {}
+        }
+    }
+
     /// options and audio page keys, left and right repeat
     fn options_key(&mut self, keycode: KeyCode, repeated: bool) {
-        let audio = self.audio_open;
-        let (menu, back) = if audio {
-            (&mut self.audio_state, menus::AUDIO_BACK)
-        } else {
-            (&mut self.options_state, menus::OPTION_BACK)
-        };
-        let selected = menu.selected();
-        let enter = matches!(keycode, KeyCode::Enter | KeyCode::NumpadEnter);
         match keycode {
             KeyCode::ArrowLeft => self.adjust_option(-1),
             KeyCode::ArrowRight => self.adjust_option(1),
             _ if repeated => {}
             KeyCode::Escape => self.options_back(),
-            _ if enter && selected == back => self.options_back(),
-            _ if enter && !audio && selected == menus::OPTION_AUDIO => self.open_audio(),
-            // enter flips on/off settings too
-            _ if enter && audio && selected == menus::AUDIO_UNFOCUSED => self.adjust_option(1),
+            KeyCode::Enter | KeyCode::NumpadEnter => self.options_enter(),
             KeyCode::ArrowUp => {
-                menu.previous();
+                self.options_menu().previous();
                 self.assets.play(Sfx::MenuMove);
             }
             KeyCode::ArrowDown => {
-                menu.next();
+                self.options_menu().next();
                 self.assets.play(Sfx::MenuMove);
             }
             _ => {}
@@ -1176,15 +1234,21 @@ impl BlocksState {
         self.assets.play(Sfx::MenuMove);
     }
 
-    /// rows of the options page that is showing
-    fn option_rows(&self) -> Vec<draw::OptionRow<'_>> {
+    /// the options page that is showing
+    fn options_screen(&self) -> draw::OptionsScreen<'_> {
         use draw::OptionRow;
-        if self.audio_open {
+        let (title, menu) = if self.audio_open {
+            ("Audio", &self.audio_state)
+        } else {
+            ("Options", &self.options_state)
+        };
+        let rows = if self.audio_open {
             vec![
                 OptionRow::Choice(self.assets.theme.name(), false),
                 OptionRow::Slider(self.music_level),
                 OptionRow::Slider(self.sound_level),
                 OptionRow::Choice(if self.play_unfocused { "Play" } else { "Pause" }, false),
+                OptionRow::Choice(if self.assets.menu_sounds { "On" } else { "Off" }, false),
                 OptionRow::Back,
             ]
         } else {
@@ -1197,6 +1261,14 @@ impl BlocksState {
                 OptionRow::Link,
                 OptionRow::Back,
             ]
+        };
+        draw::OptionsScreen {
+            title,
+            menu,
+            rows,
+            mode: self.mode,
+            max_level: VOLUME_LEVELS,
+            hover: self.hover,
         }
     }
 
@@ -1210,6 +1282,7 @@ impl BlocksState {
         self.style.board = BoardStyle::from_name(&settings.board).unwrap_or(self.style.board);
         self.assets.theme = Theme::from_name(&settings.theme).unwrap_or(self.assets.theme);
         self.play_unfocused = settings.play_unfocused;
+        self.assets.menu_sounds = settings.menu_sounds;
         self.music_level = settings.music_level.min(VOLUME_LEVELS);
         self.sound_level = settings.sound_level.min(VOLUME_LEVELS);
         self.assets.set_music_level(self.music_level);
@@ -1230,6 +1303,7 @@ impl BlocksState {
         settings.music_level = self.music_level;
         settings.sound_level = self.sound_level;
         settings.play_unfocused = self.play_unfocused;
+        settings.menu_sounds = self.assets.menu_sounds;
         settings.save();
     }
 
@@ -1283,6 +1357,7 @@ impl EventHandler for BlocksState {
         if self.screenshot.is_some() {
             return Ok(());
         }
+        self.update_mouse(ctx);
 
         let play = self.focused || self.play_unfocused;
         self.assets.select_track(self.game_music(), play);
@@ -1386,10 +1461,14 @@ impl EventHandler for BlocksState {
         repeated: bool,
     ) -> GameResult {
         // any key leaves the demo
-        if self.attract_key() {
+        if self.attract_input() {
             return Ok(());
         }
+        self.mouse_leads = false;
         let keycode = controls::keycode(&input);
+        if keycode.is_some_and(|keycode| self.reveal_selection(keycode)) {
+            return Ok(());
+        }
         match (self.state, keycode) {
             (GameState::Playing, _) => {
                 // pause at once, clearing the other inputs
@@ -1420,6 +1499,41 @@ impl EventHandler for BlocksState {
                 self.debug_key(keycode, repeated, input.mods.shift_key())
             }
             _ => {}
+        }
+        Ok(())
+    }
+
+    fn mouse_motion_event(
+        &mut self,
+        ctx: &mut Context,
+        x: f32,
+        y: f32,
+        _dx: f32,
+        _dy: f32,
+    ) -> GameResult {
+        if self.screenshot.is_none() {
+            let held = ctx.mouse.button_pressed(MouseButton::Left);
+            self.mouse_moved(x, y, held);
+        }
+        Ok(())
+    }
+
+    fn mouse_enter_or_leave(&mut self, _ctx: &mut Context, entered: bool) -> GameResult {
+        if !entered {
+            self.cursor = None;
+        }
+        Ok(())
+    }
+
+    fn mouse_button_down_event(
+        &mut self,
+        _ctx: &mut Context,
+        button: MouseButton,
+        x: f32,
+        y: f32,
+    ) -> GameResult {
+        if self.screenshot.is_none() {
+            self.mouse_pressed(button, x, y);
         }
         Ok(())
     }

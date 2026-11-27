@@ -11,16 +11,20 @@ pub const AUDIO_THEME: usize = 0;
 pub const AUDIO_MUSIC: usize = 1;
 pub const AUDIO_SOUND: usize = 2;
 pub const AUDIO_UNFOCUSED: usize = 3;
-pub const AUDIO_BACK: usize = 4;
+pub const AUDIO_MENU_SOUNDS: usize = 4;
+pub const AUDIO_BACK: usize = 5;
 
 pub struct MenuList {
     pub items: &'static [&'static str],
-    selected: usize,
+    pub selected: Option<usize>, // none while the mouse leads and is off the rows
 }
 
 impl MenuList {
     fn new(items: &'static [&'static str]) -> Self {
-        Self { items, selected: 0 }
+        Self {
+            items,
+            selected: Some(0),
+        }
     }
 
     pub fn main() -> Self {
@@ -36,22 +40,41 @@ impl MenuList {
     }
 
     pub fn audio() -> Self {
-        Self::new(&["Song", "Music", "Sound", "Unfocused", "Back"])
+        Self::new(&["Song", "Music", "Sound", "Unfocused", "Menu Sounds", "Back"])
     }
 
-    pub fn selected(&self) -> usize {
-        self.selected
-    }
-
+    /// down a row, wrapping, from none to the top
     pub fn next(&mut self) {
-        self.selected = (self.selected + 1) % self.items.len();
+        let len = self.items.len();
+        self.selected = Some(self.selected.map_or(0, |i| (i + 1) % len));
     }
 
+    /// up a row, wrapping, from none to the top
     pub fn previous(&mut self) {
-        self.selected = (self.selected + self.items.len() - 1) % self.items.len();
+        let len = self.items.len();
+        self.selected = Some(self.selected.map_or(0, |i| (i + len - 1) % len));
     }
 
     pub fn reset_selection(&mut self) {
-        self.selected = 0;
+        self.selected = Some(0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn steps_wrap_and_start_at_top() {
+        let mut menu = MenuList::main();
+        menu.previous();
+        assert_eq!(menu.selected, Some(3));
+        menu.next();
+        assert_eq!(menu.selected, Some(0));
+        for step in [MenuList::next, MenuList::previous] {
+            menu.selected = None;
+            step(&mut menu);
+            assert_eq!(menu.selected, Some(0));
+        }
     }
 }

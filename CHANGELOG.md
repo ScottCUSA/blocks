@@ -23,14 +23,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Storms, a dark 3/4 waltz music theme, with a loop option and a length
   check in `tools/make_chiptune.py`.
 - Audio option to keep the music playing when the window loses focus.
+- Audio option to turn off the menu sounds.
 - Shanty, a stormy 6/8 sea shanty music theme in D minor with a folk-dance
   bridge, and a jig drum pattern in `tools/make_chiptune.py`.
 - `storm`, `storm-max`, `storm-whiteout` and `options-audio` screenshot scenes.
 - `demo` screenshot scene.
+- Mouse support in the menus: hover selects, click chooses or sets a value,
+  the mouse's back button goes back.
 
 ### Changed
 
 - Song, Music and Sound moved to a new Audio page in the options.
+- Volume sliders start with an off block.
 
 ### Fixed
 
