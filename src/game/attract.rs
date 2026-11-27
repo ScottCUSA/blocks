@@ -86,7 +86,7 @@ impl BlocksState {
     pub(super) fn attract_update(&mut self, delta_time: f64) {
         match self.attract.phase {
             Phase::Off => {
-                if self.state == GameState::Menu {
+                if self.state == GameState::Menu && !self.confirm_quit {
                     self.attract.idle += delta_time;
                 } else {
                     self.attract.idle = 0.0;

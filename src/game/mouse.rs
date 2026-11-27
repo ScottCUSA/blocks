@@ -69,6 +69,9 @@ impl BlocksState {
             return;
         }
         let back = button == MouseButton::Back;
+        if self.confirm_quit && back {
+            return self.cancel_quit();
+        }
         match self.state {
             // any button, as any key
             GameState::GameOver if self.effects.game_over_ready() => self.end_game_over(),
@@ -80,6 +83,12 @@ impl BlocksState {
     }
 
     fn click(&mut self, x: f32, y: f32) {
+        if self.confirm_quit {
+            if let Some(answer) = self.quit_hit(x, y) {
+                self.answer_quit(answer);
+            }
+            return;
+        }
         let Some(MenuHit { row, part }) = self.menu_hit(x, y) else {
             return;
         };
@@ -95,10 +104,28 @@ impl BlocksState {
         }
     }
 
+    /// quit prompt answer under a window point
+    fn quit_hit(&self, x: f32, y: f32) -> Option<draw::QuitAnswer> {
+        let point = self.view_settings.view_point(x, y);
+        draw::QuitScreen::hit(&self.view_settings.view_rect, point)
+    }
+
+    /// quit prompt answer to highlight, the one under the mouse while it leads
+    pub(super) fn quit_selected(&self) -> Option<draw::QuitAnswer> {
+        if self.mouse_leads {
+            self.cursor.and_then(|at| self.quit_hit(at.x, at.y))
+        } else {
+            Some(self.quit_choice)
+        }
+    }
+
     /// open menu's row under a window point
     fn menu_hit(&self, x: f32, y: f32) -> Option<MenuHit> {
         let point = self.view_settings.view_point(x, y);
         let rect = &self.view_settings.view_rect;
+        if self.confirm_quit {
+            return None;
+        }
         match self.state {
             GameState::Menu => draw::MenuScreen(&self.menu_state).hit(rect, point),
             GameState::Paused => draw::PausedScreen(&self.paused_state).hit(rect, point),
