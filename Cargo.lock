@@ -203,7 +203,7 @@ dependencies = [
 
 [[package]]
 name = "blocks"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "directories",
  "env_logger",
