@@ -3,6 +3,8 @@ use std::{env, path};
 
 use ggez::{conf, event, ContextBuilder};
 
+use game::bench;
+
 mod background;
 mod controls;
 mod draw;
@@ -45,19 +47,19 @@ fn main() {
 
     // --bench [filter] [seconds per case] times the viewer's scenes and exits
     let bench = args.iter().position(|a| a == "--bench").map(|i| {
-        let mut bench = game::bench::StartBench {
-            hold: game::bench::DEFAULT_HOLD,
+        let mut request = bench::StartBench {
+            hold: bench::DEFAULT_HOLD,
             filter: None,
             exit: true,
             vsync: false,
         };
         for arg in args[i + 1..].iter().take_while(|a| !a.starts_with("--")) {
             match arg.parse() {
-                Ok(hold) => bench.hold = hold,
-                Err(_) => bench.filter = Some(arg.clone()),
+                Ok(hold) => request.hold = hold,
+                Err(_) => request.filter = Some(arg.clone()),
             }
         }
-        bench
+        request
     });
 
     // screenshots don't use or change the player's settings

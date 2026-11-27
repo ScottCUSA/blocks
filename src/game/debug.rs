@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 use ggez::input::keyboard::KeyCode;
 use strum::{IntoStaticStr, VariantArray};
 
-use super::{attract, gravity_delay, BlocksState, GameState, Sfx, LINES_PER_LEVEL};
+use super::{attract, bench, gravity_delay, BlocksState, GameState, Sfx, LINES_PER_LEVEL};
 use crate::{
     background::{BackgroundStyle, FREEZE_TIME, LEVEL_UP_TIME, THAW_TIME},
     controls::Control,
@@ -17,6 +17,7 @@ use crate::{
     rustomino::{Rotation, Rustomino, RustominoBag, RustominoType},
     score_display::ScoreDisplay,
     scores::{Initials, ScoreBoard},
+    settings,
     style::{Choice, Style},
 };
 
@@ -243,8 +244,8 @@ impl Recording {
     /// write the csv, returns where
     pub fn finish(self) -> std::io::Result<PathBuf> {
         let file = format!("frame-stats/{}-{}.csv", self.run.kind, self.started);
-        let path = crate::settings::data_path(&file)
-            .ok_or_else(|| std::io::Error::other("no data directory"))?;
+        let path =
+            settings::data_path(&file).ok_or_else(|| std::io::Error::other("no data directory"))?;
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir)?;
         }
@@ -626,8 +627,8 @@ impl BlocksState {
                 };
             }
             KeyCode::KeyT if !repeated && self.bench.is_none() => {
-                self.start_bench(super::bench::StartBench {
-                    hold: super::bench::DEFAULT_HOLD,
+                self.start_bench(bench::StartBench {
+                    hold: bench::DEFAULT_HOLD,
                     filter: None,
                     exit: false,
                     vsync: self.vsync,

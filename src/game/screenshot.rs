@@ -6,9 +6,9 @@ use ggez::{
     Context, GameError, GameResult,
 };
 
-use super::{BlocksState, GameState, LINES_PER_LEVEL, LINE_CLEAR_DELAY};
+use super::{attract, BlocksState, GameState, LINES_PER_LEVEL, LINE_CLEAR_DELAY};
 use crate::background::BackgroundStyle;
-use crate::draw::{storm_strike_time, StrikeKind};
+use crate::draw::{self, storm_strike_time, StrikeKind};
 use crate::level_progress::LevelProgress;
 use crate::score_display::ScoreDisplay;
 use crate::scores::{HighScore, Initials};
@@ -188,7 +188,7 @@ impl BlocksState {
             }
             Playing => {}
             Paused => self.state = GameState::Paused,
-            Demo => self.attract.phase = super::attract::Phase::Demo,
+            Demo => self.attract.phase = attract::Phase::Demo,
             Score => {
                 // part way through the score animation after a clear
                 self.score += 800;
@@ -327,11 +327,8 @@ impl BlocksState {
 
         let (width, height) = ctx.gfx.drawable_size();
         let image = Image::new_canvas_image(ctx, width as u32, height as u32, 1);
-        let mut canvas = Canvas::from_image(
-            ctx,
-            image.clone(),
-            crate::draw::clear_color(self.background.style),
-        );
+        let mut canvas =
+            Canvas::from_image(ctx, image.clone(), draw::clear_color(self.background.style));
         self.draw_scene(ctx, &mut canvas)?;
         canvas.finish(ctx)?;
         if let Some(screenshot) = &mut self.screenshot {
