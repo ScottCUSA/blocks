@@ -46,7 +46,7 @@ struct Plan {
 
 pub struct Attract {
     pub phase: Phase,
-    idle: f64,
+    pub idle: f64,
     timer: f64,
     plan: Option<Plan>,
     piece_y: i32, // the planned piece's row, a higher one is a new piece
@@ -121,8 +121,8 @@ impl BlocksState {
         }
     }
 
-    /// a key resets the idle time, or leaves the demo; true if the key was used
-    pub(super) fn attract_key(&mut self) -> bool {
+    /// a key or click resets the idle time, or leaves the demo; true if it was used
+    pub(super) fn attract_input(&mut self) -> bool {
         self.attract.idle = 0.0;
         if self.attract.phase == Phase::Off {
             return false;

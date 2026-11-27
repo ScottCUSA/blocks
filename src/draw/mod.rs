@@ -23,8 +23,8 @@ pub use background::{clear_color, draw_background, storm_strike_time, StrikeKind
 pub use batch::{take_draw_count, Batch, Painter};
 pub use board::GameLayer;
 pub use screens::{
-    DebugScreen, DemoScreen, FrameStats, GameOverScreen, HighScoresScreen, MenuScreen,
-    NameEntryScreen, OptionRow, OptionsScreen, PausedScreen,
+    DebugScreen, DemoScreen, FrameStats, GameOverScreen, HighScoresScreen, Hover, MenuHit,
+    MenuScreen, NameEntryScreen, OptionRow, OptionsScreen, PausedScreen, RowPart,
 };
 pub use text::set_pixel_scale;
 pub use widgets::Overlay;
@@ -161,6 +161,11 @@ impl ViewSettings {
         let y = self.playfield_rect.bottom() - (slot.y + 1) as f32 * CELL - 1.0;
         Rect::new(snap(x), snap(y), block_size(), block_size())
     }
+
+    /// window position, in physical pixels, in view units
+    pub fn view_point(&self, x: f32, y: f32) -> Vec2 {
+        Vec2::new(x, y) / self.scale
+    }
 }
 
 /// meshes reused every frame
@@ -250,4 +255,15 @@ fn glow_mesh(ctx: &mut Context) -> graphics::Mesh {
             indices: &indices,
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn view_point_scales() {
+        let view = ViewSettings::new(VIEW_WIDTH * 2.0, VIEW_HEIGHT * 2.0);
+        assert_eq!(view.view_point(100.0, 50.0), Vec2::new(50.0, 25.0));
+    }
 }
